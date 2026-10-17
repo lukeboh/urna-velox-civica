@@ -3,8 +3,6 @@
 ![Urna Velox: totalização eleitoral independente, BU por BU](docs/img/capa.png)
 
 [![Rust](https://img.shields.io/badge/rust-stable%20%7C%20edition%202021%2B-orange.svg?logo=rust)](https://www.rust-lang.org)
-[![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-blue.svg)](LICENSE)
-[![Source-Available](https://img.shields.io/badge/modelo-source--available%20%7C%20dupla%20licen%C3%A7a-lightgrey.svg)](docs/LICENCIAMENTO.md)
 [![Status](https://img.shields.io/badge/status-active%20development-brightgreen.svg)](#roadmap)
 [![Engine](https://img.shields.io/badge/engine-zero--copy%20%7C%20concurrent-purple.svg)](#arquitetura)
 
@@ -21,7 +19,7 @@ Diferente de abordagens baseadas em scripts em lote (*batch*) sequenciais ou car
 - **Agregação Virtualmente Instantânea:** À medida que cada arquivo `.bu` ou lote compactado é lido do disco ou recebido via rede, os totais consolidados para **Município**, **UF** e **Brasil** são atualizados em microssegundos.
 - **Zero-Copy & Parser ASN.1 Nativo:** Decodificação de baixo nível dos formatos oficiais do TSE sem alocações supérfluas de memória.
 - **Eficiência de Recursos Extrema:** O estado completo de uma eleição geral (~500.000 BUs) ocupa ~36 MB num vetor denso de contadores pré-dimensionado a partir dos dados públicos de candidatura; o motor inteiro fica na casa de 50 MB, saturando todos os núcleos de CPU disponíveis ([estimativas medidas](docs/ESTIMATIVAS_MEMORIA_E_TEMPO.md)).
-- **Auditoria Cívica Aberta (*Source-Available*):** Código-fonte público e determinístico (licença [PolyForm Noncommercial 1.0.0](LICENSE)), viabilizando a conferência pública e independente dos resultados das urnas eletrônicas brasileiras por pesquisadores, partidos, entidades fiscalizadoras e a sociedade civil.
+- **Auditoria Cívica Aberta:** Código-fonte público e determinístico, viabilizando a conferência pública e independente dos resultados das urnas eletrônicas brasileiras por pesquisadores, partidos, entidades fiscalizadoras e a sociedade civil.
 
 ---
 
@@ -131,45 +129,10 @@ O **Urna Velox** é um projeto de soberania informacional, auditoria cidadã e p
 3. Garanta que o código passa no linter e testes: `cargo fmt --check && cargo clippy && cargo test`.
 4. Envie suas alterações via Pull Request com descrição clara dos objetivos técnicos.
 
-Como o projeto tem dupla licença (ver abaixo), ao enviar uma contribuição você concorda que ela seja distribuída pelo autor tanto sob a PolyForm Noncommercial 1.0.0 quanto sob as licenças comerciais do projeto.
+Ao contribuir, valem as condições do [licenciamento](docs/LICENCIAMENTO.md#contribuições).
 
 ---
 
 ## ⚖️ Licença e Termos de Uso
 
-O Urna Velox é **Source-Available / PolyForm Noncommercial**: o código-fonte é público para garantir a transparência cívica, mas **não é *open source*** segundo os critérios da OSI. O projeto adota **dupla licença** (*dual licensing*):
-
-| Licença | Para quem | Custo |
-| :--- | :--- | :--- |
-| [**PolyForm Noncommercial License 1.0.0**](LICENSE) ([em português](LICENCA.pt-BR.md)) | qualquer uso **sem finalidade comercial** | gratuito |
-| **Licença Comercial** (contrato específico com o autor) | qualquer uso **com finalidade econômica ou lucrativa** | royalties, sob contrato |
-
-Copyright © 2026 Luciano Soares Bohnert. O texto que vale juridicamente é o do [LICENSE](LICENSE) (texto oficial e integral da PolyForm Noncommercial 1.0.0, em inglês), com tradução para o português do Brasil de conteúdo idêntico em [LICENCA.pt-BR.md](LICENCA.pt-BR.md); esta seção apenas os explica.
-
-### ✅ Uso não comercial — gratuito e livre
-
-Qualquer pessoa tem liberdade irrestrita para **auditar, compilar, modificar, estudar e utilizar** o Urna Velox, sem pagar nada e sem pedir autorização, para:
-
-- **pesquisa acadêmica** e científica (TCC, dissertação, tese, artigo);
-- **auditoria cidadã** e conferência independente dos resultados eleitorais;
-- **fins educacionais** (aulas, cursos, material didático);
-- **uso pessoal privado sem fins lucrativos** (estudo, experimento, hobby).
-
-A licença também permite o uso por instituições de ensino, organizações de pesquisa pública, entidades beneficentes e instituições governamentais, qualquer que seja a fonte do seu financiamento. Quem redistribuir o software (com ou sem modificações) deve repassar o texto da licença (ou o seu endereço) e as linhas `Required Notice:` do [LICENSE](LICENSE). O software é fornecido **"no estado em que se encontra" (*as is*)**, sem garantia de qualquer tipo e sem responsabilidade do autor por danos, nos limites da lei.
-
-### 🚫 Uso comercial — exige licença comercial e royalties
-
-Qualquer exploração, **direta ou indireta**, com finalidade econômica ou lucrativa **não é coberta** pela licença PolyForm Noncommercial e é vedada sem autorização prévia e por escrito do autor. Isso inclui, mas não se limita a:
-
-- **venda, licenciamento, sublicenciamento ou oferta como serviço** (SaaS, API paga, *feed* de dados, painel com assinatura, anúncios ou patrocínio);
-- **incorporação em soluções ou coberturas remuneradas** de consultorias, veículos de mídia (TV, rádio, portais, agências de notícias), campanhas eleitorais ou partidos políticos;
-- **monetização em transmissões ao vivo, palestras remuneradas ou conteúdos audiovisuais comerciais** que utilizem o software como atrativo econômico.
-
-Na dúvida sobre se um uso é comercial, consulte o autor antes de usar.
-
-### 💼 Contato para licenciamento comercial
-
-Empresas, consultorias, veículos de comunicação, campanhas e criadores de conteúdo que desejem fazer uso comercial do Urna Velox devem **entrar em contato formal com o autor para firmar um contrato específico de licenciamento comercial e pagamento de royalties** antes de qualquer uso. Detalhes no [Guia de Licenciamento](docs/LICENCIAMENTO.md).
-
-- **Titular dos direitos autorais:** Luciano Soares Bohnert
-- **E-mail:** `luciano.bohnert@gmail.com`
+O Urna Velox é **livre para qualquer uso não comercial** — pesquisa, auditoria cidadã, ensino e uso pessoal —, sem custo e sem pedir autorização. Detalhes em [docs/LICENCIAMENTO.md](docs/LICENCIAMENTO.md).

@@ -2,6 +2,60 @@
 
 Todas as versões do Urna Velox. Regras em [docs/VERSIONAMENTO.md](docs/VERSIONAMENTO.md): cada commit sobe a versão; só as versões `X.Y.0` ganham tag (`vX.Y.0`; até a `0.3.0` todo commit ganhava a sua); o MINOR acompanha a última etapa concluída do [ROADMAP](ROADMAP.md) (etapas 1 a 9 = `0.1.0` a `0.9.0`, com a escalabilidade segura na etapa 6, a comparação com o TSE na 7, a previsão na 8 e o ensaio geral na 9 desde a renumeração de 16/10/2026; nas entradas anteriores à `0.6.7`, "etapa 7" / `0.7.0` = ensaio geral, hoje `0.9.0`; majoritários completos = `1.0.0`; proporcionais = `2.0.0`; até a 0.0.19 valia o esquema antigo de seis fases). As entradas `2.0.0-alpha.N`, abaixo da `0.6.0`, são o trabalho da etapa 6 feito na branch `feature/2.0-escalabilidade` antes da renumeração de 15/10/2026; nelas, "2.0" quer dizer a etapa 6 e "3.0", os proporcionais (hoje `2.0.0`).
 
+## [0.7.2] — 2026-10-17
+
+- **README com a licença em um parágrafo:** livre para qualquer uso não comercial, com o link para o
+  [`docs/LICENCIAMENTO.md`](docs/LICENCIAMENTO.md); saem os selos de licença do topo e a menção na lista de objetivos.
+  O detalhe (uso livre, uso comercial, redistribuição, garantia, contato, contribuições) passa para o
+  `LICENCIAMENTO.md`; a ADR-031 aponta para ele. `LICENSE` e `LICENCA.pt-BR.md` sem mudança.
+- Sem mudança em código, totalização ou resultado: não se aplica a conferência contra os arquivos oficiais.
+
+## [0.7.1] — 2026-10-17
+
+- **Textos e documentação revistos para a publicação do código** (sem mudança na totalização): os documentos passam a
+  usar só fontes públicas e a descrever a rede de operação de forma genérica; o teto de 100 req/s aparece como regra do
+  projeto, com o HTTP 429 explícito acima dele; caminhos e identificadores de infraestrutura viram marcadores
+  (`<ip-público-no-a>`, `<id>`); o `docs/LICENCIAMENTO.md` fica só com as duas licenças e o contato; URLs do
+  repositório apontam para `lukeboh/urna-velox-civica`.
+- **TSE simulado:** atraso padrão de divulgação passa a mediana 120 s e p90 360 s (valores ilustrativos), com o teste
+  `atraso_tem_a_mediana_e_o_p90_pedidos` ajustado; nada mais muda no simulador.
+- Verificação: `cargo test --release` 94 passam, 0 falham, 31 `--ignored` (os mesmos da `0.7.0`). Nenhuma mudança em
+  totalização ou resultado: não se aplica a conferência contra os arquivos oficiais.
+
+## [0.7.0] — 2026-10-17
+
+- **Etapa 7 concluída: comparação Urna Velox × TSE** ([docs/HANDOFF_0.7.0.md](docs/HANDOFF_0.7.0.md),
+  [docs/RELATORIO_0.7.0.md](docs/RELATORIO_0.7.0.md)). Fechamento autorizado pelo Luciano em 17/10/2026.
+  - Na página, o controle **"Urna Velox · Ambos · TSE"** mostra lado a lado, para a mesma abrangência e cargo, a posição,
+    os votos e a % de cada candidato nas duas fontes, a diferença, as seções de cada uma e a idade do arquivo do TSE;
+    marco "TSE confirmou o matematicamente às hh:mm — Urna Velox às hh:mm, N min antes" (`0.6.13`).
+  - O `uv-servico` busca o `-u.json` só dos tópicos que algum cliente está vendo com a comparação ligada, no máximo uma
+    vez a cada 30–60 s, com cache compartilhado e nada em segundo plano (`0.6.11`); `uv-simulador` com o TSE simulado
+    (`0.6.12`); as seções não instaladas fecham a apuração como no oficial (`0.6.10`).
+  - **Critério** (detalhes na `0.6.24`): simulador 2024-2T a 10× (10/10 telas, 51/51) e 2026-1T a 60× (10/10, 83/83),
+    CLS 0, `fora_do_intervalo` 0, 0 HTTP 429, marcos 18/18 com o `eventos.csv`; site real 3220 e 3221 por 40 min cada,
+    3/3 telas iguais aos arquivos, 0 HTTP 429.
+- Relatório: caminho das evidências corrigido (`D:\dados\urna-velox\ensaios\20261017-14xx-etapa7-*`); ROADMAP com a
+  etapa 7 concluída.
+
+## [0.6.24] — 2026-10-17
+
+- **Etapa 7: critério atingido** ([docs/RELATORIO_0.7.0.md](docs/RELATORIO_0.7.0.md); ROADMAP marcado). Falta o ok do
+  Luciano para o `bump minor` → `0.7.0`.
+  - **Simulador:** 2024-2T a 10× com 10 abas — 10/10 telas idênticas ao oficial nas duas colunas, 51/51, CLS 0, marcos
+    "TSE confirmou" 10/10 com o `eventos.csv`; 2026-1T a 60× com 10 abas — 10/10, 83/83, **CLS 0 nas 10 abas**, marcos
+    8/8. Rede: `fora_do_intervalo` 0, 0 buscas fora das telas, 0 HTTP 429; BU → publicação p99 23,5 ms (2026) e 3,0 ms
+    (2024).
+  - **Site real** (`ensaio_tse_real.sh`, 40 min cada, 3 telas): 3220 — 240 buscas (237 × 304), 3/3 telas iguais aos
+    arquivos, 0 HTTP 429; 3221 — 243 buscas (240 × 304), 3/3, 0 HTTP 429.
+- **`site/dist` regerado** com o selo de posição do TSE de largura fixa: o `uv-servico` embute o `dist`
+  (`include_bytes!`), e a correção da `0.6.21` em `site/src/estilo.css` não tinha chegado ao serviço (a repetição do
+  2026-1T ainda deu CLS 2,5·10⁻⁵ no mesmo elemento). Com o `dist` novo, CLS 0.
+- **`ensaio_tse_real.sh`:** no 3221, `--aceitar-incompleto` (o `candidatos.json` preparado em 12/10 não tem o `cs.json`
+  de TO; sem coleta, a comparação não depende das seções) e parada imediata se o `uv-servico` sair na partida (antes,
+  esperava 5 min pela porta e seguia; nenhuma requisição ao TSE).
+- Conferência: os votos não mudam (só CSS e roteiro); as conferências da noite (83/83 e 51/51) estão nos ensaios acima.
+
 ## [0.6.23] — 2026-10-17
 
 - **Capa do repositório** ([docs/img/capa.png](docs/img/capa.png), 1280×640): logotipo, frase do projeto e a página

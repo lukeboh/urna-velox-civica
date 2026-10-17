@@ -25,9 +25,12 @@ R=/mnt/d/git/lukeboh/urna-velox
 B="${UV_BIN:-$U/target-dev/release}"
 W="$U/ensaios/etapa7-$NOME"
 BASE=https://resultados.tse.jus.br
+EXTRA=()
 case "$PLEITO" in
   3220) CAND=$U/etapa5/preparo-2026-1t/candidatos.json; ACERVO=$U/dados; OFIC=(--oficial "$U/oficial") ;;
-  3221) CAND=$U/2026-2t/preparo/candidatos.json; ACERVO=; OFIC=() ;;
+  # o candidatos.json do 3221 foi preparado antes de o TSE publicar todos os cs.json (falta o de TO): sem coleta, a
+  # comparação não depende das seções, então o serviço parte assim mesmo
+  3221) CAND=$U/2026-2t/preparo/candidatos.json; ACERVO=; OFIC=(); EXTRA=(--aceitar-incompleto) ;;
   *) echo "pleito: 3220 ou 3221"; exit 1 ;;
 esac
 [ -x "$B/uv-servico" ] || { echo "falta $B/uv-servico"; exit 1; }
@@ -40,9 +43,13 @@ parar() { trap - INT TERM EXIT; kill "${PIDS[@]}" 2>/dev/null || true; wait 2>/d
 trap parar INT TERM EXIT
 HP=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])')
 "$B/uv-servico" --pleito "$PLEITO" --ciclo ele2026 --candidatos "$CAND" --dados "$W/dados" --saida "$W/saida" \
-  --base "$BASE" --sem-coleta --http "127.0.0.1:$HP" --continuar 2> "$W/servico.err" &
+  --base "$BASE" --sem-coleta --http "127.0.0.1:$HP" --continuar "${EXTRA[@]}" 2> "$W/servico.err" &
 SPID=$!; PIDS+=($SPID)
-for _ in $(seq 1 1500); do (exec 3<>"/dev/tcp/127.0.0.1/$HP") 2>/dev/null && break; sleep 0.2; done
+for _ in $(seq 1 1500); do
+  (exec 3<>"/dev/tcp/127.0.0.1/$HP") 2>/dev/null && break
+  kill -0 $SPID 2>/dev/null || { echo "!! o uv-servico saiu na partida:"; tail -3 "$W/servico.err"; exit 1; }
+  sleep 0.2
+done
 # telas: Presidente no Brasil e os dois primeiros governadores (c0003) da lista do serviço
 HASHES=$(curl -s -m 5 "http://127.0.0.1:$HP/api/v1/topicos" | python3 -c '
 import json, sys

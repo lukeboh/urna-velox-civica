@@ -23,7 +23,7 @@ Plano de desenvolvimento por **versão**. Regras de numeração em [docs/VERSION
 | 4 · Publicação em tempo real | `0.4.0` | servidor HTTP + **WebSocket** com protocolo documentado (instantâneo + atualizações) | 21/10 | ✅ concluída em 13/10 (`v0.4.0`, por decisão do Luciano, sem a validação independente prevista): `uv-servico --http` ([protocolo](docs/PROTOCOLO_WS.md)) + `uv-carga`; BU → cliente p99 7,7 ms com 1.000 clientes a 60× (até 10.000: 35,6 ms); D1–D4 e limites no [relatório](docs/RELATORIO_0.4.0.md) |
 | 5 · Site de exemplo | `0.5.0` | página elegante que acompanha a totalização ao vivo pelo WebSocket, com marcos e curiosidades da noite | 22/10 | ✅ concluída em 15/10 (`v0.5.0`, por decisão do Luciano, sem a validação independente prevista): página embutida no `uv-servico`, tela × oficial 83/83 e 51/51, CLS 0, marcos sem divergência ([relatório](docs/RELATORIO_0.5.0.md)); hodômetro girando num sentido só; na `v0.5.1`, medições do fechamento sem regressão e E2 com o código atual |
 | 6 · Escalabilidade segura | `0.6.0` | **federação de nós coletores** (um por órgão, cada um no seu IP e nos seus 100 req/s): partição das seções por *Rendezvous Hashing*, troca direta de BUs entre os nós, tolerância a falhas e implantação | 15/10 | ✅ concluída em 15/10 (`v0.6.0`, por decisão do Luciano, sem a validação independente prevista): federação no `uv-servico --federacao`, ensaios reduzidos 6/6 no simulador, dois nós na OCI e o 1º simulado contra o pleito 3220 ([relatório preliminar](docs/RELATORIO_SIMULADO_1T_2026.md)); pendentes o critério A completo e a conferência do simulado com o oficial; borda, quórum e Wasm foram para a `1.x` |
-| 7 · Comparação Urna Velox × TSE | `0.7.0` | na página, a totalização do Urna Velox e a do site de resultados do TSE lado a lado (posição e contagem de cada candidato, seções de cada fonte), com um controle "Urna Velox · Ambos · TSE"; o servidor busca só o arquivo da tela, no máximo a cada 30–60 s | 19/10 | ⬜ [handoff](docs/HANDOFF_0.7.0.md) pronto |
+| 7 · Comparação Urna Velox × TSE | `0.7.0` | na página, a totalização do Urna Velox e a do site de resultados do TSE lado a lado (posição e contagem de cada candidato, seções de cada fonte), com um controle "Urna Velox · Ambos · TSE"; o servidor busca só o arquivo da tela, no máximo a cada 30–60 s | 19/10 | ✅ `0.7.0` em 17/10 ([relatório](docs/RELATORIO_0.7.0.md)) |
 | 8 · Previsão | `0.8.0` | estimativa, com intervalo, do horário do matematicamente (eleito / 2º turno) e do fim da apuração, pela velocidade de chegada dos BUs e pela tendência dos votos por estrato | 21/10 | ⬜ [handoff](docs/HANDOFF_0.8.0.md) pronto |
 | 9 · Ensaio geral | `0.9.0` | noites reais reproduzidas de ponta a ponta pelo WebSocket, carga, runbook, testes, com a federação e as telas das etapas 7 e 8 | 23/10 | 🟡 simulação da noite feita para o 2º turno de 2024 (`v0.0.19`); simulado do 3220 na ordem do TSE feito na OCI (`v0.6.8`: votos idênticos, atraso p50 1 s; encerramento com seções sem BU corrigido na `v0.6.10`); operação sem a porta 22 (`v0.6.5`, `v0.6.6`); [handoff](docs/HANDOFF_0.9.0.md) pronto |
 | **1.0** | **`1.0.0`** | **sistema completo para cargos majoritários** | **23/10** | ⬜ |
@@ -189,15 +189,17 @@ independente prevista no handoff; fechamento no [relatório](docs/RELATORIO_0.5.
 
 > Na página de resultados, ver lado a lado a totalização do Urna Velox e a do site de resultados do TSE, para a mesma abrangência e cargo: posição e contagem de cada candidato em cada uma, seções totalizadas por cada fonte e a idade do último arquivo do TSE. Decisão do Luciano em 16/10/2026. Plano detalhado: [docs/HANDOFF_0.7.0.md](docs/HANDOFF_0.7.0.md).
 
-- ⬜ **Controle de três posições** na tela de resultados: **só Urna Velox** (padrão), **ambos** ou **só TSE**; escolha lembrada no navegador e aceita na URL (`?comparar=ambos`).
-- ⬜ **Ambos:** votos, % dos válidos e posição de cada candidato nas duas fontes, com a diferença; linha destacada quando a ordem diverge; % de seções de cada fonte e "TSE: arquivo das hh:mm:ss (há N s)" no cabeçalho, porque o Urna Velox à frente é o normal.
-- ⬜ **Busca no servidor, não no navegador:** o `uv-servico` busca o `-u.json` da abrangência e cargo **que estão na tela** de pelo menos um cliente com a comparação ligada, **no máximo a cada 30–60 s** (cache compartilhado entre os clientes, `If-None-Match`), **nada em segundo plano**, dentro dos 100 req/s do órgão e com a regra do 429. Combinado com o Luciano em 16/10 como exceção à regra de não coletar durante a apuração ([CLAUDE.md](CLAUDE.md)).
-- ⬜ Protocolo por acréscimo: tópico `tse:<tópico>` e mensagem `tse` (votos, posição, seções, horário do arquivo e da busca, estado `ok`/`desatualizado`/`indisponivel`/`pausado`) na [PROTOCOLO_WS.md](docs/PROTOCOLO_WS.md); bloco `tse_resultados` na `saude.json`.
-- ⬜ Marco no feed: "TSE confirmou o matematicamente às hh:mm — Urna Velox às hh:mm, N min antes".
-- ⬜ `uv-simulador` com `-u.json` progressivos (um "TSE simulado" com atraso de divulgação sorteado), igual ao oficial no fim da noite.
-- ⬜ Mesmas regras de tela da etapa 5: CLS 0, hodômetro, celular.
+- ✅ `0.6.13` **Controle de três posições** na tela de resultados: **só Urna Velox** (padrão), **ambos** ou **só TSE**; escolha lembrada no navegador e aceita na URL (`?comparar=ambos`).
+- ✅ `0.6.13` **Ambos:** votos, % dos válidos e posição de cada candidato nas duas fontes, com a diferença; linha destacada quando a ordem diverge; % de seções de cada fonte e "TSE: arquivo das hh:mm:ss (há N s)" no cabeçalho, porque o Urna Velox à frente é o normal.
+- ✅ `0.6.11` **Busca no servidor, não no navegador:** o `uv-servico` busca o `-u.json` da abrangência e cargo **que estão na tela** de pelo menos um cliente com a comparação ligada, **no máximo a cada 30–60 s** (cache compartilhado entre os clientes, `If-None-Match`), **nada em segundo plano**, dentro dos 100 req/s do órgão e com a regra do 429. Combinado com o Luciano em 16/10 como exceção à regra de não coletar durante a apuração ([CLAUDE.md](CLAUDE.md)).
+- ✅ `0.6.11` Protocolo por acréscimo: tópico `tse:<tópico>` e mensagem `tse` (votos, posição, seções, horário do arquivo e da busca, estado `ok`/`desatualizado`/`indisponivel`/`pausado`) na [PROTOCOLO_WS.md](docs/PROTOCOLO_WS.md); bloco `tse_resultados` na `saude.json`.
+- ✅ `0.6.13` Marco no feed: "TSE confirmou o matematicamente às hh:mm — Urna Velox às hh:mm, N min antes".
+- ✅ `0.6.12` `uv-simulador` com `-u.json` progressivos (um "TSE simulado" com atraso de divulgação sorteado), igual ao oficial no fim da noite.
+- ✅ `0.6.24` Mesmas regras de tela da etapa 5: CLS 0, hodômetro, celular (CLS 0 nas 10 abas do 2026-1T a 60× depois do selo de posição com largura fixa).
 
 **Critério:** no simulador, 2º turno de 2024 a 10× e 1º turno de 2026 a 60× com 10 abas em modos variados: no fim, TSE = oficial = Urna Velox (51/51 e 83/83), CLS 0; ≤ 1 busca por (abrangência, cargo) inscrita por intervalo, 0 buscas sem ninguém com a comparação ligada, 0 HTTP 429, BU → publicação sem regressão; ≥ 30 min contra o site real (3220 final e 3221 pré-apuração) com números idênticos aos arquivos.
+
+✅ **Critério atingido na `0.6.24`** ([RELATORIO_0.7.0.md](docs/RELATORIO_0.7.0.md)): 2024-2T 10/10 telas e 51/51, 2026-1T 10/10 e 83/83, CLS 0; `fora_do_intervalo` 0, 0 HTTP 429; site real 3220 e 3221 por 40 min cada, 3/3 telas iguais aos arquivos; marcos 18/18 com o `eventos.csv`. Etapa concluída na `0.7.0` (17/10).
 
 ---
 
@@ -315,7 +317,7 @@ configurado como hoje. **Critério:** um nó sem `PLEITO` configurado mostra cor
 | coleta pela API do TSE | ≤ 100 req/s, 0 HTTP 429 | `0.3.0` | ✅ 95 req/s, 0 HTTP 429 (`v0.0.10`, `v0.0.19`) |
 | BU recebido → resultado publicado | < 1 ms (motor) | `0.3.0` | 🟡 p50 0,65 ms, p99 1,7 ms no replay do 2º turno de 2024, incluindo a publicação (`v0.0.19`) |
 | BU recebido → mensagem no cliente WebSocket | < 50 ms p99 | `0.4.0` | ⬜ |
-| comparação: buscas ao site de resultados do TSE | ≤ 1 por (abrangência, cargo) na tela a cada 30–60 s; 0 sem ninguém olhando | `0.7.0` | ⬜ |
+| comparação: buscas ao site de resultados do TSE | ≤ 1 por (abrangência, cargo) na tela a cada 30–60 s; 0 sem ninguém olhando | `0.7.0` | ✅ `0.6.24` (`fora_do_intervalo` 0) |
 | previsão do matematicamente: horário real dentro do P10–P90 (≥ 20 % apurado) | 80 % (aceitável 70–90 %) | `0.8.0` | ⬜ |
 | vazão lendo os zips do TSE (com descompressão) | > 100 mil BUs/s | `1.x` | ⬜ |
 | distribuição de vagas, Brasil | < 1 s | `2.0.0` | ⬜ |
