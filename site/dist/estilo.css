@@ -623,7 +623,10 @@ button, select { font: inherit; color: inherit; }
 .lista.m-ambos .cand .barra { grid-column: 3 / -1; grid-row: 3; }
 .cand .tse-l1 { display: inline-flex; align-items: center; gap: 6px; font-size: 19px; font-weight: 700; font-stretch: 105%; }
 .cand .tse-qtd { font-size: 12px; color: var(--texto-2); }
-.cand .pos-tse { display: inline-grid; place-items: center; min-width: 26px; height: 18px; padding: 0 5px; border-radius: var(--raio-p);
+/* largura fixa que cabe "10º"…"99º": com min-width, a passagem de "9º" para "10º" alargava o selo e empurrava a % ao
+   lado (CLS ~3·10⁻⁵ nas telas de Presidente, ensaio etapa7-c2026) */
+.cand .pos-tse { display: inline-grid; place-items: center; box-sizing: border-box; width: 32px; height: 18px; padding: 0; border-radius: var(--raio-p);
+  font-variant-numeric: tabular-nums;
   border: 1px solid var(--borda); font-size: 11px; font-weight: 700; color: var(--texto-2); transition: color 0.4s, border-color 0.4s; }
 .cand .pos-tse:empty { opacity: 0; }
 .cand.diverge .pos-tse { border-color: var(--alerta); color: var(--alerta); }
@@ -709,7 +712,7 @@ button, select { font: inherit; color: inherit; }
   .lista.m-ambos .cand .tse { grid-column: 5; grid-row: 1 / span 2; }
   .lista.m-ambos .cand .qtd .suf, .lista.m-ambos .cand .tse-qtd .suf { display: none; }
   .cand .tse-l1 { font-size: 15px; gap: 3px; }
-  .cand .pos-tse { min-width: 20px; height: 16px; padding: 0 3px; font-size: 10px; }
+  .cand .pos-tse { width: 24px; height: 16px; font-size: 10px; }
   .cand .tse-qtd { font-size: 10px; }
 }
 

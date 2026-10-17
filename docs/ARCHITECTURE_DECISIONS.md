@@ -693,8 +693,8 @@ sem versão padronizada nem identificador SPDX, mais difícil de ser entendido p
    responsabilidade são as da própria licença.
 2. **Dupla licença.** Uso não comercial (pesquisa, auditoria cidadã, educação, uso pessoal; instituições de ensino,
    pesquisa pública, beneficentes e governamentais) é gratuito pela PolyForm. Uso com finalidade econômica, direta ou
-   indireta, exige contrato de licenciamento comercial com royalties, firmado com o autor ([README](../README.md),
-   seção "Licença e Termos de Uso").
+   indireta, exige contrato de licenciamento comercial com royalties, firmado com o autor
+   ([LICENCIAMENTO.md](LICENCIAMENTO.md)).
 3. **Manifestos** declaram `license = "PolyForm-Noncommercial-1.0.0"` (crates `urna-velox`, `uv-aquisicao`,
    `urnabench`; `bench/js/package.json`).
 4. **Contribuições** são aceitas com a condição de poderem ser distribuídas pelo autor sob as duas licenças (sem isso
