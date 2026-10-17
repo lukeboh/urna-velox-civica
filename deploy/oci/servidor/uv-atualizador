@@ -1,0 +1,361 @@
+#!/opt/urna-velox/oci-venv/bin/python3
+# uv-atualizador — Agente pull do Urna Velox (Parte B de docs/HANDOFF_DEPLOY_SEM_SSH.md).
+# Consulta o manifesto assinado (Ed25519 via ssh-keygen -Y verify), valida número de série (anti-rollback),
+# valida trava de prazo (combinado_ate) contra o TSE, valida SHA-256 do pacote de binários e insumos,
+# atualiza um nó de cada vez e ajusta o estado do serviço systemd (parado | producao | simulado).
+#
+# Regras de convivência com a operação manual (0.6.6; antes, o estado do último manifesto era reaplicado a cada minuto
+# e derrubava em até 60 s um serviço ligado pelo 20_iniciar.sh ou pelo 60_simulado.sh):
+# * o manifesto só é **aplicado** (binários + estado do serviço) quando a série é **nova** (maior que a última aplicada);
+#   série igual = nada a fazer, além da trava do prazo;
+# * a trava do prazo (`combinado_ate`) vale a cada minuto: manifesto que manda coletar do TSE com prazo vencido para o
+#   serviço, mesmo com a série já aplicada;
+# * com `/etc/urna-velox/controle-manual` presente (gravado pelo 20_iniciar.sh e pelo 60_simulado.sh, apagado pelo
+#   21_parar.sh e pelo 60_simulado.sh --restaurar), o atualizador não toca em nada: só registra o estado;
+# * o nó que não é o primeiro do federacao.json só aplica uma série nova `UV_ATRASO_PAR_S` segundos (padrão 180) depois
+#   do `emitido_em` do manifesto: o primeiro troca antes; se a versão nova não subir nele, dá tempo de publicar outra.
+#   (Antes havia uma checagem do par pela rede que liberava a troca quando o par não respondia.)
+import datetime
+import hashlib
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import urllib.request
+
+ESTADO_ARQ = os.environ.get("UV_ATUALIZADOR_ESTADO", "/srv/urna-velox/saida/atualizador.json")
+SERIE_ARQ = os.environ.get("UV_ATUALIZADOR_SERIE", "/etc/urna-velox/manifesto_serie")
+SIGNATARIOS_ARQ = os.environ.get("UV_SIGNATARIOS", "/etc/urna-velox/signatarios_permitidos")
+IDENTIDADE_ASSINATURA = os.environ.get("UV_ASSINATURA_ID", "manifesto@urna-velox")
+NAMESPACE_ASSINATURA = "urna-velox-manifesto"
+NO_ENV_ARQ = os.environ.get("UV_NO_ENV", "/etc/urna-velox/no.env")
+FED_ARQ = os.environ.get("UV_FED_JSON", "/etc/urna-velox/federacao.json")
+OPT_DIR = os.environ.get("UV_OPT_DIR", "/opt/urna-velox")
+CONTROLE_MANUAL_ARQ = os.environ.get("UV_CONTROLE_MANUAL", "/etc/urna-velox/controle-manual")
+ATRASO_PAR_S = int(os.environ.get("UV_ATRASO_PAR_S", "180"))
+MODO_TESTE = os.environ.get("UV_ATUALIZADOR_TESTE", "0") == "1"
+
+
+def agora_iso():
+    return datetime.datetime.now(datetime.timezone.utc).astimezone().isoformat(timespec="seconds")
+
+
+def ler_versao_atual():
+    try:
+        with open(os.path.join(OPT_DIR, "VERSION"), "r", encoding="utf-8") as f:
+            return f.read().strip()
+    except Exception:
+        return "desconhecida"
+
+
+def ler_serie_atual():
+    try:
+        with open(SERIE_ARQ, "r", encoding="utf-8") as f:
+            return int(f.read().strip())
+    except Exception:
+        return 0
+
+
+def gravar_estado(status, motivo, serie=None, estado_desejado=None, extra=None):
+    os.makedirs(os.path.dirname(ESTADO_ARQ), exist_ok=True)
+    dados = {
+        "atualizado_em": agora_iso(),
+        "status": status,
+        "motivo": motivo,
+        "serie": serie if serie is not None else ler_serie_atual(),
+        "versao_instalada": ler_versao_atual(),
+        "estado_desejado": estado_desejado,
+    }
+    if extra:
+        dados.update(extra)
+    tmp = ESTADO_ARQ + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(dados, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, ESTADO_ARQ)
+    try:
+        os.chmod(ESTADO_ARQ, 0o644)
+    except Exception:
+        pass
+
+
+def ler_no_env():
+    env = {}
+    if not os.path.exists(NO_ENV_ARQ):
+        return env
+    with open(NO_ENV_ARQ, "r", encoding="utf-8") as f:
+        for linha in f:
+            linha = linha.strip()
+            if not linha or linha.startswith("#") or "=" not in linha:
+                continue
+            k, v = linha.split("=", 1)
+            env[k.strip()] = v.strip().strip("'").strip('"')
+    return env
+
+
+def baixar_recurso(origem_dict, dest_path, bucket_padrao, ns_padrao):
+    local_path = origem_dict.get("local")
+    if local_path:
+        shutil.copyfile(local_path, dest_path)
+        return
+    url = origem_dict.get("url")
+    if url:
+        req = urllib.request.Request(url, headers={"User-Agent": "uv-atualizador/1.0"})
+        with urllib.request.urlopen(req, timeout=60) as r, open(dest_path, "wb") as f:
+            shutil.copyfileobj(r, f)
+        return
+    objeto = origem_dict.get("objeto")
+    bucket = origem_dict.get("bucket") or bucket_padrao
+    ns = origem_dict.get("namespace") or ns_padrao
+    if not objeto or not bucket:
+        raise RuntimeError("recurso sem url e sem bucket/objeto")
+    import oci
+    signer = oci.auth.signers.InstancePrincipalsSecurityTokenSigner()
+    client = oci.object_storage.ObjectStorageClient(config={}, signer=signer)
+    if not ns:
+        ns = client.get_namespace().data
+    resp = client.get_object(ns, bucket, objeto)
+    with open(dest_path, "wb") as f:
+        for chunk in resp.data.raw.stream(1024 * 1024, decode_content=False):
+            f.write(chunk)
+
+
+def sha256_arquivo(caminho):
+    h = hashlib.sha256()
+    with open(caminho, "rb") as f:
+        while True:
+            b = f.read(1024 * 1024)
+            if not b:
+                break
+            h.update(b)
+    return h.hexdigest()
+
+
+def verificar_assinatura(manifesto_path, sig_path):
+    if not os.path.exists(SIGNATARIOS_ARQ):
+        return False, f"arquivo de signatários ausente: {SIGNATARIOS_ARQ}"
+    with open(manifesto_path, "rb") as f_in:
+        res = subprocess.run(
+            [
+                "ssh-keygen",
+                "-Y",
+                "verify",
+                "-f",
+                SIGNATARIOS_ARQ,
+                "-I",
+                IDENTIDADE_ASSINATURA,
+                "-n",
+                NAMESPACE_ASSINATURA,
+                "-s",
+                sig_path,
+            ],
+            stdin=f_in,
+            capture_output=True,
+            text=True,
+        )
+    return res.returncode == 0, (res.stderr or res.stdout).strip()
+
+
+def parar_servico():
+    if MODO_TESTE:
+        with open(os.path.join(OPT_DIR, "servico_estado_teste"), "w", encoding="utf-8") as f:
+            f.write("inactive\n")
+        return
+    subprocess.run(["systemctl", "stop", "urna-velox"], check=False)
+
+
+def iniciar_servico():
+    if MODO_TESTE:
+        with open(os.path.join(OPT_DIR, "servico_estado_teste"), "w", encoding="utf-8") as f:
+            f.write("active\n")
+        return
+    subprocess.run(["systemctl", "start", "urna-velox"], check=True)
+
+
+def servico_ativo():
+    if MODO_TESTE:
+        p = os.path.join(OPT_DIR, "servico_estado_teste")
+        return os.path.exists(p) and open(p, encoding="utf-8").read().strip() == "active"
+    r = subprocess.run(["systemctl", "is-active", "--quiet", "urna-velox"], check=False)
+    return r.returncode == 0
+
+
+def base_e_tse(base):
+    return not (base.startswith("http://127.0.0.1") or base.startswith("http://localhost"))
+
+
+def sou_o_primeiro(meu_id):
+    """O primeiro nó do federacao.json aplica uma série nova logo; os outros esperam ATRASO_PAR_S."""
+    try:
+        nos = json.load(open(FED_ARQ, "r", encoding="utf-8")).get("nos", [])
+    except Exception:
+        return True
+    return not nos or nos[0].get("id") == meu_id
+
+
+def segundos_desde(iso):
+    try:
+        t = datetime.datetime.fromisoformat(iso)
+        if t.tzinfo is None:
+            t = t.replace(tzinfo=datetime.timezone.utc)
+        return (datetime.datetime.now(datetime.timezone.utc) - t).total_seconds()
+    except Exception:
+        return None
+
+
+def controle_manual():
+    """Conteúdo da trava de controle manual (quem e quando), ou None sem a trava."""
+    try:
+        with open(CONTROLE_MANUAL_ARQ, "r", encoding="utf-8") as f:
+            return f.read().strip() or "presente"
+    except FileNotFoundError:
+        return None
+
+
+def main():
+    env = ler_no_env()
+    meu_id = os.environ.get("UV_NO_ID") or env.get("NO_ID", "no-a")
+    bucket = os.environ.get("UV_BUCKET") or env.get("OCI_BUCKET", "urna-velox-implantacao")
+    ns = os.environ.get("UV_NAMESPACE") or env.get("OCI_NAMESPACE", "")
+    manifesto_url = os.environ.get("UV_MANIFESTO_URL") or env.get("MANIFESTO_URL", "")
+    manifesto_local = os.environ.get("UV_MANIFESTO_LOCAL", "")
+
+    manual = controle_manual()
+    if manual is not None:
+        gravar_estado("controle_manual", f"operação manual em curso ({manual}): o atualizador não mexe no nó")
+        return 0
+
+    with tempfile.TemporaryDirectory(prefix="uv-atualizador-") as tmp:
+        m_path = os.path.join(tmp, "manifesto.json")
+        s_path = os.path.join(tmp, "manifesto.json.sig")
+        try:
+            if manifesto_local:
+                shutil.copyfile(manifesto_local, m_path)
+                shutil.copyfile(manifesto_local + ".sig", s_path)
+            elif manifesto_url:
+                baixar_recurso({"url": manifesto_url}, m_path, bucket, ns)
+                baixar_recurso({"url": manifesto_url + ".sig"}, s_path, bucket, ns)
+            else:
+                baixar_recurso({"objeto": "manifesto/manifesto.json"}, m_path, bucket, ns)
+                baixar_recurso({"objeto": "manifesto/manifesto.json.sig"}, s_path, bucket, ns)
+        except Exception as e:
+            gravar_estado("sem_manifesto", f"manifesto indisponível: {e}")
+            return 0
+
+        ok_sig, msg_sig = verificar_assinatura(m_path, s_path)
+        if not ok_sig:
+            gravar_estado("recusado", f"assinatura_invalida: {msg_sig}")
+            return 1
+
+        manifesto = json.load(open(m_path, "r", encoding="utf-8"))
+        serie = int(manifesto.get("serie", 0))
+        serie_atual = ler_serie_atual()
+        if serie < serie_atual:
+            gravar_estado("recusado", f"serie_antiga: recebida {serie} < atual {serie_atual}", serie=serie_atual)
+            return 1
+        nova = serie > serie_atual
+
+        cfg_no = manifesto.get("nos", {}).get(meu_id) or manifesto.get("padrao", {})
+        estado_desejado = cfg_no.get("estado", "parado")
+        if estado_desejado == "produção":
+            estado_desejado = "producao"
+        base = cfg_no.get("base") or env.get("BASE", "https://resultados.tse.jus.br")
+
+        # Trava de segurança: coleta contra o site real do TSE exige combinado_ate válido
+        if estado_desejado in ("producao", "simulado") and base_e_tse(base):
+            comb_str = manifesto.get("combinado_ate") or cfg_no.get("combinado_ate")
+            agora = datetime.datetime.now(datetime.timezone.utc)
+            if not comb_str:
+                parar_servico()
+                gravar_estado("bloqueado", "combinado_ausente: coleta contra o TSE exige combinado_ate", serie=serie, estado_desejado="parado")
+                return 1
+            try:
+                comb_dt = datetime.datetime.fromisoformat(comb_str)
+                if comb_dt.tzinfo is None:
+                    comb_dt = comb_dt.replace(tzinfo=datetime.timezone.utc)
+            except Exception as e:
+                parar_servico()
+                gravar_estado("bloqueado", f"combinado_invalido: {e}", serie=serie, estado_desejado="parado")
+                return 1
+            if agora > comb_dt:
+                parar_servico()
+                gravar_estado("bloqueado", f"combinado_vencido: prazo {comb_str} encerrado", serie=serie, estado_desejado="parado")
+                return 1
+
+        # série já aplicada: nada a fazer (não religa nem desliga um serviço que a operação manual mexeu)
+        if not nova:
+            gravar_estado("ok", "em_dia", serie=serie_atual, estado_desejado=estado_desejado)
+            return 0
+
+        if not sou_o_primeiro(meu_id):
+            idade = segundos_desde(manifesto.get("emitido_em", ""))
+            if idade is None or idade < ATRASO_PAR_S:
+                gravar_estado("aguardando_par", f"série nova aplicada aqui {ATRASO_PAR_S} s depois de emitida (o primeiro nó troca antes)",
+                              serie=serie_atual, estado_desejado=estado_desejado)
+                return 0
+
+        versao_alvo = str(manifesto.get("versao", "")).strip()
+        versao_atual = ler_versao_atual()
+        trocou_binarios = False
+
+        if versao_alvo and versao_alvo != versao_atual:
+            pacote = manifesto.get("pacote", {})
+            sha_esperado = str(pacote.get("sha256", "")).strip().lower()
+            if not sha_esperado:
+                gravar_estado("recusado", "pacote sem sha256 no manifesto", serie=serie_atual, estado_desejado=estado_desejado)
+                return 1
+            tar_path = os.path.join(tmp, "pacote.tar.gz")
+            baixar_recurso(pacote, tar_path, bucket, ns)
+            sha_medido = sha256_arquivo(tar_path)
+            if sha_medido != sha_esperado:
+                gravar_estado(
+                    "recusado",
+                    f"sha256_invalido: esperado {sha_esperado}, medido {sha_medido}",
+                    serie=serie_atual,
+                    estado_desejado=estado_desejado,
+                )
+                return 1
+
+            ext_dir = os.path.join(tmp, "ext")
+            os.makedirs(ext_dir, exist_ok=True)
+            subprocess.run(["tar", "-xzf", tar_path, "-C", ext_dir], check=True)
+            estava_ativo = servico_ativo()
+            if estava_ativo:
+                parar_servico()
+            bin_dir = os.path.join(OPT_DIR, "bin")
+            os.makedirs(bin_dir, exist_ok=True)
+            ext_bin = os.path.join(ext_dir, "bin")
+            for nome in os.listdir(ext_bin):
+                origem_b = os.path.join(ext_bin, nome)
+                dest_b = os.path.join(bin_dir, nome)
+                subprocess.run(["install", "-m", "0755", origem_b, dest_b], check=True)
+            subprocess.run(
+                ["install", "-m", "0644", os.path.join(ext_dir, "VERSION"), os.path.join(OPT_DIR, "VERSION")],
+                check=True,
+            )
+            trocou_binarios = True
+
+        # Ajuste do estado do serviço
+        if estado_desejado == "parado":
+            if servico_ativo():
+                parar_servico()
+        elif estado_desejado in ("producao", "simulado"):
+            if not servico_ativo():
+                iniciar_servico()
+
+        os.makedirs(os.path.dirname(SERIE_ARQ), exist_ok=True)
+        with open(SERIE_ARQ, "w", encoding="utf-8") as f:
+            f.write(f"{serie}\n")
+
+        gravar_estado(
+            "ok",
+            "atualizado" if trocou_binarios else "em_dia",
+            serie=serie,
+            estado_desejado=estado_desejado,
+        )
+        return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

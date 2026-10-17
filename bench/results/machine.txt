@@ -1,0 +1,12 @@
+# 2026-10-11T16:08:18-03:00
+CPU(s):                                  28
+Model name:                              Intel(R) Core(TM) i7-14700
+Thread(s) per core:                      2
+Core(s) per socket:                      14
+Socket(s):                               1
+L3 cache:                                33 MiB (1 instance)
+               total        used        free      shared  buff/cache   available
+Mem:           15842        2431        9886           4        3770       13410
+6.18.33.2-microsoft-standard-WSL2
+openjdk version "21.0.12.1" 2026-08-18
+node v24.21.0

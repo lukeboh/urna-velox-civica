@@ -1,0 +1,11 @@
+tuplas (municipio,cargo,votavel) = 4494536  | pares (municipio,cargo) = 27850
+[A] DashMap aninhado, 128 shards/mapa (padrão):   1051.8 MB
+[A] DashMap aninhado,   8 shards/mapa         :    187.6 MB
+[A] DashMap aninhado,  64 shards/mapa         :    594.0 MB
+[A] DashMap aninhado, 128 shards/mapa         :   1051.8 MB
+    (so os 27850 TallyBreakdown vazios, 64 shards):    438.1 MB
+[B] hashbrown plano u64->u32             :    136.0 MB  (len 4494536, cap 7340032)
+[C] Denso Vec<AtomicU32> + offsets       :     18.1 MB  (indice cand. incl.)
+[D] DashSet<SectionId> 500k (64 shards)  :     17.0 MB  (size_of SectionId = 16)
+[D] Bitset denso 500k                    :    0.060 MB
+size_of: Tally=112 RwLock<HashMap<u32,u64>>≈ shard

@@ -1,0 +1,7 @@
+[gen] geral: municipios=5571 secoes=499997 candidatos~27429 slots_densos=9352247 (35.7 MB em u32)
+[gen] /home/dev/uvbench/corpus_geral.bin: 20000 BUs, 17.1 KB/BU médio, 339 votáveis/BU, total 334.5 MB
+[gen] geral: municipios=5571 secoes=499997 candidatos~27429 slots_densos=9352247 (35.7 MB em u32)
+[gen] /home/dev/uvbench/corpus_geral_nosig.bin: 20000 BUs, 6.5 KB/BU médio, 339 votáveis/BU, total 126.9 MB
+[gen] municipal: municipios=5571 secoes=499968 candidatos~556771 slots_densos=935599 (3.6 MB em u32)
+[gen] /home/dev/uvbench/corpus_municipal.bin: 20000 BUs, 6.0 KB/BU médio, 116 votáveis/BU, total 117.1 MB
+FIM 2026-10-11T16:14:46-03:00

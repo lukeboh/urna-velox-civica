@@ -1,0 +1,15 @@
+
+{ "ele" : "619", "t" : "1", "f" : "o", "sup" : "n", "tpabr" : "mu", "cdabr" : "84824", "dg" : "29/09/2026", "hg" : "19:29:46", "idg" : "472038", "dt" : "06/10/2024", "ht" : "21:09:52", "dv" : "s", "tf" : "s", "and" : "f", "esae" : "n", "mnae" : [  ], "carg" : [ 
+{ "cd" : "11", "nmn" : "Prefeito", "nmm" : "Prefeito", "nmf" : "Prefeita", "nv" : "1", "fed" : [ 
+{ "n" : "100", "sg" : "PSDB/CIDADANIA", "nm" : "Federação PSDB CIDADANIA", "com" : "PSDB/CIDADANIA", "npar" : [ "23", "45" ] } ], "agr" : [ 
+{ "n" : "210001706269", "nm" : "O TRABALHO PRECISA CONTINUAR", "tp" : "c", "com" : "MDB / PP", "tvtn" : "1850", "tvan" : "1850", "par" : [ 
+{ "n" : "11", "sg" : "PP", "nm" : "PROGRESSISTAS", "nfed" : "", "tvtn" : "1850", "tvan" : "1850", "cand" : [ 
+{ "n" : "11", "sqcand" : "210001998366", "nm" : "FABIANA GIACOMIN", "nmu" : "FABI", "dt" : "09/01/1980", "dvt" : "Válido", "seq" : "315", "e" : "s", "st" : "Eleito", "vap" : "1850", "pvap" : "66,12", "pvapn" : "66,118656183", "vs" : [ 
+{ "tp" : "v", "sqcand" : "210001998367", "nm" : "DAIAN CAVANUS", "nmu" : "DAIAN CAVANUS", "sgp" : "MDB" } ] } ] } ] }, 
+{ "n" : "210001759019", "nm" : "Pequeno Paraíso: Unidos na Decisão, Fortes no Progresso", "tp" : "c", "com" : "UNIÃO / PDT", "tvtn" : "948", "tvan" : "948", "par" : [ 
+{ "n" : "44", "sg" : "UNIÃO", "nm" : "União Brasil", "nfed" : "", "tvtn" : "948", "tvan" : "948", "cand" : [ 
+{ "n" : "44", "sqcand" : "210002348621", "nm" : "LAIR GRANDO", "nmu" : "LAIR GRANDO", "dt" : "06/11/1959", "dvt" : "Válido", "seq" : "977", "e" : "n", "st" : "Não eleito", "vap" : "948", "pvap" : "33,88", "pvapn" : "33,881343817", "vs" : [ 
+{ "tp" : "v", "sqcand" : "210002348622", "nm" : "TIAGO BAGGIO", "nmu" : "TIAGO BAGGIO", "sgp" : "PDT" } ] } ] } ] } ] } ], "s" : 
+{ "ts" : "9", "st" : "9", "pst" : "100,00", "pstn" : "100", "snt" : "0", "psnt" : "0,00", "psntn" : "0", "si" : "9", "psi" : "100,00", "psin" : "100", "sni" : "0", "psni" : "0,00", "psnin" : "0", "sa" : "9", "psa" : "100,00", "psan" : "100", "sna" : "0", "psna" : "0,00", "psnan" : "0" }, "e" : 
+{ "te" : "3190", "est" : "3190", "pest" : "100,00", "pestn" : "100", "esnt" : "0", "pesnt" : "0,00", "pesntn" : "0", "esi" : "3190", "pesi" : "100,00", "pesin" : "100", "esni" : "0", "pesni" : "0,00", "pesnin" : "0", "esa" : "3190", "pesa" : "100,00", "pesan" : "100", "esna" : "0", "pesna" : "0,00", "pesnan" : "0", "c" : "2862", "pc" : "89,72", "pcn" : "89,717868339", "a" : "328", "pa" : "10,28", "pan" : "10,282131661" }, "v" : 
+{ "tv" : "2862", "vvc" : "2798", "pvvc" : "97,76", "pvvcn" : "97,763801537", "vv" : "2798", "pvv" : "100,00", "pvvn" : "100", "vnom" : "2798", "pvnom" : "100,00", "pvnomn" : "100", "van" : "0", "pvan" : "0,00", "pvann" : "0", "vansj" : "0", "pvansj" : "0,00", "pvansjn" : "0", "vb" : "24", "pvb" : "0,84", "pvbn" : "0,838574423", "tvn" : "40", "ptvn" : "1,40", "ptvnn" : "1,397624039", "vn" : "40", "pvn" : "100,00", "pvnn" : "100", "vnt" : "0", "pvnt" : "0,00", "pvntn" : "0", "vsan" : "0", "vscv" : "0" } }

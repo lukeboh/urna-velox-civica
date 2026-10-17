@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<meta name="description" content="Apuração em tempo real pelo Urna Velox: votos, seções apuradas, matematicamente eleito e marcos da noite.">
+<title>Urna Velox · apuração ao vivo</title>
+<link rel="icon" href="/static/icone.svg?v={{versao}}" type="image/svg+xml">
+<link rel="preload" href="/static/archivo.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/static/estilo.css?v={{versao}}">
+<script type="module" src="/static/app.js?v={{versao}}"></script>
+</head>
+<body>
+<div class="aurora" aria-hidden="true"></div>
+<header class="topo">
+  <a class="marca" href="#/br/c0001">Urna <span>Velox</span></a>
+  <nav class="rota" id="rota" aria-label="Onde ver o resultado"></nav>
+  <div class="conexao" id="conexao" role="status" data-estado="conectando"><span class="ponto"></span><span class="txt">conectando…</span></div>
+  <button class="icone-btn" id="tema" type="button" aria-label="Trocar tema claro/escuro">◐</button>
+</header>
+<div class="faixa" id="faixa" aria-live="off"></div>
+<nav class="cargos" id="cargos" role="tablist" aria-label="Cargo"></nav>
+<main class="painel" id="painel"><div class="carregando" id="carregando">Carregando a apuração…</div></main>
+<footer class="feed vidro" id="feed" aria-label="Marcos e curiosidades da noite">
+  <div class="trilho" id="trilho"></div>
+  <div class="vazio-feed" id="feed-vazio">Os marcos da noite aparecem aqui assim que a apuração começa.</div>
+  <div class="pausa">pausado</div>
+  <div class="sr" id="anuncio" aria-live="polite"></div>
+  <button class="icone-btn hist-btn" id="feed-hist" type="button" aria-label="Histórico: tudo o que já passou pelo letreiro" aria-expanded="false" aria-controls="hist" title="Histórico">☰</button>
+</footer>
+<section class="hist vidro" id="hist" role="dialog" aria-modal="false" aria-labelledby="hist-titulo" aria-hidden="true">
+  <header class="hist-cab">
+    <h2 id="hist-titulo">O que já passou</h2>
+    <button class="icone-btn fechar" id="hist-fechar" type="button" aria-label="Fechar o histórico">✕</button>
+  </header>
+  <div class="hist-filtros" id="hist-filtros" role="group" aria-label="Mostrar">
+    <input class="hist-busca" id="hist-busca" type="search" placeholder="Filtrar: nome, UF, município…" aria-label="Filtrar por texto" autocomplete="off">
+  </div>
+  <div class="hist-tempo">
+    <span class="hist-hora" id="hist-hora" aria-hidden="true">nada ainda</span>
+    <input type="range" id="hist-tempo" min="0" max="0" value="0" step="1" aria-label="Linha do tempo do histórico">
+    <span class="hist-ext"><span id="hist-ini"></span><span id="hist-fim"></span></span>
+  </div>
+  <div class="hist-lista" id="hist-lista" role="list"></div>
+  <div class="hist-vazio" id="hist-vazio">Nada por aqui ainda (ou nada que passe no filtro).</div>
+</section>
+<section class="folha vidro" id="folha" role="dialog" aria-modal="false" aria-labelledby="folha-titulo" aria-hidden="true">
+  <button class="icone-btn fechar" id="folha-fechar" type="button" aria-label="Fechar">✕</button>
+  <h2 id="folha-titulo"></h2>
+  <dl id="folha-corpo"></dl>
+</section>
+<svg class="sr" width="0" height="0" aria-hidden="true">
+  <defs>
+    <linearGradient id="grad-anel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4fc3ff"/><stop offset="0.5" stop-color="#8c6bff"/><stop offset="1" stop-color="#ff5fd2"/>
+    </linearGradient>
+  </defs>
+</svg>
+</body>
+</html>

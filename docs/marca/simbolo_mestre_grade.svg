@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="uv-grad" x1="152" y1="192" x2="872" y2="832" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#4fc3ff"/>
+      <stop offset="50%" stop-color="#8c6bff"/>
+      <stop offset="100%" stop-color="#ff5fd2"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Fundo escuro com grade milimétrica -->
+  <rect width="1024" height="1024" fill="#0d1431"/>
+
+  <!-- Grade de construção (módulos de 64px) -->
+  <g stroke="rgba(255,255,255,0.06)" stroke-width="1">
+    <line x1="64" y1="0" x2="64" y2="1024"/><line x1="128" y1="0" x2="128" y2="1024"/><line x1="192" y1="0" x2="192" y2="1024"/><line x1="256" y1="0" x2="256" y2="1024"/><line x1="320" y1="0" x2="320" y2="1024"/><line x1="384" y1="0" x2="384" y2="1024"/><line x1="448" y1="0" x2="448" y2="1024"/><line x1="512" y1="0" x2="512" y2="1024"/><line x1="576" y1="0" x2="576" y2="1024"/><line x1="640" y1="0" x2="640" y2="1024"/><line x1="704" y1="0" x2="704" y2="1024"/><line x1="768" y1="0" x2="768" y2="1024"/><line x1="832" y1="0" x2="832" y2="1024"/><line x1="896" y1="0" x2="896" y2="1024"/><line x1="960" y1="0" x2="960" y2="1024"/>
+    <line x1="0" y1="64" x2="1024" y2="64"/><line x1="0" y1="128" x2="1024" y2="128"/><line x1="0" y1="192" x2="1024" y2="192"/><line x1="0" y1="256" x2="1024" y2="256"/><line x1="0" y1="320" x2="1024" y2="320"/><line x1="0" y1="384" x2="1024" y2="384"/><line x1="0" y1="448" x2="1024" y2="448"/><line x1="0" y1="512" x2="1024" y2="512"/><line x1="0" y1="576" x2="1024" y2="576"/><line x1="0" y1="640" x2="1024" y2="640"/><line x1="0" y1="704" x2="1024" y2="704"/><line x1="0" y1="768" x2="1024" y2="768"/><line x1="0" y1="832" x2="1024" y2="832"/><line x1="0" y1="896" x2="1024" y2="896"/><line x1="0" y1="960" x2="1024" y2="960"/>
+  </g>
+
+  <!-- Eixos centrais -->
+  <line x1="512" y1="0" x2="512" y2="1024" stroke="rgba(79,195,255,0.4)" stroke-width="1.5" stroke-dasharray="8 6"/>
+  <line x1="0" y1="512" x2="1024" y2="512" stroke="rgba(79,195,255,0.4)" stroke-width="1.5" stroke-dasharray="8 6"/>
+
+  <!-- Zona de segurança (área segura de 80% para maskable) -->
+  <rect x="102" y="102" width="820" height="820" rx="200" fill="none" stroke="#ffc24b" stroke-width="1.5" stroke-dasharray="10 8"/>
+  <text x="110" y="130" font-family="'Archivo UV', sans-serif" font-size="16" fill="#ffc24b">Zona de Segurança (80% Maskable)</text>
+
+  <!-- Borda do ícone -->
+  <rect x="32" y="32" width="960" height="960" rx="256" fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.18)" stroke-width="2"/>
+
+  <!-- O Símbolo -->
+  <path d="
+    M 152 192
+    L 408 192
+    L 408 528
+    C 408 624 472 688 552 688
+    C 632 688 696 624 696 528
+    L 696 352
+    L 616 288
+    L 872 288
+    L 872 528
+    C 872 736 728 832 552 832
+    C 376 832 232 736 232 528
+    L 232 256
+    Z
+  " fill="url(#uv-grad)" opacity="0.95"/>
+
+  <!-- Cotas e Linhas de Construção -->
+  <g stroke="#ff5fd2" stroke-width="1.5" stroke-dasharray="4 4">
+    <!-- Cota altura da haste esquerda -->
+    <line x1="120" y1="192" x2="160" y2="192"/>
+    <!-- Cota rebaixo da haste direita -->
+    <line x1="600" y1="288" x2="880" y2="288"/>
+    <!-- Cota fundo -->
+    <line x1="200" y1="832" x2="900" y2="832"/>
+  </g>
+  <text x="888" y="294" font-family="'Archivo UV', sans-serif" font-size="16" fill="#ff5fd2">Rebaixo: -96px</text>
+  <text x="40" y="200" font-family="'Archivo UV', sans-serif" font-size="16" fill="#4fc3ff">Topo: y=192</text>
+  <text x="40" y="838" font-family="'Archivo UV', sans-serif" font-size="16" fill="#ff5fd2">Base: y=832</text>
+</svg>

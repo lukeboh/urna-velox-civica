@@ -1,0 +1,3 @@
+# Scripts rodam no Linux/WSL: sempre LF, mesmo com core.autocrlf=true no Windows
+*.sh text eol=lf
+*.py text eol=lf

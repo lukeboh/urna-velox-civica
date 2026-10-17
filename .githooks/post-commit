@@ -1,0 +1,6 @@
+#!/bin/sh
+# Cria a tag anotada vX.Y.0 do commit recém-feito, só nas versões com PATCH 0 (docs/VERSIONAMENTO.md).
+[ "${UV_SEM_BUMP:-0}" = "1" ] && exit 0
+RAIZ="$(git rev-parse --show-toplevel)"
+sh "$RAIZ/scripts/versao.sh" tag >&2 || true
+echo "lembrete: publique com  git push --follow-tags" >&2

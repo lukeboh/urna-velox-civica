@@ -1,0 +1,31 @@
+[Unit]
+Description=Urna Velox — nó da federação (uv-servico --federacao)
+Documentation=https://github.com/lukeboh/urna-velox-civica/blob/main/docs/HANDOFF_IMPLANTACAO_OCI.md
+Wants=network-online.target chrony.service
+After=network-online.target chrony.service
+
+[Service]
+Type=simple
+User=urnavelox
+Group=urnavelox
+WorkingDirectory=/srv/urna-velox
+ExecStart=/opt/urna-velox/bin/uv-iniciar.sh
+# queda = reinício com retomada (pacotes + diário); depois da conferência final contra o simulador ele sai com 0
+Restart=on-failure
+RestartSec=5
+# parada limpa: SIGTERM → o serviço grava o último lote e serve os pares por uma carência antes de sair
+KillSignal=SIGTERM
+TimeoutStopSec=90
+LimitNOFILE=65536
+Environment=RUST_BACKTRACE=1
+StandardOutput=append:/srv/urna-velox/saida/stdout.log
+StandardError=append:/srv/urna-velox/saida/stderr.log
+# endurecimento básico
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/srv/urna-velox
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

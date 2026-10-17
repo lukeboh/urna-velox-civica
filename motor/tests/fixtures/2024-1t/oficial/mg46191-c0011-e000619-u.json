@@ -1,0 +1,16 @@
+
+{ "ele" : "619", "t" : "1", "f" : "o", "sup" : "n", "tpabr" : "mu", "cdabr" : "46191", "dg" : "29/09/2026", "hg" : "19:27:42", "idg" : "363086", "dt" : "06/10/2024", "ht" : "21:47:11", "dv" : "s", "tf" : "s", "and" : "f", "esae" : "n", "mnae" : [  ], "carg" : [ 
+{ "cd" : "11", "nmn" : "Prefeito", "nmm" : "Prefeito", "nmf" : "Prefeita", "nv" : "1", "fed" : [ 
+{ "n" : "101", "sg" : "PT/PC do B/PV", "nm" : "Federação BRASIL DA ESPERANÇA - FE BRASIL", "com" : "PT/PC do B/PV", "npar" : [ "13", "43", "65" ] }, 
+{ "n" : "102", "sg" : "PSOL/REDE", "nm" : "Federação PSOL REDE", "com" : "PSOL/REDE", "npar" : [ "18", "50" ] } ], "agr" : [ 
+{ "n" : "130001755494", "nm" : "UNIDOS PARA INHAÚMA AVANÇAR", "tp" : "c", "com" : "REPUBLICANOS / PC do B / PT / PV / UNIÃO / PP", "tvtn" : "2434", "tvan" : "2434", "par" : [ 
+{ "n" : "10", "sg" : "REPUBLICANOS", "nm" : "REPUBLICANOS", "nfed" : "", "tvtn" : "2434", "tvan" : "2434", "cand" : [ 
+{ "n" : "10", "sqcand" : "130002322612", "nm" : "MAX OLIVEIRA DOS SANTOS", "nmu" : "ZULA", "dt" : "07/08/1962", "dvt" : "Válido", "seq" : "592", "e" : "s", "st" : "Eleito", "vap" : "2434", "pvap" : "50,00", "pvapn" : "50,000000000", "vs" : [ 
+{ "tp" : "v", "sqcand" : "130002322611", "nm" : "ANTONIO PIEDADE DOS SANTOS", "nmu" : "TONINHO", "sgp" : "UNIÃO" } ] } ] } ] }, 
+{ "n" : "130001755454", "nm" : "Decola Inhaúma", "tp" : "c", "com" : "MDB / AVANTE / SOLIDARIEDADE", "tvtn" : "2434", "tvan" : "2434", "par" : [ 
+{ "n" : "77", "sg" : "SOLIDARIEDADE", "nm" : "Solidariedade", "nfed" : "", "tvtn" : "2434", "tvan" : "2434", "cand" : [ 
+{ "n" : "77", "sqcand" : "130002322331", "nm" : "CARLOS JUVENIL GOMES BARBOSA", "nmu" : "CARLINHOS", "dt" : "07/08/1978", "dvt" : "Válido", "seq" : "1298", "e" : "n", "st" : "Não eleito", "vap" : "2434", "pvap" : "50,00", "pvapn" : "50,000000000", "vs" : [ 
+{ "tp" : "v", "sqcand" : "130002322330", "nm" : "AMARILDO PEREIRA DE SOUZA", "nmu" : "CHICO", "sgp" : "SOLIDARIEDADE" } ] } ] } ] } ] } ], "s" : 
+{ "ts" : "18", "st" : "18", "pst" : "100,00", "pstn" : "100", "snt" : "0", "psnt" : "0,00", "psntn" : "0", "si" : "18", "psi" : "100,00", "psin" : "100", "sni" : "0", "psni" : "0,00", "psnin" : "0", "sa" : "18", "psa" : "100,00", "psan" : "100", "sna" : "0", "psna" : "0,00", "psnan" : "0" }, "e" : 
+{ "te" : "5780", "est" : "5780", "pest" : "100,00", "pestn" : "100", "esnt" : "0", "pesnt" : "0,00", "pesntn" : "0", "esi" : "5780", "pesi" : "100,00", "pesin" : "100", "esni" : "0", "pesni" : "0,00", "pesnin" : "0", "esa" : "5780", "pesa" : "100,00", "pesan" : "100", "esna" : "0", "pesna" : "0,00", "pesnan" : "0", "c" : "5031", "pc" : "87,04", "pcn" : "87,041522491", "a" : "749", "pa" : "12,96", "pan" : "12,958477509" }, "v" : 
+{ "tv" : "5031", "vvc" : "4868", "pvvc" : "96,76", "pvvcn" : "96,760087458", "vv" : "4868", "pvv" : "100,00", "pvvn" : "100", "vnom" : "4868", "pvnom" : "100,00", "pvnomn" : "100", "van" : "0", "pvan" : "0,00", "pvann" : "0", "vansj" : "0", "pvansj" : "0,00", "pvansjn" : "0", "vb" : "71", "pvb" : "1,41", "pvbn" : "1,411250248", "tvn" : "92", "ptvn" : "1,83", "ptvnn" : "1,828662294", "vn" : "92", "pvn" : "100,00", "pvnn" : "100", "vnt" : "0", "pvnt" : "0,00", "pvntn" : "0", "vsan" : "0", "vscv" : "0" } }

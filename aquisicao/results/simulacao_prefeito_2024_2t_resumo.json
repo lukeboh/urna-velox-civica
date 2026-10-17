@@ -1,0 +1,52 @@
+{
+ "municipios_oficiais": 51,
+ "municipios_simulados": 51,
+ "retotalizados": 2,
+ "lider_confere": 51,
+ "lider_diverge": 0,
+ "secoes": 97392,
+ "secoes_com_disponibilizacao_estimada": 915,
+ "secoes_recebimento_corrigido_pela_disponibilizacao": 25839,
+ "atraso_mediano_recebimento_disponibilizacao_s": 0.0,
+ "parametros": {
+  "rps": 95.0,
+  "intervalo_cs": 30.0,
+  "latencia_uv_ms": 1.726,
+  "inicio": "17:00:00"
+ },
+ "ultimo_bu_no_urna_velox_site": "20:50:30",
+ "antecedencia_s": {
+  "antecedencia_site_mat_eleito_s": {
+   "n": 49,
+   "min": 85,
+   "p50": 1561,
+   "max": 10070,
+   "media": 1781,
+   "negativos": 0
+  },
+  "antecedencia_site_fim_s": {
+   "n": 49,
+   "min": -2,
+   "p50": 284,
+   "max": 1096,
+   "media": 363,
+   "negativos": 1
+  },
+  "antecedencia_rede_mat_eleito_s": {
+   "n": 49,
+   "min": 106,
+   "p50": 1590,
+   "max": 10090,
+   "media": 1807,
+   "negativos": 0
+  },
+  "antecedencia_rede_fim_s": {
+   "n": 49,
+   "min": 27,
+   "p50": 349,
+   "max": 1111,
+   "media": 401,
+   "negativos": 0
+  }
+ }
+}

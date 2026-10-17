@@ -1,0 +1,16 @@
+
+{ "ele" : "619", "t" : "1", "f" : "o", "sup" : "n", "tpabr" : "mu", "cdabr" : "03158", "dg" : "29/09/2026", "hg" : "19:29:48", "idg" : "472096", "dt" : "06/10/2024", "ht" : "17:31:45", "dv" : "s", "tf" : "s", "and" : "f", "esae" : "n", "mnae" : [  ], "carg" : [ 
+{ "cd" : "11", "nmn" : "Prefeito", "nmm" : "Prefeito", "nmf" : "Prefeita", "nv" : "1", "fed" : [ 
+{ "n" : "102", "sg" : "PSOL/REDE", "nm" : "Federação PSOL REDE", "com" : "PSOL/REDE", "npar" : [ "18", "50" ] }, 
+{ "n" : "102", "sg" : "PSOL/REDE", "nm" : "Federação PSOL REDE", "com" : "PSOL/REDE", "npar" : [ "18", "50" ] } ], "agr" : [ 
+{ "n" : "230001707080", "nm" : "UNIDOS POR SÃO LUIZ", "tp" : "c", "com" : "PODE / PDT / MDB", "tvtn" : "2094", "tvan" : "2094", "par" : [ 
+{ "n" : "20", "sg" : "PODE", "nm" : "Podemos", "nfed" : "", "tvtn" : "2094", "tvan" : "2094", "cand" : [ 
+{ "n" : "20", "sqcand" : "230002004920", "nm" : "RISONEIDE MORAIS DOS SANTOS OLIVEIRA", "nmu" : "RISONEIDE", "dt" : "12/11/1976", "dvt" : "Válido", "seq" : "29", "e" : "n", "st" : "Não eleito", "vap" : "2094", "pvap" : "40,60", "pvapn" : "40,597130671", "vs" : [ 
+{ "tp" : "v", "sqcand" : "230002004921", "nm" : "ITAMAR PAIVA PONTES DA SILVA", "nmu" : "PROFESSOR ITAMAR", "sgp" : "PDT" } ] } ] } ] }, 
+{ "n" : "230001696569", "nm" : "JUNTOS POR SÃO LUIZ", "tp" : "c", "com" : "REPUBLICANOS / PP / PL", "tvtn" : "3064", "tvan" : "3064", "par" : [ 
+{ "n" : "11", "sg" : "PP", "nm" : "PROGRESSISTAS", "nfed" : "", "tvtn" : "3064", "tvan" : "3064", "cand" : [ 
+{ "n" : "11", "sqcand" : "230001916987", "nm" : "ELIAS BESCHORNER DA SILVA", "nmu" : "CHICÃO", "dt" : "19/07/1977", "dvt" : "Válido", "seq" : "15", "e" : "s", "st" : "Eleito", "vap" : "3064", "pvap" : "59,40", "pvapn" : "59,402869329", "vs" : [ 
+{ "tp" : "v", "sqcand" : "230001916986", "nm" : "FRANCISCO SERVOLO BARBOSA", "nmu" : "DENAILTON", "sgp" : "REPUBLICANOS" } ] } ] } ] } ] } ], "s" : 
+{ "ts" : "25", "st" : "25", "pst" : "100,00", "pstn" : "100", "snt" : "0", "psnt" : "0,00", "psntn" : "0", "si" : "25", "psi" : "100,00", "psin" : "100", "sni" : "0", "psni" : "0,00", "psnin" : "0", "sa" : "25", "psa" : "100,00", "psan" : "100", "sna" : "0", "psna" : "0,00", "psnan" : "0" }, "e" : 
+{ "te" : "6134", "est" : "6134", "pest" : "100,00", "pestn" : "100", "esnt" : "0", "pesnt" : "0,00", "pesntn" : "0", "esi" : "6134", "pesi" : "100,00", "pesin" : "100", "esni" : "0", "pesni" : "0,00", "pesnin" : "0", "esa" : "6134", "pesa" : "100,00", "pesan" : "100", "esna" : "0", "pesna" : "0,00", "pesnan" : "0", "c" : "5319", "pc" : "86,71", "pcn" : "86,713400717", "a" : "815", "pa" : "13,29", "pan" : "13,286599283" }, "v" : 
+{ "tv" : "5319", "vvc" : "5158", "pvvc" : "96,97", "pvvcn" : "96,973115247", "vv" : "5158", "pvv" : "100,00", "pvvn" : "100", "vnom" : "5158", "pvnom" : "100,00", "pvnomn" : "100", "van" : "0", "pvan" : "0,00", "pvann" : "0", "vansj" : "0", "pvansj" : "0,00", "pvansjn" : "0", "vb" : "43", "pvb" : "0,81", "pvbn" : "0,808422636", "tvn" : "118", "ptvn" : "2,22", "ptvnn" : "2,218462117", "vn" : "118", "pvn" : "100,00", "pvnn" : "100", "vnt" : "0", "pvnt" : "0,00", "pvntn" : "0", "vsan" : "0", "vscv" : "0" } }

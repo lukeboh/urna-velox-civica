@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 48" width="240" height="48">
+  <defs>
+    <linearGradient id="uv-g" x1="19" y1="24" x2="109" y2="104" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#4fc3ff"/>
+      <stop offset="50%" stop-color="#8c6bff"/>
+      <stop offset="100%" stop-color="#ff5fd2"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Símbolo em miniatura com cantos arredondados -->
+  <g transform="translate(4, 4) scale(0.3125)">
+    <rect x="4" y="4" width="120" height="120" rx="30" fill="#0d1431"/>
+    <rect x="4" y="4" width="120" height="120" rx="30" fill="none" stroke="rgba(255,255,255,0.18)" stroke-width="2"/>
+    <path d="
+      M 19 24
+      L 51 24
+      L 51 66
+      C 51 78 59 86 69 86
+      C 79 86 87 78 87 66
+      L 87 44
+      L 77 36
+      L 109 36
+      L 109 66
+      C 109 92 91 104 69 104
+      C 47 104 29 92 29 66
+      L 29 32
+      Z
+    " fill="url(#uv-g)"/>
+  </g>
+
+  <!-- Tipografia oficial em Archivo (peso 800 e 300) -->
+  <text x="54" y="32" font-family="'Archivo UV', 'Archivo', system-ui, sans-serif" font-size="22" font-weight="800" font-stretch="125%" fill="#eef1ff" letter-spacing="-0.02em">Urna <tspan font-weight="300" fill="#a8b2d8">Velox</tspan></text>
+</svg>

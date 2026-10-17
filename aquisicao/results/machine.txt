@@ -1,0 +1,8 @@
+# 2026-10-11T18:31:16-03:00
+CPU(s):                                  28
+Model name:                              Intel(R) Core(TM) i7-14700
+               total        used        free      shared  buff/cache   available
+Mem:           15842         978       14154           4         955       14864
+6.18.33.2-microsoft-standard-WSL2
+uv-coletor 0.1.0
+UV_CONC="1 4 16 32 64" UV_RPS_MAX=100 UV_UF_REF=df UV_NACIONAL=0

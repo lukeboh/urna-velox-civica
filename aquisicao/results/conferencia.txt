@@ -1,0 +1,2 @@
+referência (asn1tools): 6969 BUs decodificados em 6.1 s (1150 BUs/s); 685 totais comparados; divergências: 0
+referência (asn1tools): 48907 BUs decodificados em 29.8 s (1641 BUs/s); 3715 totais comparados; divergências: 0

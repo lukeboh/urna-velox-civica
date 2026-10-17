@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 48" width="240" height="48">
+  <defs>
+    <linearGradient id="uv-g-claro" x1="19" y1="24" x2="109" y2="104" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0094d4"/>
+      <stop offset="50%" stop-color="#6940d6"/>
+      <stop offset="100%" stop-color="#d6229e"/>
+    </linearGradient>
+  </defs>
+
+  <g transform="translate(4, 4) scale(0.3125)">
+    <rect x="4" y="4" width="120" height="120" rx="30" fill="#f6f7fc"/>
+    <rect x="4" y="4" width="120" height="120" rx="30" fill="none" stroke="rgba(30,40,90,0.15)" stroke-width="2"/>
+    <path d="
+      M 19 24
+      L 51 24
+      L 51 66
+      C 51 78 59 86 69 86
+      C 79 86 87 78 87 66
+      L 87 44
+      L 77 36
+      L 109 36
+      L 109 66
+      C 109 92 91 104 69 104
+      C 47 104 29 92 29 66
+      L 29 32
+      Z
+    " fill="url(#uv-g-claro)"/>
+  </g>
+
+  <text x="54" y="32" font-family="'Archivo UV', 'Archivo', system-ui, sans-serif" font-size="22" font-weight="800" font-stretch="125%" fill="#121836" letter-spacing="-0.02em">Urna <tspan font-weight="300" fill="#4a5378">Velox</tspan></text>
+</svg>

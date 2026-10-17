@@ -1,0 +1,19 @@
+
+{ "ele" : "619", "t" : "1", "f" : "o", "sup" : "n", "tpabr" : "mu", "cdabr" : "01031", "dg" : "29/09/2026", "hg" : "19:26:32", "idg" : "283579", "dt" : "06/10/2024", "ht" : "18:18:38", "dv" : "s", "tf" : "s", "and" : "f", "esae" : "n", "mnae" : [  ], "carg" : [ 
+{ "cd" : "11", "nmn" : "Prefeito", "nmm" : "Prefeito", "nmf" : "Prefeita", "nv" : "1", "fed" : [ 
+{ "n" : "100", "sg" : "PSDB/CIDADANIA", "nm" : "Federação PSDB CIDADANIA", "com" : "PSDB/CIDADANIA", "npar" : [ "23", "45" ] } ], "agr" : [ 
+{ "n" : "10001715567", "nm" : "UNIDOS CONSTRUIMOS UM NOVO PROJETO", "tp" : "c", "com" : "PODE / SOLIDARIEDADE", "tvtn" : "1204", "tvan" : "1204", "par" : [ 
+{ "n" : "20", "sg" : "PODE", "nm" : "Podemos", "nfed" : "", "tvtn" : "1204", "tvan" : "1204", "cand" : [ 
+{ "n" : "20", "sqcand" : "10002073138", "nm" : "ALDO RODRIGUES DE MOURA", "nmu" : "ALDO MOURA", "dt" : "26/07/1971", "dvt" : "Válido", "seq" : "50", "e" : "n", "st" : "Não eleito", "vap" : "1204", "pvap" : "37,95", "pvapn" : "37,945162307", "vs" : [ 
+{ "tp" : "v", "sqcand" : "10002384568", "nm" : "JOSE MARIA AUGUSTO KAXINAWA", "nmu" : "JOSÉ MARIA KAXINAWA", "sgp" : "SOLIDARIEDADE" } ] } ] } ] }, 
+{ "n" : "10001695587", "nm" : "COM A FORÇA DO POVO", "tp" : "c", "com" : "PP / PC do B / PT / PV / PSD / MDB", "tvtn" : "1642", "tvan" : "1642", "par" : [ 
+{ "n" : "15", "sg" : "MDB", "nm" : "Movimento Democrático Brasileiro", "nfed" : "", "tvtn" : "1642", "tvan" : "1642", "cand" : [ 
+{ "n" : "15", "sqcand" : "10001907913", "nm" : "JOSE ALTAMIR TAUMATURGO SÁ", "nmu" : "TAMIR SÁ", "dt" : "11/10/1972", "dvt" : "Válido", "seq" : "22", "e" : "s", "st" : "Eleito", "vap" : "1642", "pvap" : "51,75", "pvapn" : "51,749133312", "vs" : [ 
+{ "tp" : "v", "sqcand" : "10001907912", "nm" : "VALDIR GENEZIO KAXINAWA", "nmu" : "VALDIR KAXINAWA", "sgp" : "PP" } ] } ] } ] }, 
+{ "n" : "10001704759", "nm" : "Partido Socialista Brasileiro", "tp" : "i", "com" : "PSB", "vag" : "0", "par" : [ 
+{ "n" : "40", "sg" : "PSB", "nm" : "Partido Socialista Brasileiro", "nfed" : "", "tvtn" : "327", "tvan" : "327", "cand" : [ 
+{ "n" : "40", "sqcand" : "10001985361", "nm" : "TXUA DOMINGOS HUNI KUIN", "nmu" : "TXUÃ HUNI KUIN", "dt" : "20/02/1978", "dvt" : "Válido", "seq" : "60", "e" : "n", "st" : "Não eleito", "vap" : "327", "pvap" : "10,31", "pvapn" : "10,305704381", "vs" : [ 
+{ "tp" : "v", "sqcand" : "10001985360", "nm" : "FRANCISCO SALES CONTREIRAS", "nmu" : "FRANK CONTREIRAS", "sgp" : "PSB" } ] } ] } ] } ] } ], "s" : 
+{ "ts" : "14", "st" : "14", "pst" : "100,00", "pstn" : "100", "snt" : "0", "psnt" : "0,00", "psntn" : "0", "si" : "14", "psi" : "100,00", "psin" : "100", "sni" : "0", "psni" : "0,00", "psnin" : "0", "sa" : "14", "psa" : "100,00", "psan" : "100", "sna" : "0", "psna" : "0,00", "psnan" : "0" }, "e" : 
+{ "te" : "3918", "est" : "3918", "pest" : "100,00", "pestn" : "100", "esnt" : "0", "pesnt" : "0,00", "pesntn" : "0", "esi" : "3918", "pesi" : "100,00", "pesin" : "100", "esni" : "0", "pesni" : "0,00", "pesnin" : "0", "esa" : "3918", "pesa" : "100,00", "pesan" : "100", "esna" : "0", "pesna" : "0,00", "pesnan" : "0", "c" : "3315", "pc" : "84,61", "pcn" : "84,609494640", "a" : "603", "pa" : "15,39", "pan" : "15,390505360" }, "v" : 
+{ "tv" : "3315", "vvc" : "3173", "pvvc" : "95,72", "pvvcn" : "95,716440422", "vv" : "3173", "pvv" : "100,00", "pvvn" : "100", "vnom" : "3173", "pvnom" : "100,00", "pvnomn" : "100", "van" : "0", "pvan" : "0,00", "pvann" : "0", "vansj" : "0", "pvansj" : "0,00", "pvansjn" : "0", "vb" : "17", "pvb" : "0,51", "pvbn" : "0,512820513", "tvn" : "125", "ptvn" : "3,77", "ptvnn" : "3,770739065", "vn" : "125", "pvn" : "100,00", "pvnn" : "100", "vnt" : "0", "pvnt" : "0,00", "pvntn" : "0", "vsan" : "0", "vscv" : "0" } }
