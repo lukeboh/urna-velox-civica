@@ -1704,6 +1704,41 @@ fn retomar(m: &mut Motor, sit: HashMap<ChaveUf, Situ>, disp: &mut HashMap<ChaveU
         }
         m.secoes.insert(k, s);
     }
+    // sem coleta (ensaio da comparação contra o site real a partir do acervo): nenhum aux.json vai validar os BUs dos
+    // pacotes, e os do acervo já são os que valem — aplica o único BU de cada seção sem linha no diário (seção com mais
+    // de um BU diferente fica de fora, com alerta). As não instaladas não se sabem sem
+    // coleta: a coluna do Urna Velox fica com os BUs (no 3220, 499.207 de 499.248).
+    if m.com.cfg.sem_coleta {
+        let mut por_secao: HashMap<ChaveUf, Vec<(String, u64)>> = HashMap::new();
+        for ((arq, pos), (r, _)) in &idx {
+            if usados.contains(&(arq.clone(), *pos)) || m.secoes.contains_key(&(r.uf, r.chave())) { continue; }
+            por_secao.entry((r.uf, r.chave())).or_default().push((arq.clone(), *pos));
+        }
+        let (mut adotados, mut ambiguos) = (0usize, 0usize);
+        for (k, mut v) in por_secao {
+            // "Totalizado" (situação 1) primeiro; os BUs dos dados abertos (sem aux.json: situação 0) valem quando são
+            // os únicos da seção — no acervo do 3220, 2.677 seções
+            if v.iter().any(|(a, p)| idx[&(a.clone(), *p)].0.situacao == 1) { v.retain(|(a, p)| idx[&(a.clone(), *p)].0.situacao == 1); }
+            // o mesmo BU gravado mais de uma vez no pacote (mesmo SHA-256 do arquivo) conta como um só
+            v.sort_by_key(|(a, p)| (idx[&(a.clone(), *p)].0.sha256_vsc, a.clone(), *p));
+            v.dedup_by_key(|(a, p)| idx[&(a.clone(), *p)].0.sha256_vsc);
+            if v.len() != 1 { ambiguos += 1; continue; }
+            let (arq, pos) = v.into_iter().next().unwrap();
+            let (sha, tam) = { let (r, t) = &idx[&(arq.clone(), pos)]; (r.sha256_vsc, *t) };
+            let Ok(bytes) = pacote::ler_bu_em(&dados.join(&arq), pos, tam) else { ambiguos += 1; continue };
+            if m.est.aplicar_secao(m.cat, k.1, &bytes, false, &mut m.ag) != Aplicado::Ok { ambiguos += 1; continue; }
+            usados.insert((arq, pos));
+            m.com.aplicados.lock().unwrap().insert(k, (0, false));
+            if let Some(mi) = m.m_de(k) { m.ac.bu_aplicado(mi); }
+            m.secoes.insert(k, Situ::Bu { imp: 0, sha, anulada: false, pos, tam });
+            adotados += 1;
+        }
+        aplicados += adotados;
+        m.com.registrar("info", "sem_coleta_pacotes", json!({"aplicados": adotados, "fora": ambiguos}));
+        if ambiguos > 0 {
+            m.com.alerta("sem_coleta_pacotes", &format!("{ambiguos} seções com mais de um BU nos pacotes (ou ilegível): fora da publicação sem coleta"));
+        }
+    }
     let mut cache = m.com.cache.lock().unwrap();
     let mut orfaos = 0;
     for ((arq, pos), (r, tam)) in idx {

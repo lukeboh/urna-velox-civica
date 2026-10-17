@@ -9,6 +9,7 @@
 # 3220 (1º turno de 2026, encerrado): o serviço parte dos pacotes do acervo (~/uvreal/dados, por links) e a coluna do
 # Urna Velox fica a final; a do TSE tem de ser igual ao arquivo. 3221 (2º turno, antes da apuração): as duas zeradas.
 # Saída em ~/uvreal/ensaios/etapa7-<nome> (CLAUDE.md, "Disco"): pagina/, saida/, RESUMO.json.
+# Rode solto do terminal (setsid nohup … &): o Chromium do teste morre junto com a sessão que o abriu.
 set -euo pipefail
 CONF=0; COMB=0; POS=()
 for a in "$@"; do
