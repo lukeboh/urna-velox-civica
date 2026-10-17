@@ -2,6 +2,40 @@
 
 Todas as versões do Urna Velox. Regras em [docs/VERSIONAMENTO.md](docs/VERSIONAMENTO.md): cada commit sobe a versão; só as versões `X.Y.0` ganham tag (`vX.Y.0`; até a `0.3.0` todo commit ganhava a sua); o MINOR acompanha a última etapa concluída do [ROADMAP](ROADMAP.md) (etapas 1 a 9 = `0.1.0` a `0.9.0`, com a escalabilidade segura na etapa 6, a comparação com o TSE na 7, a previsão na 8 e o ensaio geral na 9 desde a renumeração de 16/10/2026; nas entradas anteriores à `0.6.7`, "etapa 7" / `0.7.0` = ensaio geral, hoje `0.9.0`; majoritários completos = `1.0.0`; proporcionais = `2.0.0`; até a 0.0.19 valia o esquema antigo de seis fases). As entradas `2.0.0-alpha.N`, abaixo da `0.6.0`, são o trabalho da etapa 6 feito na branch `feature/2.0-escalabilidade` antes da renumeração de 15/10/2026; nelas, "2.0" quer dizer a etapa 6 e "3.0", os proporcionais (hoje `2.0.0`).
 
+## [0.6.23] — 2026-10-17
+
+- **Capa do repositório** ([docs/img/capa.png](docs/img/capa.png), 1280×640): logotipo, frase do projeto e a página
+  no celular; no topo do README e pronta para a prévia social do GitHub (Settings → Social preview, envio manual).
+  Fonte em `docs/marca/capa/` e gerador `site/gerar_capa.mjs` (Playwright); a captura do celular tem o nome do
+  candidato da legenda desfocado, pela neutralidade da marca (GUIA_MARCA §6).
+- Handoff da cópia pública: a base da próxima cópia é o hash citado na mensagem do último commit do `urna-velox-civica`.
+- Sem mudança em totalização ou resultado: não se aplica a conferência contra os arquivos oficiais.
+
+## [0.6.22] — 2026-10-17
+
+- Preparação da cópia pública (`urna-velox-civica`); o plano e a varredura ficam só no repositório original.
+
+## [0.6.21] — 2026-10-17
+
+- **`uv-servico --sem-coleta` publica o acervo** (etapa 7, critério 3): sem diário de seções (pacotes do acervo por
+  links, como no `ensaio_tse_real.sh`), a partida aplicava 0 BUs — todos ficavam "órfãos" — e a coluna do Urna Velox
+  saía zerada no ensaio contra o site real (achado da primeira tentativa, 16/10, que parou antes de testar: ≤ 2 buscas
+  ao TSE). Agora, só com `--sem-coleta`, aplica o único BU de cada seção sem linha no diário: "Totalizado" primeiro; o
+  dos dados abertos (situação 0 no pacote, sem `aux.json`) quando é o único; cópias idênticas (mesmo SHA-256) contam
+  uma vez; seção com BUs diferentes fica de fora, com alerta `sem_coleta_pacotes`. Sem `--sem-coleta`, nada muda.
+  - **Conferência:** partida do 3220 com `~/uvreal/dados` — 499.207 BUs (496.530 "Totalizado" + 2.677 dos dados
+    abertos), 0 de fora; votos de Presidente no Brasil idênticos ao `br-c0001-e006257-u.json` oficial (12/12); 0
+    requisições (base local inexistente). As 41 não instaladas não se sabem sem coleta: 499.207 de 499.248 seções.
+- **Selo de posição do TSE com largura fixa** (`site/src/estilo.css`): com `min-width`, a passagem de "9º" para "10º"
+  alargava o selo e empurrava a % ao lado — CLS de 2,3·10⁻⁵ a 3,4·10⁻⁵ nas telas de Presidente do ensaio
+  `etapa7-c2026` (único elemento: `tse-l1`, 112 ↔ 117 px no PC, 84 ↔ 88 px no celular). Agora 32 px (24 px no celular),
+  que cabem "10º"…"99º".
+- `ensaio_tse_real.sh`: nota de que o roteiro tem de rodar com a sessão aberta (o Chromium do teste morria junto com a
+  chamada do WSL que o iniciou).
+- **Nota:** o commit da `0.6.14` (`059faaa`) saiu com o título da `0.6.13` (arquivo de mensagem antigo); o conteúdo e o
+  CHANGELOG estão certos.
+- Suítes: unidade do workspace sem falha nem aviso (`compilar_dev.sh`).
+
 ## [0.6.20] — 2026-10-17
 
 - Preparação da cópia pública (`urna-velox-civica`); o plano e a varredura ficam só no repositório original.

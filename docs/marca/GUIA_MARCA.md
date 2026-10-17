@@ -79,6 +79,7 @@ Todos os arquivos estão organizados no repositório em `docs/marca/`:
 | `logotipo_empilhado_escuro.svg` | SVG (200×200) | Logotipo vertical/empilhado para fundo escuro |
 | `logotipo_empilhado_claro.svg` | SVG (200×200) | Logotipo vertical/empilhado para fundo claro |
 | `logotipo_horizontal_monocromatico.svg` | SVG (240×48) | Logotipo em `currentColor` adaptativo |
+| `../img/capa.png` | PNG (1280×640) | Capa do repositório: topo do README e prévia social do GitHub (Settings → Social preview). Fonte em `capa/` (`capa.html`; a captura do celular tem o nome do candidato da legenda desfocado, por neutralidade); gerar com `cd site && node gerar_capa.mjs` |
 
 O favicon de produção da aplicação web foi atualizado em:
 `site/src/icone.svg` (tamanho: 384 bytes, compatível com a política CSP `default-src 'self'`).

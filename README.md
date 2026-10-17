@@ -1,5 +1,7 @@
 # ⚡ Urna Velox
 
+![Urna Velox: totalização eleitoral independente, BU por BU](docs/img/capa.png)
+
 [![Rust](https://img.shields.io/badge/rust-stable%20%7C%20edition%202021%2B-orange.svg?logo=rust)](https://www.rust-lang.org)
 [![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-blue.svg)](LICENSE)
 [![Source-Available](https://img.shields.io/badge/modelo-source--available%20%7C%20dupla%20licen%C3%A7a-lightgrey.svg)](docs/LICENCIAMENTO.md)
