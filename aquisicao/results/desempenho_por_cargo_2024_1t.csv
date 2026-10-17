@@ -1,0 +1,9 @@
+cargos,threads,bus,mediana_s,bus_por_s,us_por_bu_thread,estado_mb,conferencia
+"11",1,478026,0.5685,840822,1.19,2.3,"divergência ou sem arquivo oficial: 0"
+"11",28,478026,0.0645,7411256,3.78,2.3,"divergência ou sem arquivo oficial: 0"
+"51,52,53,54,55",1,478026,0.5599,853834,1.17,0.0,"divergência ou sem arquivo oficial: 0"
+"51,52,53,54,55",28,478026,0.0610,7840091,3.57,0.0,"divergência ou sem arquivo oficial: 0"
+"11,51,52,53,54,55",1,478026,0.5599,853769,1.17,2.3,"divergência ou sem arquivo oficial: 0"
+"11,51,52,53,54,55",28,478026,0.0655,7293764,3.84,2.3,"divergência ou sem arquivo oficial: 0"
+"todos",1,478026,0.7958,600706,1.66,6.1,"divergência ou sem arquivo oficial: 0"
+"todos",28,478026,0.0850,5626152,4.98,6.1,"divergência ou sem arquivo oficial: 0"

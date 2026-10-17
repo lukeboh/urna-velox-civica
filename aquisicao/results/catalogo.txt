@@ -1,0 +1,1 @@
+catálogo /home/dev/uvreal/dados/catalogo.txt: 28 UFs, 5757 municípios, 517179 seções, 6 cargos, 3244 candidatos (UF×cargo), 647415 contadores = 2.5 MB; 48907 BUs lidos em 0.20 s (0 com erro); total 0.45 s

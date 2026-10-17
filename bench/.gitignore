@@ -1,0 +1,5 @@
+rust/target/
+/bin/
+js/node_modules/
+*.bin
+wl.csv

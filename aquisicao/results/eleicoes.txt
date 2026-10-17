@@ -1,0 +1,62 @@
+pleito  ciclo    data        eleição  turno  nome
+452     ele2024  06/10/2024  619      1      Eleição Ordinária Municipal - 2024 - 06/10/2024 1º Turno
+452     ele2024  06/10/2024  635      1      Consulta Popular - São Luís
+452     ele2024  06/10/2024  636      1      Consulta Popular - Governador Edison Lobão
+452     ele2024  06/10/2024  634      1      Consulta Popular - Belo Horizonte
+452     ele2024  06/10/2024  633      1      Consulta Popular - São Luiz
+452     ele2024  06/10/2024  637      1      Consulta Popular - Dois Lajeados
+453     ele2024  27/10/2024  620      2      Eleição Ordinária Municipal - 2024 - 27/10/2024 2º Turno
+467     ele2024  10/11/2024  638      1      Eleição Suplementar - Castelândia
+3040    ele2024  06/04/2025  6041     1      Eleição Suplementar - Neves Paulista
+3040    ele2024  06/04/2025  6042     1      Eleição Suplementar - Eldorado
+3060    ele2024  06/04/2025  6081     1      Eleição Suplementar - Ruy Barbosa
+3080    ele2024  06/04/2025  6120     1      Eleição Suplementar - Paranhos
+3100    ele2024  04/05/2025  6140     1      Eleição Suplementar - Goiana
+3120    ele2024  08/06/2025  6160     1      Eleição Suplementar - Panorama
+3140    ele2024  08/06/2025  6180     1      Eleição Suplementar - Mongaguá
+3160    ele2024  08/06/2025  6161     1      Eleição Suplementar - Bocaina
+3203    ele2024  06/07/2025  6235     1      Eleição Suplementar - Bandeirantes
+3180    ele2024  06/07/2025  6200     1      Eleição Suplementar - Guapé
+3201    ele2024  03/08/2025  6231     1      Eleição Suplementar - Tucuruí
+3204    ele2024  03/08/2025  6236     1      Eleição Suplementar - Guatapará
+3205    ele2024  03/08/2025  6237     1      Eleição Suplementar - São José Da Varginha
+3206    ele2024  14/09/2025  6238     1      Eleição Suplementar - Sales Oliveira
+3207    ele2024  05/10/2025  6239     1      Eleição Suplementar - Muaná
+3208    ele2024  05/10/2025  6240     1      Eleição Suplementar - Três Rios
+3209    ele2024  05/10/2025  6241     1      Eleição Suplementar - São Tomé
+3210    ele2024  05/10/2025  6242     1      Eleição Suplementar - São João
+3211    ele2024  05/10/2025  6243     1      Eleição Suplementar - Cruzeiro Do Iguaçu
+3212    ele2024  26/10/2025  6244     1      Eleição Suplementar - Santa Quitéria
+3215    ele2024  07/12/2025  6247     1      Eleição Suplementar - Braga
+3217    ele2024  07/12/2025  6249     1      Eleição Suplementar - Guará
+3216    ele2024  07/12/2025  6248     1      Eleição Suplementar - Martins Soares
+3222    ele2024  01/03/2026  6262     1      Eleição Suplementar - Choró
+3223    ele2024  01/03/2026  6263     1      Eleição Suplementar - Senador Sá
+3224    ele2024  01/03/2026  6264     1      Eleição Suplementar - Potiretama
+3228    ele2024  12/04/2026  6268     1      Eleição Suplementar - Cachoeirinha
+3226    ele2024  12/04/2026  6266     1      Eleição Suplementar - Oiapoque
+3225    ele2024  12/04/2026  6265     1      Eleição Suplementar - Cabedelo
+3232    ele2024  17/05/2026  6272     1      Eleição Suplementar - Brejo Alegre
+3229    ele2024  17/05/2026  6269     1      Eleição Suplementar - Melgaço
+3230    ele2024  17/05/2026  6270     1      Eleição Suplementar - Itaú
+3231    ele2024  17/05/2026  6271     1      Eleição Suplementar - Ouro Branco
+3237    ele2024  21/06/2026  6278     1      Eleição Suplementar - Roraima
+3239    ele2024  21/06/2026  6280     1      Eleição Suplementar - Reginópolis
+3240    ele2024  21/06/2026  6281     1      Eleição Suplementar - Tuiuti
+3234    ele2024  21/06/2026  6275     1      Eleição Suplementar - Bonito De Minas
+3235    ele2024  21/06/2026  6276     1      Eleição Suplementar - Amparo Do Serra
+3236    ele2024  21/06/2026  6277     1      Eleição Suplementar - Joviânia
+3220    ele2026  04/10/2026  6257     1      Eleição Ordinária Federal - 2026 1º Turno
+3220    ele2026  04/10/2026  6259     1      Eleição Ordinária Estadual - 2026 1º Turno
+3220    ele2026  04/10/2026  6261     1      Eleição Ordinária Municipal - 2026 - 04/10/2026 1º Turno
+3221    ele2026  25/10/2026  6284     1      Eleição Suplementar - Narandiba
+3221    ele2026  25/10/2026  6282     1      Eleição Suplementar - Macedônia
+3221    ele2026  25/10/2026  6283     1      Eleição Suplementar - Martinópolis
+3221    ele2026  25/10/2026  6290     1      Eleição Suplementar - Arroio Do Sal
+3221    ele2026  25/10/2026  6285     1      Eleição Suplementar - Itaguaí
+3221    ele2026  25/10/2026  6288     1      Consulta Popular - Mato Grosso
+3221    ele2026  25/10/2026  6289     1      Consulta Popular - Mato Grosso
+3221    ele2026  25/10/2026  6260     2      Eleição Ordinária Estadual - 2026 2º Turno
+3221    ele2026  25/10/2026  6258     2      Eleição Ordinária Federal - 2026 2º Turno
+3221    ele2026  25/10/2026  6287     1      Consulta Popular - Paraná
+3221    ele2026  25/10/2026  6293     1      Eleição Suplementar - Santana Do Itararé

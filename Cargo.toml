@@ -1,0 +1,11 @@
+# Workspace do Urna Velox: o motor (crate `urna-velox`, binário `uv-motor`) e a aquisição (`uv-aquisicao`, binário `uv-coletor`).
+# O benchmark sintético (`bench/rust`) é um projeto isolado, fora do workspace.
+[workspace]
+members = ["motor", "aquisicao"]
+exclude = ["bench/rust"]
+resolver = "2"
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+opt-level = 3

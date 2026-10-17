@@ -1,0 +1,16 @@
+
+{ "ele" : "619", "t" : "1", "f" : "o", "sup" : "n", "tpabr" : "mu", "cdabr" : "85766", "dg" : "29/09/2026", "hg" : "19:29:48", "idg" : "471203", "dt" : "25/10/2024", "ht" : "16:10:59", "dv" : "s", "tf" : "s", "and" : "f", "esae" : "n", "mnae" : [  ], "carg" : [ 
+{ "cd" : "11", "nmn" : "Prefeito", "nmm" : "Prefeito", "nmf" : "Prefeita", "nv" : "1", "fed" : [ 
+{ "n" : "100", "sg" : "PSDB/CIDADANIA", "nm" : "Federação PSDB CIDADANIA", "com" : "PSDB/CIDADANIA", "npar" : [ "23", "45" ] }, 
+{ "n" : "101", "sg" : "PT/PC do B/PV", "nm" : "Federação BRASIL DA ESPERANÇA - FE BRASIL", "com" : "PT/PC do B/PV", "npar" : [ "13", "43", "65" ] } ], "agr" : [ 
+{ "n" : "210001751968", "nm" : "RELVADO PARA TODOS", "tp" : "c", "com" : "PP / PDT", "tvtn" : "1252", "tvan" : "1252", "par" : [ 
+{ "n" : "11", "sg" : "PP", "nm" : "PROGRESSISTAS", "nfed" : "", "tvtn" : "1252", "tvan" : "1252", "cand" : [ 
+{ "n" : "11", "sqcand" : "210002298007", "nm" : "CARLOS LUIZ FRAPORTI", "nmu" : "LOISO", "dt" : "15/02/1964", "dvt" : "Válido", "seq" : "427", "e" : "s", "st" : "Eleito", "vap" : "1252", "pvap" : "60,72", "pvapn" : "60,717749758", "vs" : [ 
+{ "tp" : "v", "sqcand" : "210002298008", "nm" : "ADALBERTO DALLA VECCHIA", "nmu" : "BETO", "sgp" : "PP" } ] } ] } ] }, 
+{ "n" : "210001756833", "nm" : "Juntos por Relvado", "tp" : "c", "com" : "MDB / UNIÃO", "tvtn" : "0", "tvan" : "810", "par" : [ 
+{ "n" : "15", "sg" : "MDB", "nm" : "Movimento Democrático Brasileiro", "nfed" : "", "tvtn" : "0", "tvan" : "810", "cand" : [ 
+{ "n" : "15", "sqcand" : "210002332619", "nm" : "JATIR JOSE RADAELLI", "nmu" : "JATIR RADAELLI", "dt" : "20/06/1954", "dvt" : "Anulado", "seq" : "1028", "e" : "n", "st" : "Não eleito", "vap" : "810", "pvap" : "39,28", "pvapn" : "39,282250242", "vs" : [ 
+{ "tp" : "v", "sqcand" : "210002332620", "nm" : "NATALIN ROQUE REGINATTO", "nmu" : "NATALIN ROQUE REGINATTO", "sgp" : "UNIÃO" } ] } ] } ] } ] } ], "s" : 
+{ "ts" : "8", "st" : "8", "pst" : "100,00", "pstn" : "100", "snt" : "0", "psnt" : "0,00", "psntn" : "0", "si" : "8", "psi" : "100,00", "psin" : "100", "sni" : "0", "psni" : "0,00", "psnin" : "0", "sa" : "8", "psa" : "100,00", "psan" : "100", "sna" : "0", "psna" : "0,00", "psnan" : "0" }, "e" : 
+{ "te" : "2228", "est" : "2228", "pest" : "100,00", "pestn" : "100", "esnt" : "0", "pesnt" : "0,00", "pesntn" : "0", "esi" : "2228", "pesi" : "100,00", "pesin" : "100", "esni" : "0", "pesni" : "0,00", "pesnin" : "0", "esa" : "2228", "pesa" : "100,00", "pesan" : "100", "esna" : "0", "pesna" : "0,00", "pesnan" : "0", "c" : "2081", "pc" : "93,40", "pcn" : "93,402154399", "a" : "147", "pa" : "6,60", "pan" : "6,597845601" }, "v" : 
+{ "tv" : "2081", "vvc" : "2062", "pvvc" : "99,09", "pvvcn" : "99,086977415", "vv" : "1252", "pvv" : "60,72", "pvvn" : "60,717749758", "vnom" : "1252", "pvnom" : "100,00", "pvnomn" : "100", "van" : "810", "pvan" : "39,28", "pvann" : "39,282250242", "vansj" : "0", "pvansj" : "0,00", "pvansjn" : "0", "vb" : "7", "pvb" : "0,34", "pvbn" : "0,336376742", "tvn" : "12", "ptvn" : "0,58", "ptvnn" : "0,576645843", "vn" : "12", "pvn" : "100,00", "pvnn" : "100", "vnt" : "0", "pvnt" : "0,00", "pvntn" : "0", "vsan" : "0", "vscv" : "0" } }

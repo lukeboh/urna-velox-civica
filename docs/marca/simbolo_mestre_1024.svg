@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="uv-grad" x1="152" y1="192" x2="872" y2="832" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#4fc3ff"/>
+      <stop offset="50%" stop-color="#8c6bff"/>
+      <stop offset="100%" stop-color="#ff5fd2"/>
+    </linearGradient>
+    <filter id="vidro-borda" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="16" stdDeviation="32" flood-color="#020516" flood-opacity="0.45"/>
+    </filter>
+  </defs>
+
+  <!-- Fundo azul-noite oficial (#0d1431) com cantos arredondados (raio 256px) -->
+  <rect x="32" y="32" width="960" height="960" rx="256" fill="#0d1431" filter="url(#vidro-borda)"/>
+  <rect x="32" y="32" width="960" height="960" rx="256" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="8"/>
+  <line x1="288" y1="36" x2="736" y2="36" stroke="rgba(255,255,255,0.32)" stroke-width="6" stroke-linecap="round"/>
+
+  <!-- Símbolo Urna Velox: U com serifas agudas à esquerda e haste direita rebaixada -->
+  <path d="
+    M 152 192
+    L 408 192
+    L 408 528
+    C 408 624 472 688 552 688
+    C 632 688 696 624 696 528
+    L 696 352
+    L 616 288
+    L 872 288
+    L 872 528
+    C 872 736 728 832 552 832
+    C 376 832 232 736 232 528
+    L 232 256
+    Z
+  " fill="url(#uv-grad)"/>
+
+  <!-- Filete de luz superior sutil no topo das hastes (efeito vidro tátil) -->
+  <line x1="152" y1="192" x2="408" y2="192" stroke="rgba(255,255,255,0.4)" stroke-width="6" stroke-linecap="round"/>
+  <line x1="616" y1="288" x2="872" y2="288" stroke="rgba(255,255,255,0.3)" stroke-width="6" stroke-linecap="round"/>
+</svg>

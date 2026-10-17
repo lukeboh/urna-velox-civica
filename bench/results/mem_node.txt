@@ -1,0 +1,5 @@
+node naive  heap vivo = 168.8 MB | RSS antes=63.6 depois=344.1 MB
+node dense  heap vivo = -1.4 MB | RSS antes=63.5 depois=80.4 MB (SAB fora do heap: 17.1 MB)
+node 8 workers ociosos: RSS 63.3 -> 152.2 MB (+11.1 MB/worker)
+node 16 workers ociosos: RSS 63.1 -> 232.6 MB (+10.6 MB/worker)
+node 28 workers ociosos: RSS 63.8 -> 359.6 MB (+10.6 MB/worker)

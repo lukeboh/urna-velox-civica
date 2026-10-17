@@ -1,0 +1,9 @@
+# Scripts e hooks rodam em sh/bash (WSL ou Git Bash): sempre LF, mesmo com core.autocrlf=true
+*.sh text eol=lf
+*.py text eol=lf
+.githooks/* text eol=lf
+VERSION text eol=lf
+# Fixtures dos testes do motor: BUs, pacotes e arquivos oficiais com os bytes intocados
+*.uvpk binary
+*.dat binary
+motor/tests/fixtures/** -text

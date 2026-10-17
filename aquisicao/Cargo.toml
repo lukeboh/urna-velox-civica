@@ -1,0 +1,51 @@
+[package]
+name = "uv-aquisicao"
+version = "0.6.20"
+edition = "2021"
+description = "Urna Velox — fase de aquisição: coleta de BUs do TSE e entrega ao núcleo de totalização"
+license = "PolyForm-Noncommercial-1.0.0"
+
+[lib]
+name = "uv_aquisicao"
+path = "src/lib.rs"
+
+[[bin]]
+name = "uv-coletor"
+path = "src/main.rs"
+
+[[bin]]
+name = "uv-servico"
+path = "src/bin/uv-servico.rs"
+
+[[bin]]
+name = "uv-simulador"
+path = "src/bin/uv-simulador.rs"
+
+[[bin]]
+name = "uv-carga"
+path = "src/bin/uv-carga.rs"
+
+[dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "fs", "io-util", "net", "signal"] }
+hyper = { version = "1", features = ["server", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio", "service"] }
+# camada HTTP/WebSocket do uv-servico (etapa 4, ADR-026); o motor continua sem rede
+axum = { version = "0.8", default-features = false, features = ["ws", "tokio", "http1"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
+# cliente WebSocket do uv-carga
+tokio-tungstenite = "0.29"
+http-body-util = "0.1"
+libc = "0.2"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-webpki-roots", "rustls-tls-native-roots", "http2", "gzip", "stream"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+bytes = "1"
+sha2 = "0.10"
+base64 = "0.22"
+flate2 = "1"
+futures = "0.3"
+clap = { version = "4", features = ["derive"] }
+crossbeam-channel = "0.5"
+anyhow = "1"
+memmap2 = "0.9"
+urna-velox = { path = "../motor" }

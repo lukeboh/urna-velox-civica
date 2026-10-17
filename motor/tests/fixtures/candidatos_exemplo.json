@@ -1,0 +1,147 @@
+{
+  "versao": 1,
+  "pleito": 3221,
+  "ufs": [
+    "df",
+    "sp"
+  ],
+  "municipios": [
+    {
+      "codigo": 97012,
+      "uf": "df"
+    },
+    {
+      "codigo": 67458,
+      "uf": "sp"
+    }
+  ],
+  "secoes": [
+    {
+      "municipio": 97012,
+      "zona": 1,
+      "secao": 1
+    },
+    {
+      "municipio": 67458,
+      "zona": 165,
+      "secao": 10
+    }
+  ],
+  "eleicoes": [
+    {
+      "codigo": 6258,
+      "turno": 2,
+      "cargos": [
+        {
+          "cargo": 1,
+          "vagas": 1,
+          "consulta": false,
+          "circunscricoes": [
+            {
+              "abr": "br",
+              "eleitorado": 155823368,
+              "candidatos": [
+                {
+                  "numero": 13,
+                  "nome": "LUIZ INACIO LULA DA SILVA",
+                  "nome_urna": "LULA",
+                  "destinacao": "Válido",
+                  "nascimento": "06/10/1945"
+                },
+                {
+                  "numero": 22,
+                  "nome": "FLAVIO NANTES BOLSONARO",
+                  "nome_urna": "FLAVIO BOLSONARO",
+                  "destinacao": "Válido",
+                  "nascimento": "30/04/1981"
+                }
+              ]
+            },
+            {
+              "abr": "df",
+              "eleitorado": 2200000,
+              "candidatos": [
+                {
+                  "numero": 13,
+                  "nome": "LUIZ INACIO LULA DA SILVA",
+                  "nome_urna": "LULA",
+                  "destinacao": "Válido",
+                  "nascimento": "06/10/1945"
+                },
+                {
+                  "numero": 22,
+                  "nome": "FLAVIO NANTES BOLSONARO",
+                  "nome_urna": "FLAVIO BOLSONARO",
+                  "destinacao": "Válido",
+                  "nascimento": "30/04/1981"
+                }
+              ]
+            }
+          ],
+          "abrangencias": [
+            {
+              "abr": "br",
+              "eleitorado": 155823368
+            },
+            {
+              "abr": "df",
+              "eleitorado": 2200000
+            },
+            {
+              "abr": "sp",
+              "eleitorado": 34000000
+            }
+          ]
+        }
+      ],
+      "municipios": [
+        "df97012",
+        "sp67458"
+      ]
+    },
+    {
+      "codigo": 6284,
+      "turno": 1,
+      "cargos": [
+        {
+          "cargo": 11,
+          "vagas": 1,
+          "consulta": false,
+          "circunscricoes": [
+            {
+              "abr": "sp67458",
+              "eleitorado": 4200,
+              "candidatos": [
+                {
+                  "numero": 15,
+                  "nome": "CANDIDATO QUINZE",
+                  "nome_urna": "QUINZE",
+                  "destinacao": "Válido",
+                  "nascimento": "01/01/1970"
+                },
+                {
+                  "numero": 44,
+                  "nome": "CANDIDATO QUARENTA E QUATRO",
+                  "nome_urna": "QUARENTA E QUATRO",
+                  "destinacao": "Válido",
+                  "nascimento": "02/02/1975"
+                }
+              ]
+            }
+          ],
+          "abrangencias": [
+            {
+              "abr": "sp67458",
+              "eleitorado": 4200
+            }
+          ]
+        }
+      ],
+      "municipios": [
+        "sp67458"
+      ]
+    }
+  ],
+  "destinacao_presumida": true,
+  "incompleto": []
+}

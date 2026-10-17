@@ -1,0 +1,8 @@
+erros por tipo:
+    17931  aux HTTP 404
+       41  sem BU (situação Nao instalada)
+       31  sem BU (situação Totalizada)
+erros que não são 'aux HTTP 404', por UF:
+  mg      2  sem BU (situação Totalizada)
+  zz     41  sem BU (situação Nao instalada)
+  zz     29  sem BU (situação Totalizada)

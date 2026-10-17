@@ -1,0 +1,16 @@
+{
+  "name": "uv-site",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Urna Velox — site de exemplo (etapa 5): página de resultados embutida no uv-servico",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "testar": "node testes/rodar.mjs"
+  },
+  "devDependencies": {
+    "@fontsource-variable/archivo": "5.2.8",
+    "esbuild": "0.25.10",
+    "playwright": "1.55.1"
+  }
+}

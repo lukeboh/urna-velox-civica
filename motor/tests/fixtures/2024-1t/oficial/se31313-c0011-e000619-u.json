@@ -1,0 +1,16 @@
+
+{ "ele" : "619", "t" : "1", "f" : "o", "sup" : "n", "tpabr" : "mu", "cdabr" : "31313", "dg" : "29/09/2026", "hg" : "19:30:19", "idg" : "485973", "dt" : "06/10/2024", "ht" : "19:05:41", "mntf" : "Aguarde reprocessamento da eleição", "dv" : "s", "tf" : "n", "and" : "p", "md" : "n", "carg" : [ 
+{ "cd" : "11", "nmn" : "Prefeito", "nmm" : "Prefeito", "nmf" : "Prefeita", "nv" : "1", "fed" : [ 
+{ "n" : "101", "sg" : "PT/PC do B/PV", "nm" : "Federação BRASIL DA ESPERANÇA - FE BRASIL", "com" : "PT/PC do B/PV", "npar" : [ "13", "43", "65" ] }, 
+{ "n" : "101", "sg" : "PT/PC do B/PV", "nm" : "Federação BRASIL DA ESPERANÇA - FE BRASIL", "com" : "PT/PC do B/PV", "npar" : [ "13", "43", "65" ] } ], "agr" : [ 
+{ "n" : "260001745115", "nm" : "Federação BRASIL DA ESPERANÇA - FE BRASIL", "tp" : "f", "com" : "PC do B / PT / PV", "tvtn" : "0", "tvan" : "1361", "vag" : "0", "par" : [ 
+{ "n" : "13", "sg" : "PT", "nm" : "Partido dos Trabalhadores", "nfed" : "101", "tvtn" : "0", "tvan" : "1361", "cand" : [ 
+{ "n" : "13", "sqcand" : "260002245789", "nm" : "WEVANY ALVES NASCIMENTO", "nmu" : "DR WEVANY", "dt" : "22/10/1989", "dvt" : "Anulado", "seq" : "199", "e" : "n", "st" : "", "vap" : "1361", "pvap" : "29,47", "pvapn" : "29,465252219", "vs" : [ 
+{ "tp" : "v", "sqcand" : "260002245790", "nm" : "JOSÉ ROBERTO LIMA SANTOS", "nmu" : "DR ROBERTO", "sgp" : "PT" } ] } ] } ] }, 
+{ "n" : "260001696594", "nm" : "BORA CONTINUAR AVANÇANDO ", "tp" : "c", "com" : "UNIÃO / PSD / PP", "tvtn" : "3258", "tvan" : "3258", "par" : [ 
+{ "n" : "44", "sg" : "UNIÃO", "nm" : "União Brasil", "nfed" : "", "tvtn" : "3258", "tvan" : "3258", "cand" : [ 
+{ "n" : "44", "sqcand" : "260001917162", "nm" : "NEUDO ALVES", "nmu" : "NEUDO ALVES", "dt" : "26/05/1970", "dvt" : "Válido", "seq" : "197", "e" : "n", "st" : "", "vap" : "3258", "pvap" : "70,53", "pvapn" : "70,534747781", "vs" : [ 
+{ "tp" : "v", "sqcand" : "260001917163", "nm" : "SIMONE DA COSTA ALVES", "nmu" : "SIMONE ALVES", "sgp" : "PP" } ] } ] } ] } ] } ], "s" : 
+{ "ts" : "17", "st" : "17", "pst" : "100,00", "pstn" : "100", "snt" : "0", "psnt" : "0,00", "psntn" : "0", "si" : "17", "psi" : "100,00", "psin" : "100", "sni" : "0", "psni" : "0,00", "psnin" : "0", "sa" : "17", "psa" : "100,00", "psan" : "100", "sna" : "0", "psna" : "0,00", "psnan" : "0" }, "e" : 
+{ "te" : "5441", "est" : "5441", "pest" : "100,00", "pestn" : "100", "esnt" : "0", "pesnt" : "0,00", "pesntn" : "0", "esi" : "5441", "pesi" : "100,00", "pesin" : "100", "esni" : "0", "pesni" : "0,00", "pesnin" : "0", "esa" : "5441", "pesa" : "100,00", "pesan" : "100", "esna" : "0", "pesna" : "0,00", "pesnan" : "0", "c" : "4870", "pc" : "89,51", "pcn" : "89,505605587", "a" : "571", "pa" : "10,49", "pan" : "10,494394413" }, "v" : 
+{ "tv" : "4870", "vvc" : "4619", "pvvc" : "94,85", "pvvcn" : "94,845995893", "vv" : "3258", "pvv" : "70,53", "pvvn" : "70,534747781", "vnom" : "3258", "pvnom" : "100,00", "pvnomn" : "100", "van" : "0", "pvan" : "0,00", "pvann" : "0", "vansj" : "1361", "pvansj" : "29,47", "pvansjn" : "29,465252219", "vb" : "82", "pvb" : "1,68", "pvbn" : "1,683778234", "tvn" : "169", "ptvn" : "3,47", "ptvnn" : "3,470225873", "vn" : "169", "pvn" : "100,00", "pvnn" : "100", "vnt" : "0", "pvnt" : "0,00", "pvntn" : "0", "vsan" : "0", "vscv" : "0" } }

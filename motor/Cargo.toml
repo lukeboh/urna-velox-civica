@@ -1,0 +1,21 @@
+[package]
+name = "urna-velox"
+version = "0.6.20"
+edition = "2021"
+description = "Urna Velox — motor de totalização eleitoral: leitor de BU, catálogo, estado denso, situação dos candidatos"
+license = "PolyForm-Noncommercial-1.0.0"
+
+[lib]
+name = "urna_velox"
+path = "src/lib.rs"
+
+[[bin]]
+name = "uv-motor"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+memmap2 = "0.9"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }

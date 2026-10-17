@@ -1,0 +1,4 @@
+pleito 453 municipio 34134 zona 0170 secao 0008
+comparecimento 305
+eleicao 620 aptos 364
+  cargo 11 comparecimento 305: [1 13/13=137] [1 44/44=157] [2 0/0=3] [3 0/0=8]

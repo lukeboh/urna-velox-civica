@@ -1,0 +1,29 @@
+#!/bin/sh
+# Todo commit sobe a versão (docs/VERSIONAMENTO.md). Para um commit excepcional sem bump
+# (ex.: merge), use UV_SEM_BUMP=1 git commit ...
+[ "${UV_SEM_BUMP:-0}" = "1" ] && exit 0
+RAIZ="$(git rev-parse --show-toplevel)"
+cd "$RAIZ" || exit 1
+anterior="$(git show HEAD:VERSION 2>/dev/null | tr -d ' \r\n')"
+nova="$(git show :VERSION 2>/dev/null | tr -d ' \r\n')"
+if [ -z "$nova" ]; then
+  echo "pre-commit: VERSION não está no índice. Rode: scripts/versao.sh bump patch \"resumo\" e git add -A" >&2
+  exit 1
+fi
+if [ -n "$anterior" ] && [ "$anterior" = "$nova" ]; then
+  echo "pre-commit: a versão não mudou ($nova). Rode: scripts/versao.sh bump patch \"resumo\" (ou minor ao concluir uma fase do ROADMAP)." >&2
+  exit 1
+fi
+if git rev-parse -q --verify "refs/tags/v$nova" >/dev/null; then
+  echo "pre-commit: a tag v$nova já existe; suba a versão de novo." >&2
+  exit 1
+fi
+# os arquivos de versão precisam estar no índice com a nova versão
+for f in VERSION CHANGELOG.md Cargo.lock motor/Cargo.toml aquisicao/Cargo.toml bench/rust/Cargo.toml bench/rust/Cargo.lock bench/js/package.json bench/js/package-lock.json; do
+  if ! git diff --quiet -- "$f" 2>/dev/null; then
+    echo "pre-commit: $f tem alterações fora do índice (git add $f)." >&2
+    exit 1
+  fi
+done
+sh "$RAIZ/scripts/versao.sh" verificar >&2 || { echo "pre-commit: versão incoerente entre VERSION, manifestos e CHANGELOG." >&2; exit 1; }
+exit 0

@@ -1,0 +1,16 @@
+{
+  "name": "urna-velox-bench",
+  "version": "0.6.20",
+  "description": "Benchmarks Plano B (JavaScript)",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "dependencies": {
+    "asn1js": "^3.0.10"
+  },
+  "private": true,
+  "type": "module"
+}
