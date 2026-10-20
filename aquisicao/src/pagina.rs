@@ -27,6 +27,14 @@ pub const ESTATICOS: &[Recurso] = &[
 ];
 
 const INDEX: &str = include_str!("../../site/dist/index.html");
+const ROBOTS: &str = include_str!("../../site/dist/robots.txt");
+const SITEMAP: &str = include_str!("../../site/dist/sitemap.xml");
+
+/// Conteúdo do `robots.txt` para SEO e rastreadores.
+pub fn robots() -> &'static str { ROBOTS }
+
+/// Conteúdo do `sitemap.xml` para indexação canônica.
+pub fn sitemap() -> &'static str { SITEMAP }
 
 /// Política de segurança da página: só a própria origem (o WebSocket da mesma origem entra em `connect-src 'self'`).
 pub const CSP: &str = "default-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
@@ -58,6 +66,14 @@ mod testes {
             let t = std::str::from_utf8(r.corpo).unwrap().replace("http://www.w3.org/", "");
             assert!(!t.contains("http://") && !t.contains("https://") && !t.contains("//fonts."), "{} cita recurso externo", r.caminho);
         }
-        assert!(!s.contains("https://") && !s.contains("http://"));
+        // só os links de navegação para a licença na cópia pública (termos de uso): não são carregados pela página
+        let s = s.replace("https://github.com/lukeboh/urna-velox-civica/blob/main/docs/LICENCIAMENTO.md", "")
+            .replace("https://github.com/lukeboh/urna-velox-civica/blob/main/LICENSE", "");
+        assert!(!s.contains("https://") && !s.contains("http://"), "a página cita endereço externo além da licença");
+        assert!(s.contains("Termos de uso"), "termos de uso na página");
+        let rob = robots();
+        assert!(rob.contains("User-agent: *") && rob.contains("urnavelox.com.br"));
+        let sm = sitemap();
+        assert!(sm.contains("<urlset") && sm.contains("https://urnavelox.com.br/"));
     }
 }

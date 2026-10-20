@@ -81,13 +81,13 @@ pub fn conferir_publicacoes_pasta(c: &Conjunto, oficial: &Path) -> Relatorio {
     let ofs = Oficial::ler_pasta(oficial).expect("arquivos oficiais");
     let cad = Candidatos::dos_oficiais(&ofs);
     let p = urna_velox::resultado::Publicador::novo(&c.cat, Some(&cad), Some(&c.met));
-    urna_velox::conferencia::conferir_publicacoes(&p, &c.est, &ofs, urna_velox::resultado::Momento { encerrada: true, seq: c.est.bus.load(Relaxed), ultimo_bu: None })
+    urna_velox::conferencia::conferir_publicacoes(&p, &c.est, &ofs, urna_velox::resultado::Momento { encerrada: true, seq: c.est.bus.load(Relaxed), ultimo_bu: None, totalizado_ms: None })
 }
 
 pub fn conferir_publicacoes_com_candidatos(c: &Conjunto, oficial: &Path, cad: &Candidatos) -> Relatorio {
     let ofs = Oficial::ler_pasta(oficial).expect("arquivos oficiais");
     let p = urna_velox::resultado::Publicador::novo(&c.cat, Some(cad), Some(&c.met));
-    urna_velox::conferencia::conferir_publicacoes(&p, &c.est, &ofs, urna_velox::resultado::Momento { encerrada: true, seq: c.est.bus.load(Relaxed), ultimo_bu: None })
+    urna_velox::conferencia::conferir_publicacoes(&p, &c.est, &ofs, urna_velox::resultado::Momento { encerrada: true, seq: c.est.bus.load(Relaxed), ultimo_bu: None, totalizado_ms: None })
 }
 
 /// Divergências esperadas com a destinação presumida "Válido" (candidatos.json pré-eleição montado sem `dvt`):

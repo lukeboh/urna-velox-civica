@@ -1,0 +1,17 @@
+# robots.txt para https://urnavelox.com.br
+# Urna Velox · Totalização Eleitoral Independente
+
+User-agent: *
+
+# Permitir a página inicial e os recursos estáticos embutidos
+Allow: /$
+Allow: /static/
+
+# Bloquear rotas de streaming e endpoints internos da API de totalização
+Disallow: /api/
+Disallow: /api/v1/
+Disallow: /ws
+Disallow: /saude.json
+
+# Localização do Sitemap Canônico
+Sitemap: https://urnavelox.com.br/sitemap.xml

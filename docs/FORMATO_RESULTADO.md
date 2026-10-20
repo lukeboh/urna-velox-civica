@@ -39,7 +39,8 @@ Publicação encerrada (fim da apuração) do 2º turno de 2024 em BA 34134, gra
 | `abr` | texto | abrangência: `br`, UF em minúsculas (`df`; `zz` = exterior) ou UF + município com 5 dígitos (`ac01031`) | `cdabr` |
 | `circ` | texto | **circunscrição** do cargo que contém a abrangência — onde se decide quem é eleito: `br` (Presidente), a UF (Governador, Senador), o município (Prefeito, consultas). Abrangências menores repetem a situação da circunscrição, como na divulgação | — |
 | `seq` | inteiro | nº de BUs aplicados ao estado quando a publicação foi feita (cresce sempre; ordena as publicações) | — |
-| `ultimo_bu` | texto ou `null` | horário (Brasília, ISO 8601) do último BU aplicado; `null` na totalização em lote | — |
+| `ultimo_bu` | texto ou `null` | horário (Brasília, ISO 8601) do último BU aplicado **no relógio do TSE** (recebimento no site; no simulado, a noite da eleição original); `null` na totalização em lote | — |
+| `totalizado_em` | texto (opcional) | desde a `0.8.28` (M-003), só nas publicações do `uv-servico`: **relógio do sistema** (Brasília, ISO 8601 com milissegundos) em que o Urna Velox aplicou o último BU — a data e a hora reais da totalização, também no simulado. Vem logo depois do `ultimo_bu`; ausente na totalização em lote (`uv-motor`) | — |
 | `encerrada` | booleano | `true` só na publicação final (totalização encerrada): é a única que traz a situação final (`st`) | — |
 | `secoes.total` | inteiro | seções da abrangência (catálogo + não instaladas conhecidas), **sem as agregadas** (desde a `0.4.9`; seções juntadas a uma principal, sem urna nem BU próprio — o TSE não as conta; se uma vier com BU, passa a contar) | `s.ts` |
 | `secoes.apuradas` | inteiro | seções totalizadas: com BU aplicado + não instaladas (o TSE as conta totalizadas, sem votos) | `s.st` |

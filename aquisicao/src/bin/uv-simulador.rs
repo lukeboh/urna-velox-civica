@@ -84,6 +84,11 @@ struct Cli {
     /// TSE simulado: segundos da noite entre duas gerações dos arquivos
     #[arg(long, default_value_t = 15)]
     tse_passo: i64,
+    /// Acompanhar o serviço (modo rápido do ciclo, B-011): o relógio não passa do instante em que as seções
+    /// disponibilizadas e ainda sem o BU servido seriam mais que esta % das seções com BU (anda de novo quando o serviço
+    /// busca os BUs; sem BU novo por 10 s, anda solto). 0 = relógio solto
+    #[arg(long, default_value_t = 0.0)]
+    acompanhar_servico: f64,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -106,6 +111,7 @@ fn main() -> anyhow::Result<()> {
         falhas: Falhas { rajadas_429: a.rajada_429, latencia_ms: a.latencia_ms, erros_5xx: a.erros_5xx, semente: a.semente,
             reenvios: a.reenviar, anulacoes: a.anular, quedas: a.queda },
         limite_ip_rps: a.limite_ip_rps,
+        acompanhar_pct: a.acompanhar_servico.max(0.0),
         tse: a.tse_simulado.map(|c| { let mut o = uv_aquisicao::tse_simulado::Opcoes::padrao(c); o.passo_s = a.tse_passo.max(1); o.semente = a.semente; o }),
     };
     let sim = Arc::new(Sim::carregar(&cfg)?);

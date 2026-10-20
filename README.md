@@ -1,12 +1,87 @@
-# ⚡ Urna Velox
+# [⚡ Urna Velox](https://urnavelox.com.br)
 
 ![Urna Velox: totalização eleitoral independente, BU por BU](docs/img/capa.png)
+
+> ### 🌐 Acompanhe a apuração ao vivo: [urnavelox.com.br](https://urnavelox.com.br)
 
 [![Rust](https://img.shields.io/badge/rust-stable%20%7C%20edition%202021%2B-orange.svg?logo=rust)](https://www.rust-lang.org)
 [![Status](https://img.shields.io/badge/status-active%20development-brightgreen.svg)](#roadmap)
 [![Engine](https://img.shields.io/badge/engine-zero--copy%20%7C%20concurrent-purple.svg)](#arquitetura)
 
 > **Motor de totalização eleitoral independente de alta performance, projetado em Rust para processamento contínuo de Boletins de Urna (BUs) do TSE com agregação analítica instantânea em nível Municipal, Estadual e Nacional.**
+
+---
+
+## ✨ Para quem acompanha a eleição
+
+Abra a página na noite da eleição e veja a apuração do jeito que ela acontece. Nada de instalar programa ou criar
+conta: funciona no navegador do celular e do computador.
+
+- **⚡ Resultado em tempo quase real.** Cada Boletim de Urna é somado assim que o TSE o recebe. Entre o BU chegar e o
+  número mudar na sua tela passam milissegundos, e o placar anda junto com as urnas, sem esperar o ciclo do site
+  oficial.
+- **🏁 O momento em que a eleição se decide.** O Urna Velox calcula, BU a BU, quando o resultado **não pode mais
+  mudar**, nem que todos os eleitores ainda não apurados votassem no adversário. É o *matematicamente eleito* (ou
+  *matematicamente 2º turno*), com a hora exata e até a seção eleitoral que decidiu a disputa.
+- **⏳ Quantos eleitores faltam para decidir.** Um contador regressivo mostra quantos eleitores ainda precisam ser
+  apurados até o resultado ficar garantido. Dá para ver a disputa "fechando" ao vivo.
+- **🔮 A que horas deve sair.** Uma estimativa, sempre com faixa ("entre 20h10 e 20h35"), do horário em que o
+  resultado fica definido e de quando a apuração termina, recalculada ao longo da noite. Depois, a página mostra se
+  acertou. Se a chegada dos BUs parar, ela avisa e vai adiando a estimativa, em vez de fingir certeza.
+- **📰 Letreiro de notícias da apuração.** Uma faixa que corre no pé da tela, como os letreiros dos canais de notícias
+  e de economia, com o que vai acontecendo:
+  - a primeira seção apurada do país e de cada estado;
+  - o primeiro governador ou prefeito eleito;
+  - as viradas, quando o 1º colocado muda;
+  - quantos eleitores faltam para decidir as disputas mais perto do fim;
+  - os marcos de 25%, 50%, 90% e 100% das seções.
+
+  O ritmo de BUs por minuto fica à vista o tempo todo, num chip logo abaixo do topo.
+
+  Tocou num item, ele abre o detalhe. Perdeu algo, é só abrir o histórico com tudo o que já passou, com busca.
+- **🕐 Dois relógios, sem confusão.** A página separa o horário do Urna Velox do horário do TSE. "Totalizado pelo
+  Urna Velox às…" é a hora real em que o sistema somou o último BU; logo abaixo, "último BU no TSE: … de dd/mm" é a
+  hora em que esse boletim chegou à Justiça Eleitoral. A curva, a previsão e o letreiro usam o relógio do Urna Velox;
+  o horário do TSE de cada item fica no detalhe.
+- **⚖️ Lado a lado com o TSE.** Um botão põe a contagem do Urna Velox ao lado da do site oficial do TSE, candidato
+  por candidato, com a diferença e a idade do arquivo do TSE. Quando o TSE confirma o resultado, a página mostra
+  quanto tempo antes o Urna Velox já tinha chegado lá, medido no mesmo relógio. Num simulado de outro dia (ou
+  acelerado), o horário do TSE é trazido para o dia e a velocidade do simulado antes da comparação: assim a distância
+  entre as duas apurações continua certa.
+- **📈 A curva da noite.** Um gráfico com o avanço das seções e o percentual dos dois primeiros colocados desde o
+  começo da apuração.
+- **🗺️ Do Brasil ao seu município.** Presidente no Brasil, Governador e Senador no seu estado, Prefeito na sua cidade:
+  cada abrangência e cada cargo têm a sua tela, com comparecimento, abstenção, brancos e nulos.
+- **🔍 Aberto e conferível.** Os números vêm dos BUs públicos do TSE, e o código é aberto. Em todas as eleições já
+  reproduzidas (2024 e 2026), o resultado final foi idêntico ao oficial, candidato por candidato. O Urna Velox não
+  substitui a divulgação oficial do TSE: é uma forma independente de acompanhá-la e conferi-la.
+
+### 🎬 Simulados com dados reais e a Playlist de Simulados
+
+Fora da noite da eleição, o site fica totalizando de novo, sem parar, eleições que já aconteceram: o 1º e o 2º turno
+de 2024 e o 1º turno de 2026. **Os dados são os reais**: os boletins de urna publicados pelo TSE, nenhum voto
+inventado. O que se repete é a **totalização**: a cada ciclo o Urna Velox começa do zero e soma de novo todos os
+boletins, na ordem em que chegaram à Justiça Eleitoral. Assim dá para ver a totalização funcionando e a **auditoria**
+acontecendo: no fim de cada ciclo, o resultado é conferido com o oficial do TSE, candidato por candidato.
+
+- **Na página da apuração:** o chip "Dados reais do TSE · retotalização" diz qual eleição está passando (com a data em
+  que ela aconteceu) e em que modo. Tocou nele, abre a explicação, que também aparece sozinha na primeira visita do
+  dia. O selo do topo leva a marca "simulação".
+- **Dois modos:**
+  - **tempo real:** os boletins entram no mesmo ritmo e na mesma ordem da noite da eleição (leva horas);
+  - **mesma ordem, acelerado:** a mesma ordem de chegada, o mais rápido que o sistema consegue totalizar (alguns
+    minutos).
+- **▶ Playlist de Simulados das Eleições** ([/playlist](https://urnavelox.com.br/playlist)), para escolher o que
+  passa a seguir:
+  - mostra o que está no ar e a agenda, com o horário previsto de início (sempre numa hora cheia) e de fim, a eleição,
+    a data em que ela aconteceu e o modo;
+  - qualquer pessoa vota no simulado que quer ver a seguir, com um voto por conexão (endereço IP), que pode ser
+    trocado ou retirado;
+  - o mais votado é sempre o próximo; sem votos, segue a rotação automática.
+- **Pausa nas eleições oficiais:** de um dia antes até três dias depois de uma eleição oficial, a playlist fica
+  suspensa e o site acompanha a eleição de verdade.
+
+Como funciona por dentro (rotação, vigias dos nós, votação e suspensão): [docs/CICLO_DIARIO.md](docs/CICLO_DIARIO.md).
 
 ---
 
@@ -111,6 +186,7 @@ Testes: `cargo test --release -p urna-velox` (unidade + fixtures) e, com os dado
 
 - [docs/AQUISICAO.md](docs/AQUISICAO.md): Fase de aquisição: como os BUs são obtidos do TSE (API de resultados e dados abertos), arquitetura do coletor, limites do CDN, medições reais e gráficos. Código em [aquisicao/](aquisicao/) (`uv-coletor`); para repetir: `./aquisicao/teste-real.sh` ou `.\aquisicao\teste-real.ps1`.
 - [docs/FORMATO_RESULTADO.md](docs/FORMATO_RESULTADO.md): Formato JSON do resultado por cargo e abrangência (situação, matematicamente eleito), contrato do WebSocket e do site.
+- [docs/CICLO_DIARIO.md](docs/CICLO_DIARIO.md): Simulados contínuos com dados reais nos dois nós da OCI: rotação por hora cheia, modos tempo real e acelerado, Playlist de Simulados (votação por IP, decisão única nos dois nós, suspensão nas eleições oficiais), telemetria e conferência de cada ciclo.
 - [ARCHITECTURE.md](ARCHITECTURE.md): Detalhamento do pipeline de parsing, modelo de concorrência, estruturas em memória e garantias de idempotência e integridade.
 - [docs/ARCHITECTURE_DECISIONS.md](docs/ARCHITECTURE_DECISIONS.md): Registro de decisões (ADR-000 a ADR-031): linguagem (Rust vs. JavaScript vs. Java), modelo de estado, concorrência, deduplicação, validação, orçamento de memória, critérios de pivot, federação e licenciamento (ADR-031: Source-Available / PolyForm Noncommercial com dupla licença).
 - [docs/ESTIMATIVAS_MEMORIA_E_TEMPO.md](docs/ESTIMATIVAS_MEMORIA_E_TEMPO.md): Cálculos de memória e tempo de totalização de uma eleição real nas três linguagens, medidos com o mesmo corpus sintético, com gráficos.

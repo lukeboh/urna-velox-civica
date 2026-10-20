@@ -41,7 +41,7 @@ struct AlvoArgs {
     pleito: u32,
 }
 impl AlvoArgs {
-    fn alvo(&self) -> tse::Alvo { tse::Alvo { base: self.base.clone(), ambiente: self.ambiente.clone(), ciclo: self.ciclo.clone(), pleito: self.pleito } }
+    fn alvo(&self) -> tse::Alvo { tse::Alvo::novo(&self.base, &self.ambiente, &self.ciclo, self.pleito) }
 }
 
 #[derive(Args, Clone)]

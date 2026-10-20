@@ -21,6 +21,19 @@ acrescenta um envelope em volta.
 > `op: marcos` (§3), mensagem `marco` (§4.5), `GET /api/v1/marcos` e `GET /api/v1/nomes` (§6), página embutida (§10).
 > **`0.4.8`/`0.4.9`:** bloco `replay` na mensagem `estado` e controle do replay — velocidade e posição na noite (§11) — só contra o site simulado.
 > **`0.6.11` (etapa 7):** tópicos `tse:<tópico>` e mensagem `tse` (§4.6), a comparação com o site de resultados do TSE; erro `comparacao_desligada`.
+> **`0.7.7` (etapa 8):** mensagem `previsao` (§4.7) — a estimativa, com faixa, do horário do "matematicamente" e do fim da
+> apuração — e `GET /api/v1/previsao/<topico>` (§6). Vai para quem está inscrito no tópico; nada muda na inscrição.
+> **`0.8.28` (M-003, relógio do sistema):** os horários do Urna Velox passam a ser os do **relógio do sistema** (a data e a
+> hora reais em que ele totalizou, também no simulado), separados dos do TSE. Acréscimos: no resultado, `totalizado_em`
+> (`docs/FORMATO_RESULTADO.md`; o `ultimo_bu` continua sendo o horário do TSE); em `evento` e `marco`, `sistema` (ISO com
+> ms; `null` no histórico de uma retomada, cujo horário não ficou gravado; o `horario` continua sendo o do BU no TSE); no
+> `estado` e no `GET /api/v1/estado`, o bloco `relogio_sistema` = `{"agora", "noite0", "sistema0", "acelerar"}` — a
+> âncora: o instante `noite0` da noite do TSE corresponde a `sistema0` no sistema, e um instante `t` do TSE equivale a
+> `sistema0 + (t − noite0) / acelerar` (1 na noite real; 500 no modo rápido), o que permite medir a distância entre as
+> duas apurações mesmo num simulado de outro dia; na `previsao` (§4.7), `relogio: "sistema"` e todos os horários (e o
+> `historico`, em segundos com fração) no relógio do sistema — a conta é feita na escala da noite com o relógio do
+> sistema, não com o do site; o `previsoes.csv` continua na escala da noite. A curva (§6) passa a ter `t` no relógio do
+> sistema (segundos com fração), `relogio: "sistema"` e `passo_s` = um minuto da noite nesse relógio (0,12 s a 500×).
 
 Exemplo de partida: `uv-servico … --http 127.0.0.1:8080`. Sem `--http` não há camada de rede de entrada. O serviço
 **não tem TLS nem autenticação**: para expor fora da máquina, use um proxy reverso (`/mnt/d/git/lukeboh/urna-velox/docs/OPERACAO.md` §7).
@@ -50,6 +63,13 @@ Mensagens de texto JSON, **no máximo 4 KB** cada:
 * `eventos`: recebe **todos** os eventos (de qualquer circunscrição), começando pelo histórico, mesmo sem tópico.
 * `marcos` (desde a `0.4.1`): recebe **todos** os marcos da noite (§4.5): o histórico inteiro e o último
   `faltam_para_mat` de cada circunscrição, e depois cada marco novo. Pedir de novo não repete o histórico.
+  Desde a `0.8.11` (B-014), `{"op":"marcos","faltam":["br-c0001","sp71072-c0011"]}` limita o `faltam_para_mat` aos
+  tópicos da lista (até o limite de tópicos; os demais marcos continuam todos): no modo rápido as 5.574 circunscrições
+  de 2024 mandavam milhares desses marcos por minuto. Pedir de novo troca a lista e manda o valor atual dos tópicos que
+  entraram nela; sem `faltam` (ou `null`), todos, como antes; `faltam` que não é lista → `erro` `faltam_invalido`.
+* `"escopo":"uf"` em `eventos` e `marcos` (desde a `0.8.11`, B-014): dos eventos e marcos de fora dos tópicos
+  inscritos, só os do Brasil e das UFs (abrangência de até 2 letras ou sem abrangência); os das circunscrições
+  municipais só chegam para os tópicos inscritos. É o que a página usa (celular). Sem `escopo`, todos, como antes.
 * `tse:<tópico>` em `inscrever`/`cancelar` (desde a `0.6.11`): a comparação com o TSE (§4.6). A inscrição liga a
   busca do arquivo de resultado do TSE desse tópico no servidor; conta no limite de tópicos.
 * Nada além disso: o cliente não muda estado, não força conferência, não lê arquivo.
@@ -219,6 +239,45 @@ prioridade abaixo dela. Na federação, cada nó busca para os seus clientes. A 
 `tse_resultados` (tópicos ativos, inscritos, estados, buscas, req/s, 200/304/404, erros, `fora_do_intervalo` — a prova
 da regra, sempre 0 — e a idade do arquivo mais antigo).
 
+### 4.7. `previsao` — estimativa do "matematicamente" e do fim da apuração (desde a `0.7.7`, etapa 8)
+
+Para cada tópico, o serviço estima **a que horas deve sair o "matematicamente"** (eleito ou 2º turno; só nos tópicos
+que são a própria circunscrição) e **a que horas a apuração chega a 99 % e a 100 % das seções**, sempre como uma
+**faixa** (P10–P90) e sempre como **estimativa** — nunca "resultado". O cálculo (`urna_velox::previsao`, método em
+`/mnt/d/git/lukeboh/urna-velox/docs/HANDOFF_0.8.0.md` e a calibração em `/mnt/d/git/lukeboh/urna-velox/docs/RELATORIO_0.8.0.md`)
+roda numa thread própria a cada `--previsao-intervalo` segundos do relógio do serviço (padrão 30; no replay, o relógio
+simulado), só para os tópicos que mudaram, e só com pelo menos 5 % dos aptos apurados e 10 min de apuração.
+
+Quem está inscrito no tópico (§3) recebe, sem pedir nada: na inscrição, a última previsão com o histórico da noite
+(`"instantaneo": true`); depois, uma mensagem a cada previsão nova do tópico (sem o histórico).
+
+```json
+{"tipo":"previsao","instantaneo":false,"topico":"br-c0001","abrangencia":"br","cargo":1,"circunscricao":true,"estimativa":true,
+ "instante":"2026-10-25 18:44:00","situacao":"prevista","base":{"apurado":0.4691,"secoes":0.4853,"aptos_min":1410273},
+ "mat":{"tipo":"matematicamente_eleito","p10":"2026-10-25 19:31:12","p50":"2026-10-25 19:52:40","p90":"2026-10-25 20:21:05","incerta":false,
+   "prob_antes_fim":1.0,"apurado_p50":0.951},
+ "fim99":{"p10":"2026-10-25 20:20:31","p50":"2026-10-25 20:52:06","p90":"2026-10-25 21:31:44","incerta":false},
+ "fim100":{"p10":"…","p50":"…","p90":"…","incerta":true},
+ "chegou":{"fim99":null,"fim100":null},"definida":null,"confirmacao":null,"t_envio":1792975440123456}
+```
+
+| campo | significado |
+|---|---|
+| `instante` | hora (do relógio do serviço) em que a previsão foi feita |
+| `situacao` | `prevista`; `suspensa` (desde a `0.7.8`: a chegada dos BUs parou no país, ver `parada`); ou `definida` (o "matematicamente" já saiu: `mat` vem `null` e `confirmacao` diz como a previsão se saiu) |
+| `parada` | desde a `0.7.8`, só com `situacao` = `suspensa`: `{"desde":"aaaa-mm-dd hh:mm:ss","minutos":n}`. A parada começa quando o ritmo de chegada dos BUs no país nos últimos 5 min cai abaixo de 10 % do ritmo dos 30 min anteriores (entre 5 % e 97 % apurado) e termina quando volta a 30 % dele. Enquanto dura, nenhuma previsão nova é calculada: `mat`, `fim99` e `fim100` são os da última previsão normal, **adiados** pelo tempo parado (são o mais cedo possível, se a chegada voltasse agora). Mostre algo como "chegada de BUs parada desde hh:mm — previsão adiada". Com a volta, a previsão é recalculada e `parada` some |
+| `base` | o que a previsão usou: fração dos aptos (`apurado`) e das seções (`secoes`) já apurados, e a velocidade em aptos por minuto (média móvel, meia-vida de 10 min) |
+| `mat` | só na circunscrição ainda em aberto: `tipo` (`matematicamente_eleito` ou `matematicamente_2t`), a faixa `p10`–`p90` com a mediana `p50`, `incerta` (faixa maior que 3 h: mostre "ainda incerto"), `prob_antes_fim` (probabilidade de sair com pelo menos 1 % dos aptos ainda por apurar; perto de 0 = "deve ir até o fim") e `apurado_p50` (fração dos aptos com que deve sair) |
+| `fim99`, `fim100` | horário (faixa) em que as seções apuradas chegam a 99 % e a 100 % das esperadas (sem agregadas); `null` quando já chegou (ver `chegou`). O 100 % depende das últimas seções (exterior, locais remotos): no Brasil costuma ficar `incerta` |
+| `chegou` | quando o tópico chegou a 99 % e a 100 % das seções (`null` = ainda não) |
+| `definida` | quando saiu o "matematicamente" da circunscrição (horário do BU, como nos eventos) |
+| `confirmacao` | depois de `definida`: `saiu`, a última faixa prevista antes (`faixa`: `p10`, `p90`), se o horário real caiu nela (`dentro`) e `desde` quando todas as faixas previstas o continham (`null` se a última não continha) |
+| `historico` | só no `instantaneo` (e no REST): `[[instante, p10, p50, p90], …]` das faixas do "matematicamente" ao longo da noite (no máximo um por minuto), em segundos civis de Brasília (a escala do `GET /api/v1/curva`) — para desenhar a faixa convergindo |
+
+Horários em `"aaaa-mm-dd hh:mm:ss"` (Brasília, como `horario` dos eventos). A previsão é guardada só na memória do
+serviço: depois de um reinício, recomeça (precisa de 10 min de série de novo). O registro de cada rodada fica em
+`<saida>/previsoes.csv`; a saúde (`saude.json`) tem o bloco `previsao` (tópicos, rodadas, custo em ms).
+
 ## 5. Vivacidade e reconexão
 
 * O servidor manda **ping** a cada 20 s; sem nenhum quadro do cliente (pong ou mensagem) por 60 s, a conexão cai
@@ -242,7 +301,8 @@ da regra, sempre 0 — e a idade do arquivo mais antigo).
 | `GET /api/v1/eventos` | lista dos eventos (os objetos da §4.2, sem `tipo`/`t_envio`) |
 | `GET /api/v1/marcos` | (desde a `0.4.1`) os marcos com histórico e o último `faltam_para_mat` de cada circunscrição (os objetos da §4.5, sem `tipo`/`t_envio`), `no-cache` |
 | `GET /api/v1/nomes` | (desde a `0.4.1`) nomes para exibir, do `candidatos.json` (arquivos públicos do TSE, sem requisição nova): `{"pleito", "ufs": {"sp": "SÃO PAULO", "zz": "EXTERIOR"…}, "municipios": {"sp71072": "SÃO PAULO"…}, "eleicoes": [{"codigo", "turno", "cargos": [{"cargo", "vagas", "consulta", "abrangencias": [...], "circunscricoes": [{"abr", "eleitorado", "candidatos": [{"n", "nome_urna", "nome", "partido", "vices": [{"tp", "nome_urna", "partido"}]}]}]}]}]}`; `ETag` fixo por processo (304 com `If-None-Match`), `Cache-Control: public, max-age=60`. `tp` dos vices como no `-u.json`: `v` = vice, `1`/`2` = suplentes |
-| `GET /api/v1/curva/<topico>` | (desde a `0.4.10`) a curva da apuração do tópico desde o começo da noite (ou do último reinício do processo), para a página desenhar o gráfico inteiro ao abrir ou recarregar: `{"topico", "passo_s": 60, "pontos": [[t, apuradas, total, [[n, pct], …]], …]}`. `t` = horário do último BU do resultado em segundos civis de Brasília (como `Date.UTC` da hora local), `apuradas`/`total` = `secoes`, e o `pct` de **todos** os candidatos (uma virada não troca as linhas de dono). Um ponto por 60 s de noite (o último é provisório e anda até completar o passo), amostrado a cada publicação do tópico; só memória, nada em disco. Tópico ainda sem publicação (ou inexistente) → 404 `{"erro":"topico_desconhecido"}`; `no-cache` |
+| `GET /api/v1/curva/<topico>` | (desde a `0.4.10`) a curva da apuração do tópico desde o começo da noite (ou do último reinício do processo), para a página desenhar o gráfico inteiro ao abrir ou recarregar: `{"topico", "passo_s", "relogio", "pontos": [[t, apuradas, total, [[n, pct], …]], …]}`. `t` = desde a `0.8.28` (M-003) o `totalizado_em` do resultado (relógio do sistema), em segundos civis de Brasília com fração (como `Date.UTC` da hora local; antes, o horário do último BU no TSE); `passo_s` = 60 s da noite no relógio do sistema (60 / aceleração), `apuradas`/`total` = `secoes`, e o `pct` de **todos** os candidatos (uma virada não troca as linhas de dono). Um ponto por 60 s de noite (o último é provisório e anda até completar o passo), amostrado a cada publicação do tópico; só memória, nada em disco. Tópico ainda sem publicação (ou inexistente) → 404 `{"erro":"topico_desconhecido"}`; `no-cache` |
+| `GET /api/v1/previsao/<topico>` | (desde a `0.7.7`) a última previsão do tópico com o histórico (o objeto da §4.7, sem `tipo`/`t_envio`/`instantaneo`); sem previsão ainda (pouco apurado, serviço com `--previsao-intervalo 0`) ou tópico inexistente → 404 `{"erro":"sem_previsao"}`; `no-cache` |
 
 Nada mais: fora o controle de velocidade do replay (§11, que só existe contra o site simulado), nenhuma rota escreve, lista pastas ou usa caminho vindo do cliente (`<topico>` só é procurado na tabela
 de tópicos). Como o REST se comporta como arquivo estático (`ETag` + 304 + `max-age` curto), um proxy/CDN na frente
@@ -269,6 +329,8 @@ sincronizados (NTP/PTP) e somando o erro deles. Não compare com o `relogio_site
 | `--tse-intervalo` | 30 s | comparação com o TSE (§4.6): segundos (hora do site) entre duas buscas do `-u.json` de um tópico inscrito; de 30 a 60 (fora disso, o serviço não parte) |
 | `--tse-max-topicos` | 200 | tópicos `tse:` buscados ao mesmo tempo; acima disso, o novo espera vaga (`indisponivel`, `limite_topicos`) |
 | `--sem-tse` | (ligada) | desliga a comparação: nenhum tópico `tse:` |
+| `--previsao-intervalo` | 30 s | previsão (§4.7): segundos do relógio do serviço entre duas rodadas; 0 desliga |
+| `--previsao-threads` | 4 | threads da rodada de previsão (fora da thread do motor) |
 
 ## 9. Exemplos reais
 

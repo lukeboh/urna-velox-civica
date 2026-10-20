@@ -73,6 +73,9 @@
 html, body { margin: 0; }
 /* a barra de rolagem vertical aparece quando o painel cresce; sem a calha reservada o cabeçalho anda ~15 px (CLS) */
 html { scrollbar-gutter: stable; }
+/* rede de segurança: nada no topo pode alargar a página no celular (o Safari do iOS rola o html, não o body) */
+html { overflow-x: clip; }
+.topo > * { min-width: 0; }
 
 body {
   min-height: 100vh;
@@ -83,7 +86,7 @@ body {
   line-height: 1.4;
   font-variant-numeric: tabular-nums;
   font-stretch: 100%;
-  overflow-x: hidden;
+  overflow-x: clip;
   padding-bottom: calc(var(--feed-h) + 28px);
   -webkit-tap-highlight-color: transparent;
 }
@@ -117,6 +120,8 @@ button, select { font: inherit; color: inherit; }
 }
 
 .marca {
+  position: relative;
+  justify-self: start; /* a caixa fica do tamanho do texto (no celular a coluna é 1fr): a versão cola em "Velox" */
   font-stretch: 125%;
   font-weight: 800;
   font-size: 19px;
@@ -126,6 +131,22 @@ button, select { font: inherit; color: inherit; }
   white-space: nowrap;
 }
 .marca span { font-weight: 300; color: var(--texto-2); }
+/* versão: etiqueta discreta logo abaixo de "Velox", fora do fluxo (position: absolute) — não alarga a marca nem
+   empurra a conexão e o botão de tema (no celular, a largura extra fazia a página inteira transbordar para o lado) */
+.marca .marca-versao {
+  position: absolute;
+  right: 1px;
+  top: calc(100% - 1px);
+  font-size: 9px;
+  font-weight: 450;
+  font-stretch: 100%;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  color: var(--texto-3);
+  opacity: 0.8;
+  pointer-events: none;
+  user-select: none;
+}
 
 .rota { display: flex; gap: 8px; align-items: center; min-width: 0; height: 40px; }
 .rota .passo {
@@ -164,6 +185,26 @@ button, select { font: inherit; color: inherit; }
 .conexao[data-estado="vivo"] .ponto { background: var(--ok); animation: pulso 2.4s ease-in-out infinite; }
 .conexao[data-estado="caiu"] .ponto, .conexao[data-estado="pausa"] .ponto { background: var(--alerta); }
 .conexao[data-estado="encerrada"] .ponto { background: #9db7ff; }
+/* simulação com dados reais (ciclo diário): o selo ganha o complemento "simulação" */
+.conexao.sim { width: auto; min-width: 210px; border-color: rgba(157, 183, 255, 0.55); }
+.conexao .comp {
+  font-size: 11px; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; color: var(--texto);
+  padding: 2px 7px; border-radius: 999px; background: rgba(157, 183, 255, 0.22); flex: none;
+}
+.faixa .chip.sim { border-color: rgba(157, 183, 255, 0.55); background: rgba(157, 183, 255, 0.14); color: var(--texto); }
+/* o chip da simulação é um botão (abre a explicação: dados reais, retotalização, auditoria) */
+.faixa button.chip { font: inherit; cursor: pointer; }
+.faixa .chip.sim b { font-weight: 650; }
+.faixa button.chip.sim:hover, .faixa .chip.playlist:hover { border-color: var(--borda-luz); }
+.faixa .chip.oculto { pointer-events: none; }
+/* playlist de simulados (página /playlist, servida pelo uv-playlist do ciclo) */
+.faixa .chip.playlist {
+  flex: none; color: var(--texto); text-decoration: none; font-weight: 650;
+  border-color: rgba(255, 95, 210, 0.5); background: linear-gradient(90deg, rgba(79, 195, 255, 0.16), rgba(140, 107, 255, 0.16), rgba(255, 95, 210, 0.16));
+}
+.faixa .chip.playlist.oculto { display: none; }
+.faixa .chip:focus-visible { outline: 2px solid #4fc3ff; outline-offset: 2px; }
+.folha dd a { color: inherit; font-weight: 650; }
 @keyframes pulso { 50% { opacity: 0.35; } }
 
 .icone-btn {
@@ -351,6 +392,8 @@ button, select { font: inherit; color: inherit; }
 .numeros .rot { font-size: 13px; color: var(--texto-2); }
 .numeros .val { font-size: 19px; font-weight: 650; }
 .numeros .val .de { color: var(--texto-3); font-weight: 450; font-size: 14px; }
+/* M-003: horário do TSE embaixo do horário do Urna Velox (linha reservada desde a montagem: CLS 0) */
+.numeros .hora-tse { font-size: 12px; line-height: 16px; min-height: 16px; color: var(--texto-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .faltam { grid-column: 1 / -1; position: relative; height: 70px; border-radius: var(--raio-m); background: var(--vidro); border: 1px solid var(--borda); padding: 10px 14px; }
 .faltam .camada { position: absolute; inset: 10px 14px; transition: opacity 0.6s; }
 .faltam .camada.oculta { opacity: 0; pointer-events: none; }
@@ -377,6 +420,23 @@ button, select { font: inherit; color: inherit; }
 .legenda span { flex: 0 1 auto; min-width: calc(16px + 5ch); overflow: hidden; text-overflow: ellipsis; }
 .legenda span:first-child { flex: none; }
 .legenda i { display: inline-block; width: 10px; height: 3px; border-radius: 2px; margin-right: 6px; vertical-align: middle; background: var(--c); }
+
+/* previsão (etapa 8): altura fixa; cada texto numa linha de altura reservada, com reticência (nada empurra nada) */
+.previsao { padding: 18px 20px 14px; height: 236px; display: grid; grid-template-rows: auto 66px minmax(0, 1fr) 18px; gap: 8px; }
+.previsao .cartao-titulo small { font-weight: 400; color: var(--texto-3); font-size: 0.85em; }
+.previsao .pv-topo { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: start; min-width: 0; }
+.previsao .pv-txt { min-width: 0; display: grid; grid-template-rows: 18px 24px 18px; gap: 2px; }
+.previsao .pv-rot, .previsao .pv-nota, .previsao .pv-fim { font-size: 12.5px; color: var(--texto-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 18px; }
+.previsao .pv-nota, .previsao .pv-fim { color: var(--texto-3); }
+.previsao .pv-nota.alerta { color: var(--alerta); }
+.previsao .pv-faixa { font-size: 18px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 24px; }
+.previsao .pv-hod { text-align: right; font-size: 26px; font-weight: 700; line-height: 1; width: 88px; }
+.previsao .pv-hod small { display: block; font-size: 10.5px; font-weight: 400; color: var(--texto-3); margin-top: 4px; }
+.previsao .pv-graf { position: relative; min-height: 0; }
+.previsao .pv-graf svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.previsao .pv-banda { fill: rgba(140, 107, 255, 0.28); stroke: none; }
+.previsao .pv-med { fill: none; stroke: #a996ff; stroke-width: 1.8; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+.previsao .pv-real { stroke: var(--ok); stroke-width: 1.5; stroke-dasharray: 4 3; vector-effect: non-scaling-stroke; }
 
 /* votos */
 .votos { padding: 18px 20px; height: 196px; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: auto 1fr 1fr; gap: 8px 16px; }
@@ -469,6 +529,8 @@ button, select { font: inherit; color: inherit; }
   transition: transform 0.45s var(--mola), opacity 0.3s;
 }
 .folha.aberta { transform: translate(-50%, 0) scale(1); opacity: 1; pointer-events: auto; }
+/* texto mais longo que a tela (celular): a folha rola em vez de sair pelo alto */
+.folha { max-height: calc(100dvh - var(--feed-h) - var(--player-h, 0px) - 48px); overflow-y: auto; overscroll-behavior: contain; }
 .folha h2 { margin: 0 34px 10px 0; font-size: 18px; font-stretch: 110%; }
 .folha dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0; font-size: 14px; }
 .folha dt { color: var(--texto-2); }
@@ -611,6 +673,7 @@ button, select { font: inherit; color: inherit; }
 .colunas .c-uv { grid-column: 4; justify-self: end; }
 .colunas .c-tse { grid-column: 5; justify-self: end; }
 .colunas .c-dif { grid-column: 6; justify-self: end; }
+.colunas .uv-curto { display: none; }
 .cand .tse, .cand .dif { display: none; }
 .lista.m-ambos .cand { grid-template-columns: 6px 44px minmax(0, 1fr) 112px 128px 104px; grid-template-rows: 1fr 1fr 6px; row-gap: 0; }
 .lista.m-ambos .cand .cor { grid-row: 1 / span 3; }
@@ -648,6 +711,16 @@ button, select { font: inherit; color: inherit; }
   .rota .passo { max-width: 46vw; }
   .conexao { width: 136px; font-size: 12px; }
   .faixa, .cargos { padding: 0 16px; }
+}
+
+/* telas bem estreitas (iPhone SE 1ª geração, 320 px): a conexão encolhe para a primeira linha caber inteira */
+@media (max-width: 359px) {
+  .topo { column-gap: 10px; }
+  .marca { font-size: 17px; }
+  .conexao { width: 112px; padding: 0 10px; gap: 6px; }
+}
+
+@media (max-width: 640px) {
   .painel { padding: 8px 16px 0; gap: 14px; }
   .corrida { padding: 16px 14px 12px; }
   .corrida-cab { grid-template-columns: 1fr; height: 124px; gap: 8px; }
@@ -657,6 +730,15 @@ button, select { font: inherit; color: inherit; }
   /* avisos da faixa numa linha com reticência (o texto inteiro fica no title) */
   .faixa .chip.alerta { display: block; min-width: 0; max-width: calc(100vw - 32px - 160px); overflow: hidden;
     text-overflow: ellipsis; line-height: 22px; }
+  .faixa .chip.sim { display: block; flex: 0 1 auto; min-width: 0; max-width: calc(100vw - 32px - 160px); overflow: hidden;
+    text-overflow: ellipsis; line-height: 22px; }
+  /* simulação no celular: "Dados reais", "▶ Playlist" e o ritmo (BUs/min) cabem inteiros numa linha a 360 px
+     (B-018: a 0.8.29 escondia o ritmo para caber a playlist) */
+  .faixa .chip.playlist .longo, .faixa .chip.sim .resto, .faixa .chip.sim .tse { display: none; }
+  .faixa .chip.sim, .faixa .chip.ritmo { flex: none; }
+  .faixa .chip.ritmo { width: auto !important; }   /* os 150 px fixos do desktop não cabem com a margem a 360 px */
+  .conexao.sim { min-width: 0; max-width: 58vw; }
+  .conexao .txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .selo { width: 100%; height: 34px; font-size: 13px; }
   .cand { grid-template-columns: 5px 26px minmax(0, 1fr) 80px; grid-template-rows: auto auto 6px; column-gap: 8px; row-gap: 2px; padding: 6px 2px 8px; }
   .cand .num { font-size: 15px; grid-row: 1 / span 2; }
@@ -700,6 +782,9 @@ button, select { font: inherit; color: inherit; }
   .comparar button { padding: 0 10px; font-size: 12.5px; }
   .corrida.m-ambos .colunas { grid-template-columns: 5px 22px minmax(0, 1fr) 70px 78px; column-gap: 6px; padding: 0 2px; font-size: 10px; }
   .corrida.m-ambos .colunas .c-dif { display: none; }
+  .colunas .uv-longo { display: none; }
+  .colunas .uv-curto { display: inline; }
+  .corrida.m-ambos .colunas .c-uv { white-space: nowrap; }
   .lista.m-ambos .cand { grid-template-columns: 5px 22px minmax(0, 1fr) 70px 78px; grid-template-rows: auto auto 6px; column-gap: 6px; row-gap: 2px; }
   .lista.m-ambos .cand .num { grid-row: 1; font-size: 13px; }
   .lista.m-ambos .cand .quem { grid-column: 3; grid-row: 1; }
@@ -721,3 +806,79 @@ button, select { font: inherit; color: inherit; }
   .brilho::before, .brilho > .halo { animation: none; }
   .conexao[data-estado="vivo"] .ponto { animation: none; }
 }
+
+/* ---------------------------------------------------------------- M-001: identificação da eleição (cartão "C") */
+/* o lugar do cartão é reservado (altura fixa): preencher ou rolar não empurra o painel; ao rolar, a barra fixa entra
+   só por transform/opacidade (não conta no CLS) */
+:root { --ident-h: 88px; --ident-mx: clamp(16px, 3vw, 36px); }
+.ident-recolhida { --ident-h: 40px; }
+.ident { position: relative; height: var(--ident-h); margin: 4px var(--ident-mx) 6px; }
+.ident-cartao, .ident-barra {
+  border: 1px solid var(--borda); border-radius: var(--raio-m); overflow: hidden; box-shadow: var(--sombra);
+  background: color-mix(in srgb, var(--fundo-2) 80%, transparent);
+  backdrop-filter: blur(14px) saturate(140%); -webkit-backdrop-filter: blur(14px) saturate(140%);
+}
+.ident-cartao { position: absolute; inset: 0; display: flex; flex-direction: column; }
+.ident .id-l1 { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 52px 6px 16px; flex: 1; min-height: 0; }
+.ident .id-txt { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
+.ident .id-eleicao { font-size: 19px; font-weight: 700; font-stretch: 112%; white-space: nowrap; }
+.ident .id-tipo { font-size: 13px; color: var(--texto-2); }
+.ident .id-turnos { display: flex; align-items: center; gap: 8px; flex: none; }
+.ident .id-turnos small { color: var(--texto-3); font-size: 12px; }
+.ident .id-seg { display: inline-flex; flex: none; border: 1px solid rgba(157, 183, 255, 0.5); border-radius: 10px; overflow: hidden; }
+.ident .id-seg i { font-style: normal; font-weight: 700; padding: 2px 12px; color: var(--texto-3); }
+.ident .id-seg i.sel { background: rgba(157, 183, 255, 0.85); color: #0d1431; }
+.ident .id-l2 {
+  display: flex; align-items: center; gap: 6px; padding: 6px 16px 7px; font-size: 15px; white-space: nowrap; min-width: 0;
+  background: linear-gradient(90deg, rgba(140, 107, 255, 0.35), rgba(79, 195, 255, 0.25));
+}
+.ident .id-pino { width: 15px; height: 15px; fill: #9db7ff; flex: none; }
+.ident .id-onde { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.ident .id-local { font-weight: 650; color: var(--texto); }
+.ident .id-sep { color: var(--texto-3); margin: 0 6px; }
+.ident .id-cargo { color: var(--texto-2); }
+.ident .icone-btn.id-recolher { position: absolute; right: 8px; top: 8px; width: 30px; height: 30px; font-size: 14px; }
+/* barra de uma linha: sempre fixa no alto; escondida acima da tela até o cartão sair dela */
+.ident-barra {
+  position: fixed; top: 8px; left: var(--ident-mx); right: var(--ident-mx); height: 40px; z-index: 30;
+  display: flex; align-items: center; gap: 10px; padding-left: 14px;
+  transform: translateY(-64px); opacity: 0; visibility: hidden; transition: transform 0.2s, opacity 0.2s, visibility 0.2s;
+}
+.ident.preso .ident-barra { transform: none; opacity: 1; visibility: visible; }
+.ident-barra { background: color-mix(in srgb, var(--fundo-2) 93%, transparent); }
+.ident-barra .id-eleicao { font-size: 14px; }
+.ident-barra .id-seg i { padding: 0 8px; font-size: 13px; }
+.ident-barra .id-l2 { flex: 1; align-self: stretch; padding: 0 48px 0 14px; font-size: 14px; }
+.ident-barra .icone-btn.id-recolher { top: 4px; right: 6px; }
+/* recolhido: cartão e barra viram só o botão, à direita */
+.ident-recolhida .ident-cartao { left: auto; width: 40px; }
+.ident-recolhida .ident-barra { left: auto; width: 40px; padding: 0; }
+.ident-recolhida .ident .id-l1, .ident-recolhida .ident .id-l2,
+.ident-recolhida .ident-barra .id-eleicao, .ident-recolhida .ident-barra .id-seg { display: none; }
+.ident-recolhida .ident .icone-btn.id-recolher { top: 4px; right: 4px; }
+@media (max-width: 640px) {
+  :root { --ident-h: 80px; }
+  .ident-recolhida { --ident-h: 40px; }
+  .ident .id-eleicao { font-size: 16px; }
+  .ident .id-l2 { font-size: 14px; }
+  .ident-barra { gap: 6px; padding-left: 8px; }
+  .ident-barra .id-eleicao { display: none; }
+  .ident-barra .id-l2 { padding: 0 42px 0 10px; }
+}
+@media (prefers-reduced-motion: reduce) { .ident-barra { transition: none; } }
+
+/* ---------------------------------------------------------------- termos de uso
+   Linha fixa e discreta à direita, logo acima do letreiro (e do player do replay, quando há): sempre à vista,
+   inclusive numa captura de tela, sem empurrar nada (fora do fluxo, no espaço que o padding-bottom do body já reserva). */
+.termos {
+  position: fixed; right: 18px; bottom: calc(var(--feed-h) + 14px); z-index: 9; margin: 0;
+  max-width: calc(100vw - 36px); font-size: 11px; line-height: 16px; color: var(--texto-3);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none;
+}
+:root.com-replay .termos { bottom: calc(var(--feed-h) + var(--player-h) + 22px); }
+.termos a {
+  pointer-events: auto; color: inherit; text-decoration: none; padding: 0 8px; border-radius: var(--raio-p);
+  background: color-mix(in srgb, var(--fundo) 72%, transparent);
+}
+.termos a:hover, .termos a:focus-visible { color: var(--texto-2); text-decoration: underline; }
+@media (max-width: 640px) { .termos-longo { display: none; } }

@@ -7,7 +7,9 @@
 //! * `uv-simulador` (`src/bin/uv-simulador.rs`, módulo [`simulador`]): site de resultados simulado, local, com relógio
 //!   acelerado e injeção de falhas, para provar o serviço sem baixar BUs do TSE;
 //! * `uv-carga` (`src/bin/uv-carga.rs`): cliente de carga e de conferência da difusão em tempo real do serviço
-//!   (`--http`, módulo [`difusao`], `docs/PROTOCOLO_WS.md`).
+//!   (`--http`, módulo [`difusao`], `docs/PROTOCOLO_WS.md`);
+//! * `uv-painel` (`src/bin/uv-painel.rs`, módulo [`painel`]): painel dos nós — desempenho, federação e configuração,
+//!   com login do Google (`docs/PAINEL.md`).
 
 pub mod coletor;
 pub mod difusao;
@@ -15,7 +17,10 @@ pub mod controle_replay;
 pub mod federacao;
 pub mod marcos;
 pub mod pagina;
+pub mod painel;
 pub mod preparo;
+pub mod previsao;
+pub mod relogio;
 pub mod replay;
 pub mod servico;
 pub mod simulador;

@@ -105,7 +105,7 @@ pub fn executar(cat: Arc<Catalogo>, mem: &EmMemoria, chegadas: &HashMap<([u8; 2]
                 }
                 ac.atualizar(&est, w as u64, t);
                 if cfg.gravar {
-                    let mo = Momento { encerrada: false, seq: w as u64, ultimo_bu: Some(t) };
+                    let mo = Momento { encerrada: false, seq: w as u64, ultimo_bu: Some(t), totalizado_ms: None };
                     for (cargo, abrs) in &por_cargo {
                         for abr in abrs {
                             let tocada = match abr {
@@ -126,7 +126,7 @@ pub fn executar(cat: Arc<Catalogo>, mem: &EmMemoria, chegadas: &HashMap<([u8; 2]
             // publicação encerrada: tudo, com a situação final
             let tf = Instant::now();
             if cfg.gravar {
-                let mo = Momento { encerrada: true, seq: ultimo as u64, ultimo_bu: Some(ultimo_t.load(Ordering::Acquire)) };
+                let mo = Momento { encerrada: true, seq: ultimo as u64, ultimo_bu: Some(ultimo_t.load(Ordering::Acquire)), totalizado_ms: None };
                 n_pub += publicador.gravar(&est, Some(&ac), mo, &cargos, false, &pub_dir)?;
             }
             // eventos do "matematicamente" (sequência, horário, abrangência, cargo, candidato, estado)

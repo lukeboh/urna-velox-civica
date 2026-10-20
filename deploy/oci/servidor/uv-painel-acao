@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+# uv-painel-acao — as ÚNICAS coisas que o painel (usuário uvpainel) pode fazer como root, por ações nomeadas
+# (/etc/sudoers.d/urna-velox-painel). Nada de comando livre: cada ação confere os próprios argumentos.
+#
+#   uv-painel-acao aplicar-no-env <arquivo>   instala um no.env novo, gerado e validado pelo uv-painel (cópia do atual
+#                                             vai para /etc/urna-velox/historico/); confere de novo cada linha mudada
+#   uv-painel-acao servico iniciar|parar|reiniciar   o urna-velox.service
+#   uv-painel-acao travar|destravar           cria/apaga /etc/urna-velox/controle-manual (o uv-atualizador não mexe no nó)
+#   uv-painel-acao aplicar-rotas <arquivo> <base>   instala o rotas_tse.json (caminhos do site de resultados), conferido
+#                                             pelo próprio uv-painel (validar-rotas); o anterior vai para historico/
+#   uv-painel-acao remover-rotas              volta aos caminhos padrão (apaga o rotas_tse.json, guardando a cópia)
+#
+# Caminhos (variáveis só para os testes: o sudo limpa o ambiente, o painel não consegue trocá-los).
+set -euo pipefail
+ETC="${UV_ACAO_ETC:-/etc/urna-velox}"
+PENDENTE="${UV_ACAO_PENDENTE:-/srv/urna-velox/painel/pendente}"
+DONO="${UV_ACAO_DONO:-uvpainel}"
+SYSTEMCTL="${UV_ACAO_SYSTEMCTL:-systemctl}"
+VALIDADOR="${UV_ACAO_VALIDADOR:-/opt/urna-velox/bin/uv-painel}"
+UNIDADE=urna-velox.service
+NO_ENV="$ETC/no.env"
+ROTAS="$ETC/rotas_tse.json"
+# chaves que o painel pode mudar (as mesmas de aquisicao/src/painel/config_no.rs) e o formato aceito
+EDITAVEIS='PLEITO|CICLO|AMBIENTE|BASE|RPS|UFS|ACELERACAO|CANDIDATOS|ORDEM|ACESSO|TETO_RPS_INTERNO'
+VALOR='[A-Za-z0-9._:/,@+=-]*'
+
+morrer() { echo "uv-painel-acao: $*" >&2; exit 2; }
+registrar() { logger -t uv-painel-acao -- "$*" 2>/dev/null || true; }
+
+# chave=valor efetivo (última atribuição) das linhas não comentadas
+chaves() { grep -Ev '^[[:space:]]*(#|$)' "$1" | sed -E 's/^export //; s/=.*//' | sort -u; }
+
+case "${1:-}" in
+  aplicar-no-env)
+    [ $# -eq 2 ] || morrer "uso: aplicar-no-env <arquivo>"
+    REAL=$(realpath -e -- "$2") || morrer "arquivo não existe: $2"
+    PEND_REAL=$(realpath -e -- "$PENDENTE") || morrer "pasta pendente não existe"
+    case "$REAL" in "$PEND_REAL"/no.env.[0-9]*) ;; *) morrer "arquivo fora de $PENDENTE: $REAL" ;; esac
+    [ -f "$REAL" ] && [ ! -L "$2" ] || morrer "não é um arquivo comum"
+    [ "$(stat -c %U -- "$REAL")" = "$DONO" ] || morrer "dono do arquivo não é $DONO"
+    [ "$(stat -c %s -- "$REAL")" -le 65536 ] || morrer "arquivo grande demais"
+    [ -f "$NO_ENV" ] || morrer "não existe $NO_ENV"
+    # cada linha nova ou mudada: comentário, ou CHAVE editável = valor só com caracteres seguros
+    N=0
+    while IFS= read -r L || [ -n "$L" ]; do
+      N=$((N + 1))
+      [[ -z "$L" || "$L" =~ ^[[:space:]]*# ]] && continue
+      grep -qxF -- "$L" "$NO_ENV" && continue
+      [[ "$L" =~ ^($EDITAVEIS)=$VALOR$ ]] || morrer "linha $N recusada (só $EDITAVEIS, sem espaços nem símbolos de shell): $L"
+    done < "$REAL"
+    # nenhuma chave não editável pode sumir ou aparecer
+    for K in $(comm -3 <(chaves "$NO_ENV") <(chaves "$REAL") | tr -d '\t'); do
+      [[ "$K" =~ ^($EDITAVEIS)$ ]] || morrer "a chave $K não pode entrar nem sair pelo painel"
+    done
+    # o bash tem de conseguir ler o arquivo sem executar nada além de atribuições
+    bash -n -- "$REAL" || morrer "o arquivo não passa no bash -n"
+    install -d -m 0750 "$ETC/historico"
+    ANTES="$ETC/historico/no.env.$(date +%Y%m%d-%H%M%S)"
+    cp -p -- "$NO_ENV" "$ANTES"
+    install -m 0644 -- "$REAL" "$NO_ENV.novo-painel"
+    mv -f -- "$NO_ENV.novo-painel" "$NO_ENV"
+    registrar "no.env trocado pelo painel (anterior em $ANTES)"
+    echo "no.env instalado; o anterior ficou em $ANTES"
+    ;;
+  aplicar-rotas)
+    [ $# -eq 3 ] || morrer "uso: aplicar-rotas <arquivo> <base>"
+    REAL=$(realpath -e -- "$2") || morrer "arquivo não existe: $2"
+    PEND_REAL=$(realpath -e -- "$PENDENTE") || morrer "pasta pendente não existe"
+    case "$REAL" in "$PEND_REAL"/rotas_tse.json.[0-9]*) ;; *) morrer "arquivo fora de $PENDENTE: $REAL" ;; esac
+    [ -f "$REAL" ] && [ ! -L "$2" ] || morrer "não é um arquivo comum"
+    [ "$(stat -c %U -- "$REAL")" = "$DONO" ] || morrer "dono do arquivo não é $DONO"
+    [ "$(stat -c %s -- "$REAL")" -le 16384 ] || morrer "arquivo grande demais"
+    [[ "$3" =~ ^https?://[A-Za-z0-9.:-]+(/[A-Za-z0-9._~/-]*)?$ ]] || morrer "base inválida: $3"
+    "$VALIDADOR" validar-rotas "$REAL" "$3" >/dev/null || morrer "o uv-painel recusou os caminhos (validar-rotas)"
+    install -d -m 0750 "$ETC/historico"
+    [ -f "$ROTAS" ] && cp -p -- "$ROTAS" "$ETC/historico/rotas_tse.json.$(date +%Y%m%d-%H%M%S)"
+    install -m 0644 -- "$REAL" "$ROTAS.novo-painel"
+    mv -f -- "$ROTAS.novo-painel" "$ROTAS"
+    registrar "rotas_tse.json trocado pelo painel"
+    echo "caminhos do site instalados (valem depois de reiniciar o urna-velox)"
+    ;;
+  remover-rotas)
+    [ $# -eq 1 ] || morrer "uso: remover-rotas"
+    if [ -f "$ROTAS" ]; then
+      install -d -m 0750 "$ETC/historico"
+      mv -f -- "$ROTAS" "$ETC/historico/rotas_tse.json.$(date +%Y%m%d-%H%M%S)"
+      registrar "rotas_tse.json removido pelo painel (caminhos padrão)"
+    fi
+    echo "caminhos padrão (valem depois de reiniciar o urna-velox)"
+    ;;
+  servico)
+    [ $# -eq 2 ] || morrer "uso: servico iniciar|parar|reiniciar"
+    if [ "$2" != parar ] && "$SYSTEMCTL" is-active --quiet uv-ciclo-no.service 2>/dev/null; then
+      morrer "o ciclo de simulações (uv-ciclo-no) está rodando nas mesmas portas: remova-o antes (63_ciclo.sh --remover)"
+    fi
+    case "$2" in
+      iniciar) "$SYSTEMCTL" start "$UNIDADE" ;;
+      parar) "$SYSTEMCTL" stop "$UNIDADE" ;;
+      reiniciar) "$SYSTEMCTL" restart "$UNIDADE" ;;
+      *) morrer "ação de serviço desconhecida: $2" ;;
+    esac
+    registrar "$UNIDADE: $2 pelo painel"
+    echo "$UNIDADE: $("$SYSTEMCTL" is-active "$UNIDADE" 2>/dev/null || true)"
+    ;;
+  travar)
+    [ $# -eq 1 ] || morrer "uso: travar"
+    touch "$ETC/controle-manual"; registrar "controle-manual criado pelo painel"; echo "atualizador travado (controle-manual)"
+    ;;
+  destravar)
+    [ $# -eq 1 ] || morrer "uso: destravar"
+    rm -f "$ETC/controle-manual"; registrar "controle-manual apagado pelo painel"; echo "atualizador destravado"
+    ;;
+  *) morrer "ação desconhecida: ${1:-(nenhuma)}" ;;
+esac

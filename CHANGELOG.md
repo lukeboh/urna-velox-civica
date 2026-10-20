@@ -2,6 +2,687 @@
 
 Todas as versões do Urna Velox. Regras em [docs/VERSIONAMENTO.md](docs/VERSIONAMENTO.md): cada commit sobe a versão; só as versões `X.Y.0` ganham tag (`vX.Y.0`; até a `0.3.0` todo commit ganhava a sua); o MINOR acompanha a última etapa concluída do [ROADMAP](ROADMAP.md) (etapas 1 a 9 = `0.1.0` a `0.9.0`, com a escalabilidade segura na etapa 6, a comparação com o TSE na 7, a previsão na 8 e o ensaio geral na 9 desde a renumeração de 16/10/2026; nas entradas anteriores à `0.6.7`, "etapa 7" / `0.7.0` = ensaio geral, hoje `0.9.0`; majoritários completos = `1.0.0`; proporcionais = `2.0.0`; até a 0.0.19 valia o esquema antigo de seis fases). As entradas `2.0.0-alpha.N`, abaixo da `0.6.0`, são o trabalho da etapa 6 feito na branch `feature/2.0-escalabilidade` antes da renumeração de 15/10/2026; nelas, "2.0" quer dizer a etapa 6 e "3.0", os proporcionais (hoje `2.0.0`).
 
+## [0.8.38] — 2026-10-20
+
+- **Modo `interno` descrito como servidor espelho:** nos textos (`CLAUDE.md`, `docs/PAINEL.md`, ajuda do
+  `uv-servico`, mensagens do coletor e do painel, rótulos do painel), o modo `ACESSO=interno` passa a ser "servidor
+  espelho dos arquivos públicos, fora da borda pública"; os testes usam hosts `*.exemplo.org`. Nomes de opção e de
+  chave (`--acesso interno`, `ACESSO`, `TETO_RPS_INTERNO`) e o comportamento não mudam.
+- **Capturas de `docs/bugs/` sem metadados** (EXIF, perfil de cor e bloco do editor removidos).
+- Os scripts de análise dos logs de acesso saem de `deploy/oci/`; o B-007 no `docs/BUGS.md` e no CHANGELOG fica sem
+  os nomes deles.
+- **Hook de pre-commit portátil:** a verificação de segurança roda pela versão PowerShell no Windows e pela versão
+  Python fora dele (antes, sem `powershell.exe`, todo commit era recusado); sem nenhuma das duas, o commit é recusado.
+- Verificação: `cargo test --release` 148 passam, 0 falham, 36 `--ignored`; `deploy/oci/testes` 33/33. Nenhuma
+  mudança em totalização ou resultado: não se aplica a conferência contra os arquivos oficiais.
+
+## [0.8.37] — 2026-10-20
+
+- **Atualização global de links e SEO para `urnavelox.com.br`:**
+  - Auto link adicionado no título principal do projeto no `README.md` (`# [⚡ Urna Velox](https://urnavelox.com.br)`).
+  - Atualização dos arquivos canônicos de rastreamento e indexação (`robots.txt` e `sitemap.xml`) em `site/src/` e `site/dist/`.
+  - Testes automatizados de validação de metadados em `aquisicao/src/pagina.rs` atualizados para o domínio canônico `urnavelox.com.br`.
+  - Scripts operacionais e guias atualizados com o novo domínio (`deploy/oci/02_configurar_borda.sh`, `deploy/oci/63_ciclo.sh`, `docs/CICLO_DIARIO.md`, `docs/PAINEL.md`, `docs/GUIA_URL_E_BALANCEAMENTO.md`).
+  - Implantação da versão atualizada nos nós da Oracle Cloud Infrastructure.
+
+## [0.8.36] — 2026-10-20
+
+- **Domínio próprio `urnavelox.com.br` implantado e ativo na OCI:**
+  - Configuração do domínio próprio oficial registrado no Registro.br, substituindo o DuckDNS para eliminar restrições de redes corporativas.
+  - Terminação TLS/HTTPS automática com certificado Let's Encrypt obtido com sucesso pelo Caddy nos nós da OCI.
+  - Suporte a `urnavelox.com.br` e `www.urnavelox.com.br` no `deploy/oci/servidor/Caddyfile.template`.
+  - Documentação e referências de ambiente atualizadas no `README.md`, `deploy/oci/README.md` e `deploy/oci/nos.env.exemplo`.
+  - Ajuste no script de verificação de pendências para permitir o e-mail de autor git.
+
+## [0.8.35] — 2026-10-19
+
+- **B-019 — o painel mostrava só um nó** ("painel fora do alcance", `error sending request for url
+  (http://10.0.1.11:8095/…)`): a porta 8095 nunca foi aberta na Security List da sub-rede. O `02_configurar_borda.sh`
+  procurava a lista pelo nome com a OCI CLI e, sem achar, seguia em silêncio. Agora `uv_oci.py liberar-portas` chega à
+  lista pelo caminho da instância (VNIC → sub-rede → Security List), só acrescenta as regras que faltam (nunca apaga) e
+  falha alto; o `02` para com erro se não conseguir; o `80_painel.sh` confere no fim, de cada nó, o painel do par. O
+  painel mostra a causa do erro (conexão recusada × tempo esgotado). Testes: `deploy/oci/testes/test_liberar_portas.py`
+  (vermelho antes: `AttributeError … liberar_portas`, 5 erros; depois 5 ok) e
+  `painel::testes::par_fora_do_ar_aparece_como_inalcancavel` (vermelho antes: "erro sem a causa: error sending request
+  for url (http://127.0.0.1:9/…)"; depois ok).
+- **B-020 — configuração larga no celular:** abaixo de 900 px a grade tinha coluna `1fr`, que cresce até o conteúdo
+  mais largo (JSON da auditoria): a página ia a 1.236 px e o Safari reduzia tudo. Colunas `minmax(0, 1fr)`, células que
+  quebram o texto, campos com 16 px no celular (o iPhone não aproxima ao tocar). Teste `site/testes/painel_celular.mjs`
+  (360/390/430 px e desktop, dois temas, três abas): 8 falhas antes, tudo ok depois.
+- **B-021 — aviso do ciclo de simulados** na configuração: com o `uv-ciclo-no` ativo e o `urna-velox` parado, a tela
+  diz que a configuração mostrada é a do serviço normal, não a do simulado em andamento (mesmo teste).
+- **Testes:** workspace inteiro ok (painel 32, lib 98), `deploy/oci/testes` 33 ok, ajudante 43 ok, termos ok. Não mexe
+  em totalização nem resultado: sem conferência nova contra os oficiais.
+
+## [0.8.34] — 2026-10-19
+
+- **Painel: caminhos do site do TSE** (pedido do Luciano, 19/10) — a URL de resultados e os moldes dos caminhos
+  (`{base}`, `{base_arquivos}`, `{amb}`, `{ciclo}`, `{pleito}`, `{uf}`, `{mun05}`, `{zona04}`, `{secao04}`, `{hash}`,
+  `{nome}`…) ficam em `/etc/urna-velox/rotas_tse.json` (`uv-servico --rotas`); o painel **descobre** onde estão os BUs
+  (no máximo 20 pedidos, 350 ms entre eles, para no primeiro 429) e permite buscar os arquivos de outro endereço
+  (`base_arquivos`). O ajudante só instala um arquivo validado (`uv-painel validar-rotas`).
+- **Borda × servidor espelho** (modo `interno`; regra do Luciano, 19/10; `CLAUDE.md` atualizado) — `ACESSO=interno` e `TETO_RPS_INTERNO`
+  no `no.env` (0 = sem teto), pelo painel com `CONFIRMO`. O código recusa o modo interno para a borda pública
+  (`resultados.tse.jus.br`, `cdn.tse.jus.br`): ali os 100 req/s valem sempre; a pausa de 10 min depois de um 429 vale
+  nos dois modos; no interno a cota da federação não se aplica.
+- **Controle protegido pelo login** — o Caddy manda todo `POST/PUT/PATCH/DELETE` em `/api/*` pelo `forward_auth` do
+  painel (`/painel/auth/verificar`, CSRF + origem); sem sessão, 401. O voto da Playlist de Simulados continua público.
+- **Termos de uso** — link discreto no rodapé do site para a licença no GitHub (teste `site/testes/termos.mjs`).
+- **Identidade visual** — o painel usa a do Urna Velox (aurora, vidro, Archivo, cores das séries), modo escuro e claro.
+- **Produção** — painel na porta 8095 (a 8090 é da playlist no nó A), lê a `saude.json` do ciclo diário
+  (`/srv/urna-velox/ciclo/atual/saida`), mostra também `uv-ciclo-no`, `uv-playlist` e o atualizador; o ajudante recusa
+  iniciar/reiniciar o `urna-velox` enquanto o `uv-ciclo-no` está ativo. Implantado nos dois nós da OCI com o cliente
+  OAuth do Google.
+- **Testes:** painel 32 (e2e com Google e site do TSE falsos), ajudante 43, `coletor`/`tse` (acesso, rotas), termos;
+  Caddyfile validado com a playlist e o controle (voto sem login passa, replay sem login 401). Suíte do workspace:
+  tudo passa. Não mexe em totalização nem resultado: sem conferência nova contra os oficiais.
+
+## [0.8.33] — 2026-10-19
+
+- **Painel dos nós (`uv-painel`, novo binário; `docs/PAINEL.md`)** — pedido do Luciano em 19/10: monitorar e ajustar
+  os nós por uma página, com login do Google e acesso só para os e-mails autorizados (`UV_PAINEL_EMAILS`).
+  - **Visão geral** (5 s), por nó: situação, BUs aplicados/s, seções apuradas, BUs baixados/s, req/s × teto, 429, fila,
+    último BU, CPU/memória do serviço e da máquina, disco, clientes WebSocket; federação: BUs recebidos e publicados
+    entre os nós por segundo, lotes copiados, nós ativos/fora, cota. Oito gráficos com os dois nós sobrepostos (15 min,
+    1 h ou 2 h; histórico de 2 h na memória do painel). **Configuração:** campos do `no.env` (identidade do nó e `EXTRA`
+    só leitura), iniciar/parar/reiniciar o `urna-velox`, travar/destravar o atualizador, `federacao.json` e auditoria.
+    **Detalhe:** a `saude.json` inteira.
+  - **Separado do `uv-servico`:** um painel por nó, que só lê arquivos (`saude.json`, `/proc`, `no.env`); o Caddy manda
+    `/painel*` ao painel do próprio nó e ele busca o do par pela rede privada (porta 8090, só para o IP do par; pedidos
+    assinados com HMAC-SHA256). O `urna-velox.service` não muda.
+  - **Segurança:** OpenID Connect (code flow; `state` e `nonce` em cookie assinado; `id_token` conferido: emissor,
+    audiência, validade, nonce, e-mail verificado); sessão em cookie assinado de 12 h, sem nada gravado no servidor;
+    CSRF + origem em tudo o que muda algo; CSP sem inline. Mudanças como root só pelo `uv-painel-acao` (sudo para um
+    programa só, com ações nomeadas); o `no.env` (lido pelo bash) passa por duas validações (no painel e no ajudante:
+    chaves editáveis, caracteres seguros, nenhuma chave não editável entra ou sai, `bash -n`, cópia do anterior em
+    `/etc/urna-velox/historico/`). Confirmação por frase: `CONFIRMO` (pleito, ciclo, ambiente, servidor, req/s,
+    parar/reiniciar) e `CONFIRMO TSE` quando o servidor é o TSE; req/s acima de 100 é recusado.
+  - **Implantação:** `deploy/oci/80_painel.sh` (usuário `uvpainel`, sudo restrito, porta 8090 para o par,
+    `uv-painel.service`, rota `/painel` no Caddy pelo `02_configurar_borda.sh`, que ganha a regra 8090 na Security
+    List); `compilar_local_arm64.sh` passa a empacotar o `uv-painel`; `nos.env.exemplo` com `PAINEL_*` e `URL_DOMINIO`.
+    **Ainda não implantado** (falta o cliente OAuth do Google).
+- **Testes:** 28 novos em `painel::` (HMAC com os vetores da RFC 4231; sessão, login, CSRF; `id_token`; `no.env` com
+  tentativas de injeção; amostras e taxas; ponta a ponta com um Google falso e dois painéis que se enxergam — login
+  aceito/recusado, `state` errado, sessão do A valendo no B, mudança no B pelo A com CSRF, origem, confirmação, teto
+  de 100 req/s e injeção, rotas internas sem assinatura, par fora do ar) e `deploy/oci/testes/test_painel_acao.sh`
+  (28 casos do ajudante, sem root). Suíte do workspace inteira: tudo passa. Página vista no Chromium (desktop claro e
+  escuro, 390 px sem rolagem lateral). Não mexe em totalização nem resultado: sem conferência nova contra os oficiais.
+
+## [0.8.32] — 2026-10-19
+
+- **README:** seção "Simulados com dados reais e a Playlist de Simulados" (dados reais, o que se repete é a
+  totalização, auditoria contra o oficial; os dois modos; a playlist com agenda, voto por IP e o mais votado como
+  próximo; pausa nas eleições oficiais); item "Dois relógios" (horário do Urna Velox × horário do TSE, M-003); a
+  comparação com o TSE explicada no mesmo relógio e com o ajuste de dia e velocidade nos simulados; o letreiro sem
+  os itens que saíram na 0.8.11 (disputa mais apertada/folgada, comparecimento por UF — B-014) e com o chip de ritmo;
+  `docs/CICLO_DIARIO.md` na lista da documentação. Só documentação.
+
+## [0.8.31] — 2026-10-19
+
+- **B-018: o chip de BUs/min voltou no celular.** A 0.8.29 o escondia (até 640 px) para caber o botão "▶ Playlist".
+  Agora o chip da simulação mostra só "Dados reais" no celular (o resto no `title` e na explicação) e o ritmo fica,
+  sem a largura fixa de 150 px: os três chips cabem inteiros, com margem, a 360 px.
+- **Teste que comprova:** `site/testes/playlist_pagina.mjs` (faixa a 1366, 390 e 360 px). Antes: 2 falhas (ritmo
+  oculto a 390 e 360 px). Depois: tudo certo. Só a página muda: sem conferência nova contra os oficiais.
+
+## [0.8.30] — 2026-10-19
+
+- **`63_ciclo.sh --playlist`: o Caddy não pegava a rota nova.** Na implantação de 19/10 (05:10) o `systemctl reload
+  caddy` falhou nos dois nós: o Caddyfile tem `admin off`, que desliga a API usada pelo reload, e o Caddy seguiu com a
+  configuração antiga (`/playlist` em 404; o site seguiu no ar). Agora, se o reload for recusado, o instalador
+  reinicia o Caddy (~1 s). Corrigido em produção às 09:15 com `systemctl restart caddy` nos dois nós.
+- **Implantado em 19/10:** playlist (serviço no nó A, rota no Caddy, vigias dos dois nós consultando-a; o B pela URL
+  pública) e binários 0.8.29 (página com o aviso de dados reais e o link da playlist; valem a partir do simulado das
+  10:00). Conferência feita de dentro do nó B, pela internet: `/playlist` 200, agenda 10:00 452 · 11:00 453 · 12:00
+  3220 (rotação, sem votos), suspensão de 24 a 28/10.
+
+## [0.8.29] — 2026-10-18
+
+- **Ciclo: os dados do simulado são os reais, dito com clareza** (pedido do Luciano em 18/10: visitantes entravam e
+  ficavam na dúvida). Página: o chip da faixa passa a ser um botão "Dados reais do TSE · retotalização · …" que abre a
+  explicação (os BUs são os publicados pelo TSE; o que se repete é a totalização, do zero, na ordem de chegada à
+  Justiça Eleitoral; no fim, a auditoria contra o oficial). A explicação abre sozinha na primeira visita do dia a um
+  simulado. A folha de detalhes rola quando o texto é maior que a tela (no celular saía pelo alto). Rótulo do
+  `uv-ciclo.sh`: eleição com a data em que os BUs foram coletados e o modo em palavras ("1º turno de 2024 (eleição de
+  06/10/2024) · mesma ordem de chegada dos BUs, acelerado" / "… · em tempo real, no ritmo em que os BUs chegaram ao
+  TSE").
+- **Playlist de Simulados das Eleições** (`deploy/oci/servidor/uv-playlist.py` + `uv-playlist.html`, só no nó A,
+  atrás do Caddy em `/playlist` e `/api/v1/playlist`): no ar agora, agenda prevista (início na hora fechada, previsão
+  de fim, eleição e data da coleta, modo "tempo real" ou "mesma ordem, acelerado") e as seis opções votáveis. Um voto
+  por IP (IPv6 por /64; IP guardado só como hash com sal), trocável; o mais votado é o próximo (empate: quem chegou
+  antes à contagem); os votos do escolhido são consumidos; sem votos, a rotação de sempre. Link "▶ Playlist" na faixa
+  da página.
+- **Vigia:** na virada da hora, pergunta à playlist o próximo (`POST /api/v1/playlist/decisao`, com segredo comum); a
+  decisão é tomada uma vez por execução e os dois nós recebem a mesma (o B pela URL pública). Sem playlist por ~2 min,
+  segue a rotação calculada localmente (como antes).
+- **Suspensão** (pedido do Luciano em 18/10): de um dia antes até três dias depois de cada eleição oficial
+  (`ELEICOES_OFICIAIS`, padrão 2026-10-25: 24 a 28/10), a playlist não aceita votos, não decide nada e a página diz
+  quando volta; o vigia não dispara nenhum simulado nesse período.
+- **Instalação:** `./63_ciclo.sh --playlist [domínio]` (segredo em `gerado/playlist.segredo`, fora do git; não para a
+  apuração no ar; o vigia é reiniciado e retoma a decisão salva). Os binários com a página nova entram com
+  `./compilar_local_arm64.sh && ./63_ciclo.sh --binarios` (valem no próximo simulado).
+- **Testes:** `deploy/oci/testes/test_playlist.py` (11: voto por IP e troca, /64, recusas, mais votado e consumo,
+  decisão única com voto chegando entre A e B, empate, rotação, duração medida, agenda em horas fechadas, janela de
+  suspensão, HTTP com segredo e sem JSON) e `test_vigia_playlist.py` (3: o vigia real sobe o mais votado, segue a
+  rotação sem playlist, não sobe nada na suspensão) — 28/28 da pasta. Ponta a ponta local com o Caddy do template:
+  voto pelo `X-Real-IP` do Caddy (cabeçalho forjado ignorado), decisão sem segredo 403. Página:
+  `site/testes/playlist_pagina.mjs` (23 conferências, desktop claro e celular escuro). `cargo test --release
+  --workspace` sem falhas. Totalização e resultado não mudam (só a página e scripts do ciclo): sem conferência nova
+  contra os oficiais.
+
+## [0.8.28] — 2026-10-18
+
+- **M-003: os horários do Urna Velox são os do relógio do sistema, separados dos do TSE** (pedido do Luciano em
+  18/10). Antes, o "horário do último BU", a curva, a previsão e o feed usavam o relógio do TSE (no simulado, a noite
+  da eleição original). Agora:
+  - publicação: `totalizado_em` (relógio do sistema, ISO com ms) logo depois do `ultimo_bu`, que continua sendo o do
+    TSE; eventos e marcos ganham `sistema`; o `estado` traz `relogio_sistema` — a âncora entre a noite do TSE e o
+    sistema (`aquisicao/src/relogio.rs`): um instante `t` do TSE equivale a `sistema0 + (t − noite0) / acelerar`, o
+    ajuste de data (e, no modo rápido, de velocidade) para comparar as duas apurações num simulado de outro dia;
+  - previsão: a conta corre na escala da noite pelo **relógio do sistema** (não mais o do site) e todos os horários
+    saem no relógio do sistema (`relogio: "sistema"`); `previsoes.csv` continua na escala da noite;
+  - curva (`GET /api/v1/curva`): eixo no relógio do sistema, um ponto por minuto da noite (0,12 s a 500×);
+  - página (`site/src/relogio.js`): "Totalizado pelo Urna Velox às …" com "último BU no TSE: … de dd/mm" embaixo;
+    selo, pílulas e feed no relógio do sistema (o horário do TSE no detalhe); "TSE confirmou" e o cabeçalho da
+    comparação medem a distância no relógio do sistema, com o TSE deslocado pela âncora; horários com segundos no
+    simulado acelerado.
+- **Teste que comprova:** `horarios_do_sistema_no_simulado` (`aquisicao/tests/servico.rs`, `--ignored`). Antes: 5
+  falhas (`totalizado_em` ausente, sem âncora, 136/136 pontos da curva e a previsão em 04/10/2026, 6/6 eventos sem
+  horário do sistema). Depois: ok (811 pontos da curva no relógio do sistema, maior passo 0,4 p.p.). Página:
+  `node site/testes/relogio.mjs` (unidade) e `site/testes/horarios_pagina.mjs` (tela a 1366 e 390 px, CLS < 0,01).
+- **Conferência com os oficiais:** 2026 83/83, 2024 5.574/5.574 e 51/51, situações e "matematicamente" idênticos
+  (motor `--ignored`); votos e situações não mudam (só campos novos). Serviço `--ignored` 16/16 (o
+  `kill9_tres_vezes` passou a descartar o `totalizado_em` na comparação com a execução sem queda, como já fazia com o
+  `ultimo_bu`).
+
+## [0.8.27] — 2026-10-18
+
+- **B-001 medido e fechado como resolvido pelo B-011** (só documentação). Com o simulador acompanhando os nós
+  (0.8.13+) e a medida de ordem sem os BUs tardios (B-002), o atraso da ordem no modo rápido do 3220 caiu de
+  4,3/2,8 min da noite na mediana (0.8.10) para 6/3 s (0.8.17); o p99 restante (8–28 min da noite) é 1–3,4 s de tempo
+  real a 500×, a cadência da troca de lotes. Nenhuma mudança de código. Detalhes em `docs/BUGS.md`.
+
+## [0.8.26] — 2026-10-18
+
+- **B-006 corrigido: os contadores da federação atravessam a retomada.** Gravados no armazém local do nó
+  (`estado/<nó>/contadores.json`, não servido aos pares) a cada lote e a cada ~1 s, e recuperados na partida; o
+  `lotes_gravados` vem do `bus/<nó>/ultimo`. Antes, depois de um reinício, `publicados` e companhia recomeçavam do zero.
+- **Teste que comprova:** `federacao::no::contadores_sobrevivem_a_retomada` (antes: `(0, 0)` em vez de `(700, 2)`;
+  depois: ok) e `tests/federacao.rs::kill9_e_reinicio` com as duas verificações novas (ok).
+
+## [0.8.25] — 2026-10-18
+
+- **B-003 corrigido: reinício intencional não reprova mais o `RESUMO.json`.** O `63_ciclo.sh --reiniciar` anota a hora
+  em `atual/reinicios_intencionais` (guardado nas evidências pelo `arquivar`); o `uv-ciclo-resumo.py` desconta a troca
+  de pid vista até 60 s depois da anotação e registra a observação. Queda sem anotação continua reprovando.
+- **B-002 corrigido: a medida de ordem do `RESUMO.json` não é mais dominada pelos BUs recebidos dias depois.** Os que
+  entram no corte (`disponivel` antes do `recebido`) ficam fora da medida e são contados em `recebidos_depois_do_corte`.
+  Atraso p99 com as evidências de 18/10: 452 de 12 dias para 5,4 h; 3220 de 2,9 dias para 7,5 h.
+- **Teste que comprova:** `deploy/oci/testes/test_ciclo_resumo.py`. Antes: 2 de 5 falhavam (p99 de 543.097 s com
+  20 BUs tardios; reinício intencional reprovado). Depois: 5/5 (`deploy/oci/testes` 13/13).
+
+## [0.8.24] — 2026-10-18
+
+- **Ciclo: a virada automática não derruba mais os nós** (revisão da 0.8.22/0.8.23, [docs/CICLO_DIARIO.md](docs/CICLO_DIARIO.md), problema 3):
+  - `uv-ciclo-vigia.py` dispara o `uv-ciclo.sh avancar` com `systemd-run --collect` numa unidade própria e sai. Antes, o avancar era filho do vigia e morria no `systemctl stop uv-ciclo-vigia` do `parar_unidades` (`KillMode=control-group`): com o vigia como root (0.8.22), a próxima virada pararia tudo nos dois nós sem subir a eleição seguinte. Se o disparo falhar, nova tentativa a cada minuto.
+  - ID da execução igual nos dois nós: `CICLO_CARIMBO` (hora do disparo, vinda do vigia, ou minuto do comando no `63_ciclo.sh --iniciar/--avancar`) no lugar do relógio de cada nó; as evidências caem no mesmo `ciclo/<ID>/` do bucket.
+  - `rotacao.json` mostra a execução em curso desde o início; o vigia retoma a decisão salva (próximo pleito, modo, horário) se reiniciar, em vez de recalcular.
+  - Modo padrão sem histórico unificado em `rapido` (vigia e `uv-ciclo.sh`).
+  - `63_ciclo.sh --estado` compara os IDs das execuções e acusa nós dessincronizados.
+  - Documentação corrigida: disparo até 10 s depois da hora fechada; o diagnóstico do problema 2 (só falta de root) era parcial. Nota: a 0.8.22 foi publicada dentro do commit `76814ac` ("0.8.21: M-002").
+
+## [0.8.23] — 2026-10-18
+
+- **Documentação completa do ciclo rotativo contínuo** ([docs/CICLO_DIARIO.md](docs/CICLO_DIARIO.md)):
+  - Especificação da rotação contínua (`452` → `453` → `3220` → `3221` → `452...`) e disparos na hora fechada (`HH:00:00`) com margem de segurança de 3 min.
+  - Alternância automática de modos por eleição (`rapido` 500× $\leftrightarrow$ `cadencia` 1×) e tratamento do 2º turno de 2026 (`3221`) em vitrine de espera (1h).
+  - Arquitetura do orquestrador `uv-ciclo-vigia.py`, integração com `uv-ciclo.sh avancar` e persistência em `rotacao.json`.
+  - Diagnóstico e documentação dos erros identificados em produção (permissão em `/srv/urna-velox/ciclo` e execução não-root do vigia) e as correções aplicadas.
+  - Atualização dos comandos operacionais (`--scripts`, `--avancar`, `--estado`) no `deploy/oci/63_ciclo.sh`.
+
+## [0.8.22] — 2026-10-18
+
+- vigia executa como root com logging de avancar
+
+## [0.8.21] — 2026-10-18
+
+- **M-002 medida: vazão de ponta a ponta e opções de topologia** ([docs/RELATORIO_M002_VAZAO.md](docs/RELATORIO_M002_VAZAO.md)).
+  Na noite real o limite é o teto de 100 req/s por IP: com os 2 nós, atraso máximo < 1 min no pico (1 nó: ~40 min);
+  falta folga se um nó cair no pico. Nas simulações o limite é a CPU (~1.100 BU/s para o par). Nada mudou nos nós.
+- Novos `aquisicao/scripts/medir_vazao.py` (fases, vazão, CPU, rede, federação e custos de uma execução arquivada do
+  ciclo) e `aquisicao/scripts/fila_noite.py` (fila da noite real por número de nós e requisições por BU), com
+  `aquisicao/scripts/testes/test_m002.py` (4 testes).
+
+## [0.8.20] — 2026-10-18
+
+- ajuste de permissao do ciclo e rotacao
+
+## [0.8.19] — 2026-10-18
+
+- ciclo rotativo continuo por hora fechada
+
+## [0.8.18] — 2026-10-18
+
+- **B-007 resolvido:** destino dos scripts de análise dos acessos decidido pelo Luciano.
+- **B-015 corrigido: `02_configurar_borda.sh` instala de fato o Caddy.** O `em "$N" <<CMD` sem `"bash -s"` chegava
+  vazio ao nó (Run Command) e o roteiro dizia "configurado"; agora passa `"bash -s"` e falha se a instalação falhar.
+  O mesmo defeito estava num dos scripts do B-007.
+- **Teste que comprova:** `deploy/oci/testes/test_scripts_em.py` (heredoc do `em` sem `"bash -s"`, `bash -n` e
+  compilação dos `.py` de `deploy/oci`). Antes: 2 achados (`02_configurar_borda.sh:49` e o do B-007).
+  Depois: `deploy/oci/testes` 8/8.
+
+## [0.8.17] — 2026-10-18
+
+- **B-005 corrigido: as simulações usam a destinação final dos candidatos.** O `candidatos.json` do acervo do ciclo
+  diário vinha do `preparar --ignorar-destinacao` (todos "Válido"); no 1º turno de 2024, 33 situações divergiam do
+  oficial (candidatos depois anulados). Novo `deploy/oci/candidatos_simulacao.sh`: gera os de 452, 453 e 3220 com o
+  `dvt` dos `-u.json` finais (só do cache, sem requisição) e, com `--enviar`, troca-os no acervo dos nós (pendente do
+  OK do Luciano). A noite real não muda (sem `dvt`, destinação presumida e alerta). `docs/CICLO_DIARIO.md` atualizado.
+- **Teste que comprova:** `motor/tests/integracao.rs::primeiro_turno_2024_simulacao_destinacao_final`. Antes: 33
+  situações divergentes. Depois: 5.574/5.574 arquivos e 15.042/15.042 situações idênticas.
+- `docs/BUGS.md`: linha da M-001 marcada "feito · 0.8.16" (ficou de fora do commit anterior).
+
+## [0.8.16] — 2026-10-18
+
+- **M-001 feita: a eleição que está na tela fica sempre à vista.** Logo abaixo do topo, um cartão à moda do aplicativo
+  da Justiça Eleitoral (variação C, escolhida pelo Luciano entre três protótipos): "Eleições 2026 · Gerais", o turno
+  marcado (1º/2º) e, numa faixa colorida, o local e o cargo. Ao rolar, a mesma identificação fica presa no alto numa
+  linha só (a marca Urna Velox rola junto com o topo). O botão ⌃ recolhe tudo até um botão pequeno, e a escolha fica
+  lembrada no navegador. O título da aba passa a dizer cargo, local e turno. Nada pula: o lugar do cartão é reservado
+  e a barra fixa entra por transform/opacidade (`site/src/identificacao.js`, `index.html`, `estilo.css`).
+- **Teste que comprova:** `site/testes/identificacao.mjs` (via `ensaio_carga_pagina.sh`, 1366 e 390 px). Antes: não há
+  cartão (erro); a primeira versão, com o cartão virando `fixed`, dava CLS 0,23 ao rolar. Depois: identificação
+  completa, presa a 8 px do alto ao rolar, recolher lembrado após recarregar, CLS ≤ 0,008. `site/dist` regerado.
+
+## [0.8.15] — 2026-10-18
+
+- **B-004 corrigido: o `para` não acusa mais erro quando o arquivo chegou.** O Run Command da OCI às vezes termina
+  "SUCCEEDED" com o texto da saída ainda vazio (o tar de 3,7 GB de 17/10); o `_oci_op` desistia na primeira consulta.
+  Agora consulta de novo (até 10 vezes) e, se a saída não vier, o `para` confere o tamanho do destino no nó e dá 0 se
+  bater com o local (com aviso). O Python do `_oci_op` saiu do heredoc do `lib.sh` para `deploy/oci/uv_oci.py` (mesma
+  lógica, agora com teste).
+- **Teste que comprova:** `deploy/oci/testes/test_uv_oci.py` (clientes da OCI falsos). Antes: 2 de 5 falhavam
+  (`para` dava 1 com o arquivo inteiro no nó; texto atrasado virava erro). Depois: 5/5. Conferido contra a OCI de
+  verdade no nó A (`em`, `para`, `em bash -s`, `de`: código 0). Saídas em [docs/BUGS.md](docs/BUGS.md).
+
+## [0.8.14] — 2026-10-18
+
+- **B-012 corrigido: candidatos da mesma disputa com cores bem distintas.** `site/src/cores.js` escolhia o primeiro tom
+  alternativo a 0,075 (OKLab, só no tema escuro) dos já escolhidos; partidos da mesma família de cor (MDB e PRTB em
+  São Paulo; PT, PSOL, PSTU, PCB…) ficavam a 0,05. Agora cada candidato tem 25 tons da própria cor (luminosidade
+  ±0,07/±0,14, matiz ±12°/±24°) e a disputa é resolvida em rodadas, maximizando a menor distância nos dois temas até
+  0,14 (com folga, fica o tom mais perto da cor do partido). A cor continua fixa durante a noite.
+- **Teste que comprova:** `site/testes/cores_distancia.mjs` (todas as disputas dos `candidatos.json` de 2024 1º/2º
+  turnos e 2026 1º turno; ≥ 0,12 até 8 candidatos, ≥ 0,075 nas maiores). Antes: 2.650 de 5.446 disputas abaixo,
+  pior par 0,047. Depois: nenhuma; pior 0,080 (pior até 8 candidatos 0,122). `cores.mjs` segue sem cor repetida.
+  Captura a 1366 px conferida. `site/dist` regerado.
+- B-010 marcado como não reproduzido (motor e situações conferem com o oficial; o Luciano avisa se vir de novo).
+
+## [0.8.13] — 2026-10-18
+
+- **B-011 corrigido: a curva da apuração não pula mais no modo rápido.** Causa: a mesma raiz do B-016 — no modo rápido
+  o relógio do simulador corria a 500× sem esperar os nós; a curva (eixo = horário do site) subia devagar a noite toda
+  e os BUs que faltavam entravam todos quando o relógio parava no fim (o salto vertical das capturas). Novo
+  `uv-simulador --acompanhar-servico <pct>`: o relógio não passa do instante em que as seções disponibilizadas e ainda
+  sem BU servido seriam mais que essa % das seções com BU; anda de novo, na mesma aceleração, quando o serviço busca os
+  BUs (sem BU novo por 10 s, anda solto). `uv-ciclo.sh` passa `--acompanhar-servico 1` no modo rápido (vale com
+  `63_ciclo.sh --instalar`); `simulador_resumo.json` ganhou `acompanhar`. Cadência real e TSE de verdade: nada muda.
+- **Teste que comprova:** `curva_sem_salto_no_modo_rapido` (`aquisicao/tests/servico.rs`, `--ignored`; AC do 1º turno
+  de 2026 a 500×, simulador lento como os nós). Antes: salto de 51,5 p.p. num minuto (48,5 % → 100 % às 02:53).
+  Depois: maior passo 4,3 p.p., curva até 20:59. Saídas em [docs/BUGS.md](docs/BUGS.md). Suíte verde. Não implantado.
+
+## [0.8.12] — 2026-10-18
+
+- **B-013 e B-016 corrigidos: a previsão acompanha a apuração até o fim também no modo rápido.** Causa (vista no nó A
+  no simulado das 13h de 18/10): a thread `uv-previsao` anda pelo relógio do site; no modo rápido o relógio do
+  simulador chega ao fim da noite antes de os nós ARM aplicarem os BUs, e a previsão parava — `previsoes.csv` parado
+  com 21 % das seções e `"definidas": 0` enquanto o serviço chegava a 499.207 seções; o cartão e o gráfico não andavam
+  mais. Agora `previsao::relogio`: com o relógio do site parado há mais de 3 s e BUs ainda entrando, o relógio da
+  previsão anda sozinho na velocidade do site (na noite real o relógio do site anda sempre; nada muda).
+- **Cartão mais claro (B-013):** "Matematicamente 2º turno **sai** entre 01:57 e 02:30" (ou "sai em horário ainda
+  incerto"), "**Fim da apuração:** 99 % … · 100 % …", título "Previsão (estimativa de horário)".
+- **Testes que comprovam:** `previsao_acompanha_servico_atrasado` (`aquisicao/tests/servico.rs`, `--ignored`: AC do 1º
+  turno de 2026 a 500× com o simulador respondendo em 200–300 ms). Antes: a última previsão de `ac-c0003` com 48,8 %
+  das seções. Depois: segue até 100 % ("definida"). Na página, `site/testes/previsao_pagina.mjs` (replay do 3220 a
+  500×, Presidente): 34 redesenhos do gráfico, nenhum trecho parado, "saiu às 22:37" dentro da faixa. Teste de unidade
+  `relogio_anda_quando_o_site_para_e_os_bus_entram`. `aquisicao/scripts/ensaio_carga_pagina.sh` ganhou `UV_PLEITO`
+  (452 ou 3220) e `UV_TESTE_PAGINA`. Suíte verde. Saídas em [docs/BUGS.md](docs/BUGS.md). B-016 registrado (pedido do
+  Luciano às 13:41). Não implantado nos nós.
+
+## [0.8.11] — 2026-10-18
+
+- **B-014 corrigido: a página recebe só o que a tela usa** (celular travando e esquentando no modo rápido). Medida
+  antes (replay do 452 a 500×, página como celular em Prefeito de São Paulo): 61.326 mensagens e 16 MB em 92 s (pico
+  de 11,5 MB/min), resultado de 191 tópicos, 13 % da thread principal em tarefas longas; o grosso eram 47 mil marcos
+  `faltam_para_mat` de todas as circunscrições e 11 mil eventos de todos os prefeitos.
+  - Página: resultado inteiro só da tela e da circunscrição dela (`atualizarTopicos`); ritmo da faixa também pelo
+    `ultimo_bu.seq` do `estado`; saíram do letreiro "disputa mais apertada / mais folgada" e "comparecimento por UF"
+    (precisavam de todos os tópicos; podem voltar como marcos do servidor).
+  - Protocolo (compatível: sem os campos novos, nada muda): `op: marcos` com `faltam: [tópicos]` limita o
+    `faltam_para_mat` aos tópicos pedidos (a página pede o da tela e o de Presidente); `eventos` e `marcos` com
+    `escopo: "uf"` mandam, de fora dos tópicos inscritos, só os do Brasil e das UFs. `docs/PROTOCOLO_WS.md` §3.
+- **Teste que comprova:** `aquisicao/scripts/ensaio_carga_pagina.sh` (+ `site/testes/carga_pagina.mjs`; tetos: 3
+  tópicos de resultado, 1.500 KB/min, 25 % em tarefas longas). Antes: 191 tópicos e 11.500 KB/min, falhou. Depois: 1
+  tópico, 466–536 mensagens e ~480 KB no replay inteiro, 4–5 % em tarefas longas. Capturas a 390 e 1366 px no fim do
+  ensaio. Suíte verde (`-p urna-velox`, `-p uv-aquisicao --lib`, `difusao_d4_reduzido`, hodômetro). `site/dist`
+  regerado. Saídas em [docs/BUGS.md](docs/BUGS.md). Não implantado nos nós (pedido do Luciano: simulado das 13h).
+
+## [0.8.10] — 2026-10-18
+
+- **B-009 corrigido: o contador de eleitores que faltam para o "matematicamente" não fica mais parado.** Causa: a
+  conta do `faltam_para_mat` rodava na verificação de 1 s da thread do motor com orçamento de 0,5 ms por rodada para
+  todas as circunscrições; no replay do 452 a 500× (o modo rápido do ciclo) Prefeito de São Paulo teve só 3 valores na
+  noite inteira. Agora a conta roda na thread `uv-faltam` (`marcos::ContaFaltam`, prioridade baixa): a verificação só
+  manda a fotografia (votos e restante) das circunscrições em disputa que receberam BU e recolhe as respostas da rodada
+  anterior; resposta mais velha que o último valor mandado (o 0 do evento) é descartada. O protocolo não muda.
+- **Teste que comprova:** `faltam_acompanha_a_apuracao` (`aquisicao/tests/servico.rs`, `--ignored`, SP do 1º turno de
+  2024 a 120×). Antes: 3 valores para São Paulo antes do "matematicamente", parado por 29,7 % dos BUs. Depois: 52
+  valores, maior trecho sem valor novo 3,9 % (limite 5 %). Saídas em [docs/BUGS.md](docs/BUGS.md). Suíte verde
+  (`-p urna-velox`, `-p uv-aquisicao --lib`, `difusao_d4_reduzido`, hodômetro); votos e situação não mudam (só o
+  marco `faltam_para_mat`).
+- `docs/BUGS.md`: B-015 registrado (o `02_configurar_borda.sh` manda o comando do Caddy vazio ao nó).
+
+## [0.8.9] — 2026-10-18
+
+- **B-008 corrigido: a página não vira mais download quando o serviço está fora do ar** (troca de eleição do ciclo,
+  partida da noite). Causa: das 07:00:02 às 07:02:25 de 18/10 os dois nós ficaram sem `uv-servico` (o `uv-ciclo.sh`
+  para o serviço, espera ~1 min e sobe o novo) e o Caddy respondia `502`/`503` vazio, sem `Content-Type` e com
+  `X-Content-Type-Options: nosniff` — o navegador oferecia salvar o arquivo. Agora o `Caddyfile.template` tem
+  `handle_errors 502 503 504`: página HTML curta ("O serviço está sendo atualizado e volta em instantes", recarrega a
+  cada 10 s) para a página e JSON (`servico_indisponivel`) para `/api/*` e `/ws`, ambos `503` com `Retry-After: 10`.
+- **Teste que comprova:** `deploy/oci/testes/pagina_indisponivel.sh` (Caddy v2.11.7, a versão dos nós, com o
+  `Caddyfile.template` real; `site/testes/indisponivel.mjs` abre a página no Chromium e no Firefox do Playwright).
+  Antes: 3 de 4 casos falhavam (`503` sem `Content-Type`; API sem JSON). Depois: 4/4. Saídas em
+  [docs/BUGS.md](docs/BUGS.md). Suíte: `cargo test --release -p urna-velox` e `-p uv-aquisicao --lib` verdes (nada
+  de totalização ou resultado mudou). Nos nós, o Caddyfile novo entra pelo `02_configurar_borda.sh` (reinicia o Caddy).
+
+## [0.8.8] — 2026-10-18
+
+- **Lista de bugs e melhorias fechada e ordenada** ([docs/BUGS.md](docs/BUGS.md)): além dos 7 da `0.8.7`, os vistos
+  pelo Luciano no ciclo de 18/10 — B-008 (página vira download na troca das 07h), B-009 (eleitores que faltam para o
+  "matematicamente" travado em SP), B-010 (sempre 2º turno no 1º turno: regra dos 50 % dos válidos para presidente,
+  governador e prefeito e do limiar de eleitorado dos municípios), B-011 (curva da apuração pula), B-012 (cores
+  parecidas na curva), B-013 (previsão não apareceu / pouco clara), B-014 (celular trava; a página assina ~190 tópicos
+  e recebe resultados de toda a totalização) — e as melhorias M-001 (identificação permanente da eleição, abrangência
+  e turno no topo) e M-002 (medir a vazão de ponta a ponta e avaliar uma topologia que escale). Capturas em
+  `docs/bugs/`.
+- **Handoff com a ordem de ataque ponderada** ([docs/HANDOFF_BUGS_2026-10-18.md](docs/HANDOFF_BUGS_2026-10-18.md)):
+  peso = 3·gravidade + 2·público + 2·apontado pelo Luciano + esforço + 2·relevância para o 2º turno de 25/10; ordem
+  B-008, B-009, B-014, B-013, B-011, B-010, B-012, M-001, B-004, B-005, M-002, B-003, B-002, B-006, B-001, B-007; por
+  item, por onde começar e o teste que comprova; como implantar sem quebrar o ciclo diário; prompt para a sessão que
+  vai executar. Prazo: o que muda a página ou o serviço no ar até 22/10.
+
+## [0.8.7] — 2026-10-18
+
+- **Regra nova no `CLAUDE.md` (Luciano, 18/10/2026): bug se corrige com o teste primeiro.** Todo bug entra em
+  [docs/BUGS.md](docs/BUGS.md) só com o sintoma; a ordem de ataque é do Luciano; para corrigir, primeiro o caso de teste
+  automatizado que comprova o bug (rodado e visto falhando, saída registrada), só depois a correção, com o teste e a
+  suíte verdes no commit.
+- **`docs/BUGS.md` criado** com os 7 itens vistos no ciclo diário (B-001 a B-007), estado "registrado", sem análise.
+
+## [0.8.6] — 2026-10-18
+
+- **`63_ciclo.sh --binarios` e `--reiniciar [A|B]`**: trocar só os executáveis nos dois nós sem parar nada, e
+  reiniciar o `uv-servico` de um nó retomando de onde parou (o simulador não é reiniciado). Roteiro de bug no meio da
+  totalização em [docs/CICLO_DIARIO.md](docs/CICLO_DIARIO.md).
+- **Primeiro horário do ciclo (18/10, 07h, 1º turno de 2024, rápido)** disparou sozinho nos dois nós; o 3221 da noite
+  foi arquivado. **Retomada provada no meio da apuração:** `--reiniciar B` às 07:06 com 265.838 BUs aplicados →
+  retomada de 265.838 BUs do diário em 9,2 s (0 perdidos, 0 órfãos); os dois nós encerraram com 478.026 BUs,
+  conferência igual à de ontem (5.542/5.574, nenhuma divergência de votos; 33 situações por destinação presumida),
+  0 duplicados, 0 HTTP 429.
+- `urna-velox.service` **desabilitado** nos dois nós durante o ciclo (com o `no.env` atual, um reinício do nó voltaria a
+  coletar o 3220 do TSE e brigaria com o ciclo); o roteiro de 24/10 inclui religá-lo. Lista dos roteiros de implantação
+  que não devem ser usados durante o ciclo em `docs/CICLO_DIARIO.md`.
+
+## [0.8.5] — 2026-10-18
+
+- **Ciclo diário provado na OCI com as quatro eleições** (binário `0.8.4` nos dois nós; tabela em
+  [docs/CICLO_DIARIO.md](docs/CICLO_DIARIO.md)): 2º turno de 2024 rápido e em cadência (com a aceleração do fim),
+  51/51 e 102/102; 1º turno de 2024 rápido em 7,8 min, 478.026 BUs, **nenhuma divergência de votos** (5.542/5.574
+  arquivos idênticos: 33 situações diferentes por destinação presumida de candidatos depois indeferidos/cassados e 9
+  oficiais não finalizados); 1º turno de 2026 rápido em 9,8 min, 83/83 e 832/832; nos dois nós, 0 revogações,
+  0 duplicados, 0 HTTP 429. O site ficou no 3221 (espera) até o primeiro horário, 07h de 18/10.
+- `uv-ciclo-resumo.py`: o veredito separa divergência de votos/totais (falha) de situação divergente pela destinação
+  presumida e de oficiais não finalizados (observações); o resumo mostra o atraso de recebimento p50/p99 em segundos da
+  noite.
+- `uv-ciclo.sh`: o 3221 sem coleta roda com `--aceitar-incompleto` (só exibição; o alerta `candidatos_incompleto`
+  continua). O `candidatos.json` do 3221 nos dois nós (`/srv/urna-velox/preparo/`, o anterior guardado como
+  `candidatos.json.20261016`) foi **regerado em 18/10 00:11**: completo, 28 UFs, 517.179 seções (o de 16/10 não tinha o
+  `cs.json` de TO); 32 requisições ao TSE pelo `uv-coletor preparar` (≤ 5 req/s, fora da apuração).
+- Ordem no modo rápido documentada: cada nó segue a ordem do TSE, mas os BUs do par chegam em lotes (p50 ~10 min da
+  noite no 1º turno de 2026, com a noite passando a 500×); na cadência real a ordem é a do TSE.
+
+## [0.8.4] — 2026-10-17
+
+- **Selo de simulação no celular:** o chip "Simulação · dados reais do TSE · …" da faixa não encolhe mais até virar
+  "Simula…" (390 px: ~200 px com reticência, texto inteiro no `title`); conferido com captura da página a 1366 e a
+  390 px. `site/dist` regerado.
+- **Primeira execução do ciclo na OCI** (`./63_ciclo.sh --iniciar 453 rapido`, binário `0.8.3`): os dois nós coletaram
+  do simulador do A (51.655 e 45.763 BUs publicados na federação, cada um recebeu os do outro), 97.392 BUs aplicados,
+  conferência 51/51 `-u.json` idênticos e 102/102 situações nos dois nós, 0 revogações, 0 duplicados, 0 HTTP 429.
+
+## [0.8.3] — 2026-10-17
+
+- **Ciclo diário de simulações com dados reais** (18 a 23/10/2026, pedido do Luciano em 17/10;
+  [docs/CICLO_DIARIO.md](docs/CICLO_DIARIO.md)). Nos dois nós da OCI, todo dia: 07h 1º turno de 2024, 11h 2º turno de
+  2024, 13h 1º turno de 2026 (1 h antes do pedido, para a cadência real caber) e 17h 2º turno de 2026 (só os
+  candidatos, sem coleta, até 25/10). Modo alternado por dia: rápido (simulador a 500×, totalização o mais rápido
+  possível) nos dias 18, 20 e 22; cadência real do TSE (1×, com o TSE simulado progressivo e o resto da noite sem
+  intervalo 15 min antes da troca) nos dias 19, 21 e 23.
+  - `deploy/oci/servidor/uv-ciclo.sh` (troca de eleição, arquivamento, pontes, federação do ciclo),
+    `uv-ciclo.timer`/`.service` (`OnCalendar` em `America/Sao_Paulo`), `uv-telemetria.py` (uma linha JSON a cada 15 s:
+    a `saude.json` inteira, sistema, processos, conexões na 8080, relógio do simulador), `uv-ciclo-resumo.py`
+    (`RESUMO.json` com veredito, tempo até encerrar, ordem × recebimento e picos; evidências no bucket) e
+    `deploy/oci/63_ciclo.sh` (`--instalar`, `--iniciar`, `--estado`, `--telemetria`, `--remover`).
+  - Acervo persistente `/srv/urna-velox/acervo/<pleito>` no nó A (BUs já baixados do TSE, `cs.json`, oficiais,
+    candidatos e linha do tempo; o B recebe candidatos e linha do tempo): **nenhuma requisição ao TSE nas simulações**,
+    nada baixado de novo; cada eleição começa do zero numa pasta própria, apagada na troca seguinte.
+  - Os dois nós coletam ao mesmo tempo do simulador do A (ponte `socat` na rede privada, como no `40_ensaio.sh`).
+- **`uv-servico --simulacao "<rótulo>"`**: `simulacao.rotulo` na mensagem `estado`, no `GET /api/v1/estado` e na
+  `saude.json`. A página acrescenta "SIMULAÇÃO" ao selo de situação do topo (explicação no `title`) e um chip na faixa
+  ("Simulação · dados reais do TSE · <eleição> · <modo>"); sem o rótulo, nada muda. `site/dist` regerado.
+- **O limite de 100 req/s é só para buscar arquivos no TSE** (regra do Luciano, 17/10/2026): contra um servidor local
+  (`127.0.0.1`), `coletor::limites` aceita `--rps` acima de 100 (teto = `max(100, rps) × aceleração`). Contra o TSE
+  nada mudou (teste `limites_nao_afrouxam_contra_o_tse` ganhou o caso local de 5.000 req/s).
+- **Linha do tempo das eleições** em `D:\dados\urna-velox\linha-do-tempo\<pleito>.csv` (formato das métricas, ordenada
+  pelo recebimento no TSE, `dr`/`hr` do `aux.json`): 452 com 478.026 seções, 453 com 97.392, 3220 com 499.207 (6.969
+  completadas pelo `ordem_3220.csv`). **Sondagem de 200 `aux.json` do 3220** (5 req/s, combinada): o `dg`/`hg` é a hora
+  da última regeração do arquivo (05/10 12:53–12:56 em 126 de 200; outras de 06 a 16/10), não a da totalização da
+  seção; o `aux.json` não traz a hora de totalização, e a extração completa não foi feita.
+- **Verificação:** o motor e a totalização não mudaram. Teste local do ciclo com o 2º turno de 2024, dois nós
+  federados contra o simulador, nos dois modos: modo rápido 51/51 `-u.json` idênticos ao oficial e 102/102 situações
+  nos dois nós, 0 revogações, encerrou em 1,2 min, ordem × recebimento com atraso p50 4 s e p99 148 s da noite;
+  cadência (30× com o TSE simulado e, no meio da noite, 500× pelo `/controle/velocidade`, como a aceleração do fim)
+  também 51/51 e 102/102 nos dois nós, 0 revogações, sem reinício; o atraso p99 (459 s da noite) vem da rajada da
+  aceleração.
+
+## [0.8.2] — 2026-10-17
+
+- **Republicação da federação na partida sem perda e com memória limitada** (`aquisicao/src/federacao/no.rs`,
+  `republicar`). Revê a `0.8.1`, que limitava a memória descartando registros. Ela usava um teto de 1.000 registros,
+  lia só os últimos 2 MB do diário e saía em silêncio quando o diário estava mais de 2 min à frente do último lote.
+  Com isso, uma queda depois de minutos sem gravar lotes deixava os pares sem os BUs dessa janela.
+  - O diário é lido em fluxo e o que passou do corte vai para o storage em lotes de até 500 registros, conforme é
+    lido. Não há teto: a regra "republicar a mais é inofensivo" continua valendo, e a memória fica em um lote.
+  - Execuções misturadas: o `secoes.log` só cresce, então a primeira linha dele é anterior ao primeiro lote da mesma
+    execução. Se ela é **posterior ao último lote**, saída e storage da federação são de execuções diferentes. Era o
+    caso do nó A: o diário recomeçou às 22:19 UTC de 16/10, numa operação manual que arquivou só a `saida`, e o
+    último lote era das 20:21. Nada é republicado, e o motivo vira o alerta `federacao_diario_desalinhado`. Na
+    `0.8.1`, esse caso não gerava alerta, embora o CHANGELOG dissesse que sim.
+  - `republicar` devolve `Republicacao` (registros, lotes, desalinhado). O evento `federacao_republicados` ganhou
+    `lotes`.
+  - Testes: `republicar_sem_teto_em_lotes_limitados` (2.345 registros depois do corte → 5 lotes de no máximo 500,
+    nada em memória no fim). Os outros dois de republicação foram adaptados; `gravar_lote_fraciona_em_tamanho_maximo`
+    é da `0.8.1`.
+  - A causa descrita na `0.8.1` está certa: a republicação do diário inteiro (499.207 BUs, ~8,5 GB) e o lote único
+    para codificar tudo. Correção de detalhe: o buffer de `codificar` é a soma dos BUs, não `n × 16 KB`.
+- **Medido no nó A da OCI**, com o estado real do simulado do 3220: retomada e partição com **480 MB de pico**
+  (`VmHWM`) e 378 MB depois de 8 min, sem reinício nem OOM. Na `0.8.0`, ~11,75 GB e morte a cada ~4 min. O alerta
+  `federacao_diario_desalinhado` saiu na partida.
+- **Coleta não combinada durante a validação:** depois da retomada, o nó A seguiu o `no.env`, que aponta para o site
+  do TSE no pleito 3220, e coletou por ~8 min (20:33–20:42 de Brasília):
+  - ~88 req/s em média, abaixo do teto de 95;
+  - ~25 mil `aux.json` e ~12 mil BUs baixados de novo. O `cs.json` do 3220 traz hoje *hashes* novos para seções já
+    aplicadas (alerta `reenvio_identico`: mesmo BU, totais inalterados), e o serviço não usou os BUs dos pacotes
+    locais (`bu_do_pacote` 0).
+
+  Parado à mão. O nó A fica parado até o Luciano decidir o `no.env` dele.
+- `deploy/oci/README.md`: arquivar `saida`, `dados` e `federacao` juntos (o `60_simulado.sh` já faz isso).
+- `cargo test --release --workspace` passa (57 testes em `uv-aquisicao`).
+
+## [0.8.1] — 2026-10-17
+
+- **Correção de falta de memória (OOM) na retomada do serviço com federação ativa (`aquisicao/src/federacao/no.rs`):**
+  - **Causa raiz:** na inicialização do serviço com partição configurada (`f.armazem`), `republicar()` busca no diário local (`secoes.log`) os BUs gravados nos últimos 30 s antes do último lote emitido (`corte_ms`). No nó A da OCI, após reinício de simulado, `secoes.log` havia sido reescrito com 499.207 seções (132 MB) às 22:19 UTC, enquanto o último lote `0000005291.uvtr` era de 20:21 UTC. Como todas as linhas eram posteriores ao corte, `republicar()` carregou todas as 499.207 seções inteiras para dentro de `f.saida: Mutex<Vec<(Cabecalho, Bytes)>>`, alocando ~8,5 GB de RAM. Em seguida, a thread publicadora chamou `gravar_lote(&f)`, que tentou serializar o vetor inteiro de uma vez em `codificar(&regs)`, solicitando um buffer de `Vec<u8>` de ~7,65 GB. A soma ultrapassou a memória física (12 GB de RAM na OCI, atingindo ~11,75 GB de RSS), acionando o kernel OOM killer 4–5 s após o log de partição.
+  - **Correções aplicadas:**
+    - **Fracionamento de lotes (`LOTE_MAX_REGISTROS = 500`):** `gravar_lote()` agora drena `f.saida` em pedaços de no máximo 500 registros (~6 MB por lote), eliminando alocações gigantescas de buffers de codificação.
+    - **Teto na republicação (`MAX_REPUBLICAR = 1.000` seções / ~15 MB):** limita a quantidade máxima de registros que podem ser colocados na fila de retransmissão.
+    - **Leitura eficiente do fim do arquivo:** em vez de ler o `secoes.log` inteiro do início (132 MB), faz seek para os últimos 2 MB (`seek_tail_bytes`) e processa em ordem reversa.
+    - **Proteção contra diários dessincronizados (`MAX_JANELA_REPUBLICAR_MS = 120.000`):** se o timestamp dos BUs no final do diário tiver defasagem maior que 2 minutos em relação ao corte do lote, o sistema detecta que o arquivo pertence a outra execução/sessão, registra aviso no log e ignora com segurança a republicação.
+  - **Medição de memória na retomada:**
+    - Antes da correção: pico de **~11,75 GB RSS** (processo morto pelo kernel via SIGKILL).
+    - Depois da correção: **~50–80 MB RSS** durante toda a inicialização e retomada da federação.
+  - **Testes automatizados adicionados (`aquisicao/src/federacao/no.rs`):**
+    - `gravar_lote_fraciona_em_tamanho_maximo`
+    - `republicar_ignora_diario_desalinhado_ou_antigo`
+    - `republicar_recupera_apenas_ultimos_bus_do_corte`
+    - Suíte completa `cargo test --release --workspace` passa com sucesso.
+
+## [0.8.0] — 2026-10-17
+
+- **Etapa 8 concluída: previsão do matematicamente e do fim da apuração** — por decisão do Luciano, sem a validação
+  independente prevista (como nas etapas 3 a 6). Entregas nas `0.7.6`–`0.7.8`:
+  - motor (`urna_velox::previsao`) e backtest `uv-motor previsao`;
+  - thread `uv-previsao` no `uv-servico`, mensagem `previsao` no protocolo (§4.7) e o cartão "Previsão
+    (estimativa)" na página;
+  - detecção ao vivo da parada da chegada dos BUs, com a previsão suspensa e adiada.
+- **Critérios** ([relatório](docs/RELATORIO_0.8.0.md)):
+  - calibração e erro dentro da meta nas duas noites de 2024 (82–85 %, ≤ 8 min a partir de 50 %);
+  - 1º turno de 2026 fora da meta pela parada da chegada dos BUs, aceito;
+  - rodada < 1 s nos 5.569 municípios, e < 50 ms no 3221 com ≥ 8 threads;
+  - CLS 0 no replay.
+- **Pendências:** municípios pequenos (< 20 mil eleitores, 74 %) para a eleição municipal de 2028; estratos por zona;
+  custo com 4 threads no 3221 a confirmar no ensaio geral.
+- ROADMAP: etapa 8 ✅.
+- **Implantação na OCI** (`deploy/oci/compilar_local_arm64.sh` + `50_atualizar.sh --sem-compilar`): o
+  `uv-atualizador` não mexe nos nós, que estão com a trava manual do simulado do 3220. Os dois nós ficaram com a
+  `0.8.0`:
+  - **nó B:** ativo, página respondendo.
+  - **nó A:** deixado **parado**. Desde a tarde de 17/10, ainda na `0.7.3`, ele estava num laço de falta de memória:
+    retomada do simulado (~190 s, 499.207 BUs), depois ~12 GB poucos segundos após a partição, morto pelo kernel,
+    30 reinícios a cada ~4 min. A `0.8.0` repete o laço. A investigar na etapa 9.
+- Sem mudança de código em relação à `0.7.8`: `cargo test --release --workspace` passa.
+
+## [0.7.8] — 2026-10-17
+
+- **Parada da chegada dos BUs detectada ao vivo** (etapa 8, decisão do Luciano sobre o relatório §9.1, opção c):
+  - `Previsor` acompanha o ritmo de chegada das seções no país (`detectar_parada`). Entre 5 % e 97 % apurado, se o
+    ritmo dos últimos 5 min cai abaixo de 10 % do dos 30 min anteriores, a previsão fica `suspensa`. Ela volta ao
+    normal quando o ritmo chega a 30 % do de antes.
+  - Enquanto está suspensa, não se calcula previsão nova: a última previsão normal de cada tópico é adiada pelo tempo
+    parado. Com a volta, tudo é recalculado.
+  - Parâmetros novos `parada_janela_s`, `parada_ref_s`, `parada_razao` e `parada_retorno`.
+  - O backtest lista as paradas no `resumo.md` e no `resumo.json`. Em 2026 pegou 19:31–20:00, além de duas curtas
+    (18:01, 18:49); em 2024 1º turno, uma de 8 min; no 2º turno, nenhuma.
+- **Protocolo** (§4.7, por acréscimo): `situacao` = `suspensa` e o campo `parada` (`desde`, `minutos`).
+- **Página:** no cartão da previsão, a faixa ganha "(adiada)" e a nota, em cor de alerta, diz "chegada de BUs parada
+  desde hh:mm — previsão adiada".
+- **Relatório** `docs/RELATORIO_0.8.0.md`:
+  - §4.1 novo, com o efeito na calibração. A detecção não melhora o acerto do relógio em 2026 (Presidente 54 % →
+    49 %; 59 % fora das suspensões), e 2024 não muda. O ganho é dizer na tela que a chegada parou.
+  - §9 com as decisões.
+- **ROADMAP:** municípios pequenos (< 20 mil eleitores, 74 % de cobertura) entram como pendência para a eleição
+  municipal de 2028.
+- **README:** seção nova "Para quem acompanha a eleição", antes da visão técnica: o que o Urna Velox mostra para
+  quem não é técnico (apuração quase em tempo real, o matematicamente com a seção que decidiu, a contagem regressiva,
+  a previsão com faixa, o letreiro de notícias da noite, a comparação com o TSE e a curva da noite).
+- Sem mudança em totalização ou resultado: `cargo test --release --workspace` passa; não se aplica a conferência
+  contra os arquivos oficiais.
+
+## [0.7.7] — 2026-10-17
+
+- **Previsão no serviço** (etapa 8): thread `uv-previsao` (`aquisicao/src/previsao.rs`), **fora da thread do motor**.
+  Só lê os contadores atômicos e os candidatos; do motor recebe por canal os instantes em que cada circunscrição
+  ficou matematicamente decidida. A cada `--previsao-intervalo` s do relógio do serviço (padrão 30; 0 desliga;
+  `--previsao-threads`, padrão 4), registra o avanço de todos os tópicos publicados e prevê os que mudaram. A
+  previsão vai para a difusão e para `<saida>/previsoes.csv`; o bloco `previsao` na `saude.json` traz rodadas,
+  tópicos e custo.
+- **Protocolo** (`docs/PROTOCOLO_WS.md` §4.7, por acréscimo): mensagem `previsao` para quem está inscrito no tópico.
+  Traz `mat` (tipo, P10/P50/P90, `incerta`, probabilidade de definir antes do fim, fração com que deve sair),
+  `fim99`, `fim100`, `base`, `chegou`, `definida` e `confirmacao`. Na inscrição vem também o `historico` das faixas
+  da noite. Rota nova `GET /api/v1/previsao/<topico>`.
+- **Página:** cartão "Previsão (estimativa)" entre "Apuração" e "Curva da apuração" (`site/src/previsao.js`), com
+  altura fixa e linhas com reticência.
+  - Mostra a faixa do matematicamente, o hodômetro do horário mais provável, a chance de sair antes do fim, a faixa
+    P10–P90 da noite (tracejado verde = horário real depois que saiu) e o fim da apuração.
+  - Depois da definição, mostra "saiu às hh:mm — dentro/fora da faixa prevista desde hh:mm", e o letreiro ganha o
+    marco "Previsão confirmada".
+  - Num tópico que não é a circunscrição, o matematicamente vem da circunscrição.
+- **Relatório da etapa** em `docs/RELATORIO_0.8.0.md`; ROADMAP atualizado. Replay do 1º turno de 2026 a 60×:
+  - CLS 0 no desktop e no celular a noite inteira.
+  - Em 45 de 47 circunscrições decididas com previsão antes, o real caiu na última faixa (nas outras 2, de 3 a 12 s
+    antes do P10).
+- Fechamento da `0.8.0` aguardando a decisão do Luciano sobre o 1º turno de 2026 (relatório §9).
+- Sem mudança em totalização ou resultado: `cargo test --release --workspace` passa; não se aplica a conferência
+  contra os arquivos oficiais.
+
+## [0.7.6] — 2026-10-17
+
+- **Previsão do matematicamente e do fim da apuração no motor** (etapa 8, `docs/HANDOFF_0.8.0.md`): módulo novo
+  `motor/src/previsao.rs`, puro (o instante entra como parâmetro) e determinístico com a semente.
+  - Velocidade em aptos/min por média móvel com meia-vida de 10 min, mais a dispersão da janela.
+  - Restante por estrato (UF no Brasil, município na UF, até 24 estratos) com encolhimento das proporções e dos
+    votos por apto. O eleitorado do estrato é o publicado ou é estimado pelas seções.
+  - Momento da definição pela mesma regra do motor (`matematica::avaliar`), por busca binária na fração do restante.
+  - Monte Carlo (200 sorteios: deriva comum, amostragem por estrato, comparecimento, ordem de chegada entre estratos)
+    para P10/P50/P90, a probabilidade de definir antes do fim e a fração apurada com que deve sair.
+  - Conversão em horário misturando os gabaritos (curvas `τ(F)` das noites, ajustadas por deslocamento e escala nos
+    últimos 30 min) com a velocidade, mais um erro relativo que cresce com poucas seções por chegar. Fim da apuração
+    (99 % e 100 % das seções) pelo mesmo caminho.
+  - Salvaguardas (≥ 5 % e ≥ 10 min; faixa > 3 h = "incerta") e confirmação depois da definição: última faixa, dentro
+    ou fora, desde quando.
+  - `Previsor` com uma série por tópico, rodada só dos que mudaram, em paralelo.
+  - Gabaritos das três noites (14 curvas: Brasil, UF, municípios por porte) embutidos em `motor/src/gabaritos.json`.
+- **`uv-motor previsao`** (`motor/src/backtest.rs`): reproduz a noite em ordem de chegada e prevê a cada 30 s do
+  relógio da noite, só com o que se sabia. Grava `previsoes.csv` com o real ao lado, a calibração e o erro do P50 por
+  faixa de apuração (`resumo.md`/`.json`), o custo da rodada (`--todos-topicos`) e os gabaritos da noite
+  (`--gerar-gabaritos`).
+- `scripts/backtest_previsao.sh`: as três noites, cada uma sem os próprios gabaritos; embute os gabaritos.
+- `scripts/graficos_previsao.py`: faixa P10–P90 ao longo da noite, em SVG; gráficos em `docs/img/previsao/`.
+- **Backtest** (relatório em `docs/RELATORIO_0.8.0.md`), horário real dentro do P10–P90 com ≥ 20 % apurado:
+  - **2024 2º turno:** 85,3 %, erro do P50 de 8,1 min a partir de 50 %.
+  - **2024 1º turno:** 81,5 %, 7,8 min.
+  - **2026 1º turno:** Governador 68,1 %, Senador 60,2 %, Presidente 53,3 %. A chegada dos BUs ao TSE parou das 19h30
+    às 20h50; a fração com que cada disputa se decidiu foi prevista com erro de 0,06 ponto percentual.
+  - **Custo:** 16.982 tópicos em 27 ms com 24 threads, 5.569 municípios em 224 ms com 2.
+- Sem mudança em totalização ou resultado (a previsão só lê o estado): `cargo test --release` passa (8 testes novos
+  em `previsao`); não se aplica a conferência contra os arquivos oficiais.
+
+## [0.7.5] — 2026-10-17
+
+- **Site: versão no topo sem deslocar a página.** A versão (`v0.7.x`) entrava como `<sup>` dentro da marca e alargava
+  a primeira coluna do topo; no celular a conexão e o botão de tema eram empurrados para fora da tela, a página ficava
+  mais larga que a janela e a tabela de resultados inteira aparecia deslocada. Agora a versão é uma etiqueta de 9 px
+  logo abaixo de "Velox", fora do fluxo (`position: absolute`, sem ocupar largura); a marca fica do tamanho do texto
+  (`justify-self: start`), os itens do topo podem encolher (`min-width: 0`) e o `html` corta qualquer transbordo
+  lateral (`overflow-x: clip`). Abaixo de 360 px a marca e a conexão encolhem um pouco para a primeira linha caber.
+  Conferido no Chromium em 320, 375, 390 e 1280 px: nada passa da largura da janela e a versão fica colada em "Velox".
+- Sem mudança em totalização ou resultado: não se aplica a conferência contra os arquivos oficiais.
+
+## [0.7.4] — 2026-10-17
+
+- **Arquivos de indexação e SEO técnico (Google Search):** adicionados `robots.txt` e `sitemap.xml` apontando para o domínio canônico oficial (`https://urnavelox.duckdns.org`), com regras de `Allow` na raiz/estáticos e `Disallow` nas rotas de streaming e APIs internas (`/api/`, `/api/v1/`, `/ws`, `/saude.json`).
+- **Suporte nativo no servidor HTTP (`uv-servico`):** endpoints `/robots.txt` e `/sitemap.xml` servidos com os tipos de conteúdo corretos (`text/plain; charset=utf-8` e `application/xml; charset=utf-8`) e cabeçalhos de cache apropriados a partir de tabela estática fixa embutida.
+- **Build do site e borda:** automação do `site/build.mjs` atualizada para empacotar os arquivos de SEO em `site/dist/` de forma portável e integrada.
+- Sem mudança em totalização ou resultado: não se aplica a conferência contra os arquivos oficiais.
+
+## [0.7.3] — 2026-10-17
+
+- **Proteção automatizada contra vazamento de dados sensíveis e credenciais:** rotina horária e validação no hook para inspecionar pendências no repositório antes do versionamento (arquivos modificados, staged e untracked), garantindo a conformidade com as regras de higienização do projeto.
+- **Validação no pre-commit:** hook `.githooks/pre-commit` passa a inspecionar se há pendências irregulares antes de autorizar o commit.
+- **Roteiros de implantação da borda e balanceamento:** documentação (`docs/GUIA_URL_E_BALANCEAMENTO.md`) e scripts de borda e balanceamento (`deploy/oci/`) para publicação segura com terminação TLS e cache.
+- Sem mudança em totalização ou resultado: não se aplica a conferência contra os arquivos oficiais.
+
 ## [0.7.2] — 2026-10-17
 
 - **README com a licença em um parágrafo:** livre para qualquer uso não comercial, com o link para o

@@ -67,14 +67,95 @@ pub fn base_local(base: &str) -> bool {
 /// Contra o TSE (qualquer host não local): teto `TETO_RPS` (100), req/s ≤ 100 e pausa ≥ 10 min, sem exceção — a
 /// `aceleracao` (> 1) é recusada. Contra um servidor local com o relógio acelerado `aceleracao` vezes: teto e req/s
 /// multiplicados e pausa dividida pela aceleração, para que a proporção com o relógio simulado seja a mesma da noite.
+/// O limite de 100 req/s é só para buscar arquivos no TSE (regra do Luciano, 17/10/2026): contra um servidor local, um
+/// `rps` acima de 100 vale como pedido (ensaios e simulações sem o teto do TSE).
 pub fn limites(base: &str, rps: f64, aceleracao: f64) -> anyhow::Result<(f64, f64, f64)> {
     let rps = if rps <= 0.0 { 95.0 } else { rps };
     if base_local(base) {
         let a = aceleracao.max(1.0);
-        Ok((TETO_RPS * a, rps.min(TETO_RPS) * a, PAUSA_429_TSE_S / a))
+        Ok((TETO_RPS.max(rps) * a, rps * a, PAUSA_429_TSE_S / a))
     } else {
         anyhow::ensure!(aceleracao <= 1.0, "aceleração {aceleracao} recusada: só vale contra um servidor local (127.0.0.1/localhost), não contra {base}");
         Ok((TETO_RPS, rps.min(TETO_RPS), PAUSA_429_TSE_S))
+    }
+}
+
+/// Como o nó chega ao servidor de resultados (regra do Luciano de 19/10/2026): o limite de 100 req/s por órgão e a
+/// pausa de 10 min depois de um 429 são da **borda pública** do TSE. Contra um **servidor espelho** dos arquivos públicos (modo
+/// `Interno`, fora da borda pública) o operador calibra o teto, ou não usa teto nenhum (`teto: None`). Esse modo nunca vale para um
+/// endereço da borda pública ([`BORDA_PUBLICA`]) nem para o simulador local (que já não tem o teto).
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
+pub enum Acesso {
+    #[default]
+    Borda,
+    Interno { teto: Option<f64> },
+}
+
+/// Servidores da borda pública do TSE: neles vale sempre o limite de 100 req/s por órgão.
+pub const BORDA_PUBLICA: &[&str] = &["resultados.tse.jus.br", "cdn.tse.jus.br"];
+
+/// "Sem limite" no modo espelho: o limitador continua existindo, com um teto que não espaça nada (a concorrência é
+/// quem segura).
+pub const SEM_LIMITE_RPS: f64 = 100_000.0;
+
+/// Host (minúsculo, sem porta) de uma URL.
+pub fn host(base: &str) -> String {
+    let sem = base.split_once("://").map_or(base, |x| x.1);
+    let hp = sem.split('/').next().unwrap_or("");
+    let h = if let Some(r) = hp.strip_prefix('[') { r.split(']').next().unwrap_or("") } else { hp.split(':').next().unwrap_or("") };
+    h.to_ascii_lowercase()
+}
+
+pub fn borda_publica(base: &str) -> bool { BORDA_PUBLICA.contains(&host(base).as_str()) }
+
+impl Acesso {
+    pub fn interno(&self) -> bool { matches!(self, Acesso::Interno { .. }) }
+
+    /// `--acesso borda|interno` e `--teto-interno` (0 ou ausente = sem limite).
+    pub fn de_args(acesso: &str, teto: Option<f64>) -> anyhow::Result<Acesso> {
+        match acesso {
+            "borda" => Ok(Acesso::Borda),
+            "interno" => {
+                let teto = teto.filter(|t| *t > 0.0);
+                anyhow::ensure!(teto.is_none_or(|t| t.is_finite()), "--teto-interno inválido");
+                Ok(Acesso::Interno { teto })
+            }
+            o => anyhow::bail!("--acesso {o}: borda ou interno"),
+        }
+    }
+
+    /// Recusa o modo espelho para a borda pública e para o simulador local (todas as bases: a dos arquivos também).
+    pub fn validar(&self, bases: &[&str]) -> anyhow::Result<()> {
+        if self.interno() {
+            for b in bases {
+                anyhow::ensure!(!borda_publica(b), "modo espelho (--acesso interno) recusado para {b}: na borda pública do TSE vale sempre o limite de {TETO_RPS} req/s por órgão");
+                anyhow::ensure!(!base_local(b), "modo espelho (--acesso interno) recusado para {b}: o simulador local já não tem o teto do TSE");
+            }
+        }
+        Ok(())
+    }
+
+    pub fn texto(&self) -> String {
+        match self {
+            Acesso::Borda => "borda".into(),
+            Acesso::Interno { teto: Some(t) } => format!("interno (teto {t} req/s)"),
+            Acesso::Interno { teto: None } => "interno (sem limite)".into(),
+        }
+    }
+}
+
+/// Como [`limites`], com o modo de acesso: na borda, exatamente [`limites`]; no modo espelho, o teto pedido (ou
+/// [`SEM_LIMITE_RPS`]) e a mesma pausa de 10 min depois de um 429 (um 429 interno também quer dizer "pare").
+pub fn limites_acesso(base: &str, rps: f64, aceleracao: f64, acesso: Acesso) -> anyhow::Result<(f64, f64, f64)> {
+    match acesso {
+        Acesso::Borda => limites(base, rps, aceleracao),
+        Acesso::Interno { teto } => {
+            acesso.validar(&[base])?;
+            anyhow::ensure!(aceleracao <= 1.0, "aceleração {aceleracao} recusada: só vale contra um servidor local");
+            let teto = teto.filter(|t| *t > 0.0).unwrap_or(SEM_LIMITE_RPS);
+            let rps = if rps <= 0.0 { teto } else { rps.min(teto) };
+            Ok((teto, rps, PAUSA_429_TSE_S))
+        }
     }
 }
 
@@ -248,6 +329,20 @@ impl Rede {
     }
 
     pub fn nova(cfg: &ConfigRede) -> anyhow::Result<Rede> { Rede::criar(cfg, TETO_RPS) }
+
+    /// Como [`Rede::para`], com o modo de acesso: no interno, o teto de `cfg` (de [`limites_acesso`]) vale como está,
+    /// acima de 100 se for o caso; na borda, [`Rede::para`] sem mudança nenhuma.
+    pub fn para_acesso(base: &str, cfg: &ConfigRede, acesso: Acesso) -> anyhow::Result<Rede> {
+        match acesso {
+            Acesso::Borda => Rede::para(base, cfg),
+            Acesso::Interno { .. } => {
+                acesso.validar(&[base])?;
+                let mut c = cfg.clone();
+                c.pausa_429_s = c.pausa_429_s.max(PAUSA_429_TSE_S);
+                Rede::criar(&c, c.teto.max(TETO_RPS))
+            }
+        }
+    }
 
     fn criar(cfg: &ConfigRede, teto: f64) -> anyhow::Result<Rede> {
         let mut clientes = vec![];
@@ -470,6 +565,37 @@ pub fn percentil(v: &[f64], p: f64) -> f64 {
 #[cfg(test)]
 mod testes {
     use super::*;
+
+    #[test]
+    fn acesso_interno_so_fora_da_borda() {
+        // borda: igual a `limites`, com o teto de 100 req/s
+        assert_eq!(limites_acesso("https://resultados.tse.jus.br", 500.0, 1.0, Acesso::Borda).unwrap(), (TETO_RPS, TETO_RPS, PAUSA_429_TSE_S));
+        assert_eq!(limites_acesso("https://espelho.exemplo.org", 95.0, 1.0, Acesso::Borda).unwrap(), limites("https://espelho.exemplo.org", 95.0, 1.0).unwrap());
+        // interno com teto: o pedido vale até o teto; sem teto: sem limite
+        let i300 = Acesso::de_args("interno", Some(300.0)).unwrap();
+        assert_eq!(limites_acesso("https://espelho.exemplo.org", 250.0, 1.0, i300).unwrap(), (300.0, 250.0, PAUSA_429_TSE_S));
+        assert_eq!(limites_acesso("https://espelho.exemplo.org", 900.0, 1.0, i300).unwrap().1, 300.0);
+        let livre = Acesso::de_args("interno", Some(0.0)).unwrap();
+        assert_eq!(livre, Acesso::Interno { teto: None });
+        assert_eq!(limites_acesso("http://10.1.2.3:8000", 0.0, 1.0, livre).unwrap().0, SEM_LIMITE_RPS);
+        // nunca na borda pública nem no simulador local
+        for b in ["https://resultados.tse.jus.br", "https://CDN.tse.jus.br:443/x", "http://127.0.0.1:18080"] {
+            assert!(limites_acesso(b, 95.0, 1.0, livre).is_err(), "{b}");
+        }
+        assert!(Acesso::de_args("tanto-faz", None).is_err());
+        assert!(livre.validar(&["https://espelho.exemplo.org", "https://cdn.tse.jus.br"]).is_err(), "a base dos arquivos também conta");
+        assert_eq!(host("https://Resultados.TSE.jus.br:443/oficial"), "resultados.tse.jus.br");
+    }
+
+    #[test]
+    fn rede_interna_passa_de_100() {
+        let cfg = ConfigRede { teto: 400.0, rps: 400.0, ..ConfigRede::simples(8, 400.0, 1, 5, 0) };
+        let r = Rede::para_acesso("https://espelho.exemplo.org", &cfg, Acesso::Interno { teto: Some(400.0) }).unwrap();
+        assert_eq!(r.teto(), 400.0);
+        let r = Rede::para_acesso("https://resultados.tse.jus.br", &cfg, Acesso::Borda).unwrap();
+        assert_eq!(r.teto(), TETO_RPS, "borda: continua 100");
+        assert!(Rede::para_acesso("https://resultados.tse.jus.br", &cfg, Acesso::Interno { teto: None }).is_err());
+    }
     #[tokio::test]
     async fn nunca_passa_do_teto() {
         let l = Limitador::com(5000.0, false, 0.0); // pedido acima do teto é reduzido a TETO_RPS
@@ -500,6 +626,8 @@ mod testes {
         assert!(limites(tse, 95.0, 10.0).is_err());
         assert!(limites("http://127.0.0.1.nip.io:80", 95.0, 10.0).is_err());
         assert_eq!(limites("http://127.0.0.1:1", 95.0, 10.0).unwrap(), (1000.0, 950.0, 60.0));
+        // sem o teto do TSE contra um servidor local (simulações e ensaios)
+        assert_eq!(limites("http://127.0.0.1:1", 5000.0, 1.0).unwrap(), (5000.0, 5000.0, 600.0));
         // Rede::para contra o TSE ignora teto e pausa afrouxados na configuração
         let mut c = ConfigRede::simples(4, 5000.0, 1, 5, 0);
         c.teto = 5000.0;

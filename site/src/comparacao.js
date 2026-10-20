@@ -10,6 +10,7 @@
 
 import { Hodometro } from './hodometro.js';
 import { el, hora, mil, pct } from './util.js';
+import { horaDe, tseNoSistema } from './relogio.js';
 
 export const MODOS = [['uv', 'Urna Velox'], ['ambos', 'Ambos'], ['tse', 'TSE']];
 const VALIDO = new Set(MODOS.map((m) => m[0]));
@@ -126,15 +127,21 @@ export function idade(s) {
   return `há ${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')} min`;
 }
 
-/** Cabeçalho das fontes: % de seções de cada uma e a idade do arquivo do TSE. */
-export function textoFontes(modo, res, tse, agoraSite) {
+/**
+ * Cabeçalho das fontes: % de seções de cada uma e a idade do arquivo do TSE.
+ * M-003: `agora` é o relógio do sistema (s) e `anc` a âncora (`relogio.js`): o horário do arquivo é o do TSE e, no
+ * simulado (outro dia ou acelerado), também o equivalente no relógio do sistema; a idade é medida nesse relógio.
+ */
+export function textoFontes(modo, res, tse, agora, anc) {
   const tot = res?.secoes?.total || 0, ap = res?.secoes?.apuradas || 0;
   const uv = `Urna Velox ${pct(tot ? (100 * ap) / tot : 0)}% das seções`;
   const d = tse?.dados;
   const ts = d?.secoes?.total || 0, st = d?.secoes?.totalizadas || 0;
   const tTse = d ? `TSE ${pct(ts ? (100 * st) / ts : 0)}%` : 'TSE —';
   const g = segundosBr(d?.geracao);
-  const arq = d?.geracao ? `arquivo das ${hora(d.geracao)}${agoraSite != null && g != null ? ` (${idade(agoraSite - g)})` : ''}` : '';
+  const eq = tseNoSistema(anc, g);
+  const sim = anc && g != null && (anc.x !== 1 || Math.abs(eq - g) > 3600);
+  const arq = d?.geracao ? `arquivo do TSE das ${hora(d.geracao)}${sim ? ` (≙ ${horaDe(eq)} aqui)` : ''}${agora != null && eq != null ? ` · ${idade(agora - eq)}` : ''}` : '';
   if (modo === 'uv') return { a: uv, b: '' };
   if (modo === 'tse') return { a: tTse + (d ? ' das seções' : ''), b: arq };
   return { a: `${uv} · ${tTse}`, b: arq };

@@ -1,6 +1,8 @@
 //! `uv-motor` — binário do motor de totalização (crate `urna-velox`). Todos os executáveis do projeto começam
 //! com `uv-` (`uv-motor`, `uv-coletor`).
 
+mod backtest;
+
 use clap::{Parser, Subcommand};
 use std::fmt::Write as _;
 use std::path::PathBuf;
@@ -154,6 +156,76 @@ enum Cmd {
         #[arg(long)]
         saida: PathBuf,
     },
+    /// Backtest da previsão (etapa 8): reproduz a noite em ordem de chegada e, a cada `--intervalo-s` do relógio da
+    /// noite, prevê o horário do "matematicamente" e do fim da apuração só com o que se sabia; no fim compara com o
+    /// que aconteceu (calibração P10–P90, erro do P50, custo). Também grava os gabaritos da noite (`--gerar-gabaritos`)
+    Previsao {
+        #[command(flatten)]
+        noite: ArgsNoite,
+        /// Nome da noite (ex.: 2026-1t): os gabaritos dela não são usados na previsão (sem olhar a própria noite)
+        #[arg(long)]
+        nome: String,
+        /// Gabaritos (JSON, por vírgula); vazio = os embutidos no motor
+        #[arg(long, default_value = "")]
+        gabaritos: String,
+        /// Grava os gabaritos desta noite neste arquivo
+        #[arg(long)]
+        gerar_gabaritos: Option<PathBuf>,
+        /// Classes de gabarito geradas (br, uf, mun); numa noite só de alguns municípios (2º turno municipal), "mun"
+        #[arg(long, default_value = "br,uf,mun")]
+        classes: String,
+        /// Intervalo entre previsões, no relógio da noite (s)
+        #[arg(long, default_value_t = 30)]
+        intervalo_s: i64,
+        /// Só estes cargos (por vírgula)
+        #[arg(long)]
+        cargos: Option<String>,
+        /// Conversão em horário: mista (metade dos sorteios por cada), curva (gabaritos) ou velocidade
+        #[arg(long, default_value = "mista")]
+        tempo: String,
+        #[arg(long)]
+        deriva: Option<f64>,
+        #[arg(long)]
+        ordem: Option<f64>,
+        #[arg(long)]
+        erro_rel: Option<f64>,
+        #[arg(long)]
+        erro_poucas: Option<f64>,
+        #[arg(long)]
+        sorteios: Option<usize>,
+        #[arg(long, default_value_t = 1)]
+        threads: usize,
+        /// Não roda a previsão (só gera os gabaritos: mais rápido)
+        #[arg(long)]
+        sem_previsao: bool,
+        /// Todos os tópicos de cada cargo (UFs e municípios, só o fim da apuração), como no serviço: medida de custo
+        #[arg(long)]
+        todos_topicos: bool,
+        #[arg(long)]
+        saida: PathBuf,
+    },
+}
+
+#[derive(clap::Args, Clone)]
+struct ArgsNoite {
+    /// Pasta dos pacotes .uvpk
+    #[arg(long)]
+    dados: PathBuf,
+    /// Arquivo de candidatos pré-eleição (candidatos.json)
+    #[arg(long)]
+    candidatos: Option<PathBuf>,
+    /// Pasta dos arquivos oficiais (-u.json)
+    #[arg(long)]
+    oficial: Option<PathBuf>,
+    /// CSVs com o horário de chegada de cada BU (colunas uf,municipio,zona,secao,recebido_tse), por vírgula
+    #[arg(long)]
+    chegadas: String,
+    /// CSVs de métricas com as seções anuladas (BU "Excluído")
+    #[arg(long)]
+    anuladas: Option<String>,
+    /// Vagas por cargo, ex.: 5=2
+    #[arg(long, default_value = "")]
+    vagas: String,
 }
 
 fn vagas(s: &str) -> Vec<(u8, u8)> {
@@ -184,7 +256,7 @@ fn main() -> anyhow::Result<()> {
             if let Some(dir) = saida {
                 let t0 = std::time::Instant::now();
                 let p = Publicador::novo(&c.cat, c.cad.as_ref(), Some(&c.met));
-                let n = p.gravar_tudo(&est, None, Momento { encerrada: true, seq: est.bus.load(Relaxed), ultimo_bu: None }, municipais_gerais, &dir)?;
+                let n = p.gravar_tudo(&est, None, Momento { encerrada: true, seq: est.bus.load(Relaxed), ultimo_bu: None, totalizado_ms: None }, municipais_gerais, &dir)?;
                 println!("{n} resultados gravados em {} ({:.2} s)", dir.display(), t0.elapsed().as_secs_f64());
             }
         }
@@ -196,7 +268,7 @@ fn main() -> anyhow::Result<()> {
             let r1 = urna_velox::conferencia::conferir(&c.cat, &est, &c.mem, &c.ofs, &c.met, c.cad.as_ref());
             println!("estado:     {}", r1.resumo());
             let p = Publicador::novo(&c.cat, c.cad.as_ref(), Some(&c.met));
-            let r2 = urna_velox::conferencia::conferir_publicacoes(&p, &est, &c.ofs, Momento { encerrada: true, seq: est.bus.load(Relaxed), ultimo_bu: None });
+            let r2 = urna_velox::conferencia::conferir_publicacoes(&p, &est, &c.ofs, Momento { encerrada: true, seq: est.bus.load(Relaxed), ultimo_bu: None, totalizado_ms: None });
             println!("publicação: {}", r2.resumo());
             if !r1.nao_finalizados.is_empty() { println!("totalização oficial não finalizada (situação não conferida): {}", r1.nao_finalizados.join(", ")); }
             print!("{}", r1.detalhes(max));
@@ -216,6 +288,21 @@ fn main() -> anyhow::Result<()> {
             println!("publicação: {}", r.resumo());
             print!("{}", r.detalhes(max));
             if !r.ok() { std::process::exit(1); }
+        }
+        Cmd::Previsao { noite, nome, gabaritos, gerar_gabaritos, classes, intervalo_s, cargos, tempo, deriva, ordem, erro_rel, erro_poucas, sorteios, threads, sem_previsao, todos_topicos, saida } => {
+            use urna_velox::previsao::{Parametros, Tempo};
+            let tempo = match tempo.as_str() { "velocidade" => Tempo::Velocidade, "curva" => Tempo::Curva, "mista" => Tempo::Mista, x => anyhow::bail!("--tempo {x}: curva, velocidade ou mista") };
+            let mut par = Parametros { tempo, ..Parametros::default() };
+            if let Some(x) = deriva { par.deriva = x; }
+            if let Some(x) = ordem { par.ordem = x; }
+            if let Some(x) = erro_rel { par.erro_rel = x; }
+            if let Some(x) = erro_poucas { par.erro_poucas = x; }
+            if let Some(x) = sorteios { par.sorteios = x; }
+            let cargos = cargos.map(|c| c.split(',').filter_map(|x| x.trim().parse().ok()).collect());
+            backtest::rodar(
+                backtest::Entrada { dados: noite.dados, candidatos: noite.candidatos, oficial: noite.oficial, chegadas: noite.chegadas, anuladas: noite.anuladas, vagas: vagas(&noite.vagas) },
+                backtest::Opcoes { nome, gabaritos, gerar: gerar_gabaritos, classes, intervalo_s, cargos, par, threads, sem_previsao, todos_topicos, saida },
+            )?;
         }
         Cmd::Noite { dados, candidatos, oficial, chegadas, disponivel_antes, anuladas, vagas: v, dia, latencia_ms, saida } => {
             std::fs::create_dir_all(&saida)?;

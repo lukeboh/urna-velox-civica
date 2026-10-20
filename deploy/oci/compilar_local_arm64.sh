@@ -36,7 +36,7 @@ PACOTE_DIR="$(mktemp -d /tmp/uv-binarios-XXXXXX)"
 trap 'rm -rf "$PACOTE_DIR"' EXIT
 
 mkdir -p "$PACOTE_DIR/bin"
-BINS=(uv-servico uv-coletor uv-simulador uv-carga uv-motor)
+BINS=(uv-servico uv-coletor uv-simulador uv-carga uv-motor uv-painel)
 
 for b in "${BINS[@]}"; do
   SRC_BIN="$RAIZ/target/$TARGET/release/$b"

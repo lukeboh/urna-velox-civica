@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Painel dos nós</title>
+<link rel="icon" href="/painel/icone.svg" type="image/svg+xml">
+<link rel="preload" href="/painel/archivo.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/painel/estilo.css">
+<script src="/painel/tema.js"></script>
+<script src="/painel/app.js" defer></script>
+</head>
+<body>
+<div class="aurora" aria-hidden="true"></div>
+<header class="topo">
+  <a class="marca" href="/painel/"><b>Urna <span>Velox</span></b><small>painel dos nós</small></a>
+  <nav class="abas" role="tablist">
+    <button role="tab" data-aba="visao" aria-selected="true">Visão geral</button>
+    <button role="tab" data-aba="config" aria-selected="false">Configuração</button>
+    <button role="tab" data-aba="detalhe" aria-selected="false">Detalhe</button>
+  </nav>
+  <div class="conta">
+    <span id="atualizado" class="vivo">conectando…</span>
+    <span id="email" class="mudo"></span>
+    <button class="icone-btn" id="tema" type="button" aria-label="Trocar tema claro/escuro" title="Tema claro/escuro">◐</button>
+    <button id="sair" class="botao discreto">Sair</button>
+  </div>
+</header>
+
+<main>
+  <section id="aba-visao" class="aba">
+    <div id="nos" class="nos"></div>
+    <div class="barra-graficos">
+      <h2>Ao longo do tempo</h2>
+      <div class="janela" role="group" aria-label="Janela de tempo">
+        <button data-janela="900" aria-pressed="true">15 min</button>
+        <button data-janela="3600" aria-pressed="false">1 h</button>
+        <button data-janela="7200" aria-pressed="false">2 h</button>
+      </div>
+    </div>
+    <div id="legenda" class="legenda"></div>
+    <div id="graficos" class="graficos"></div>
+  </section>
+
+  <section id="aba-config" class="aba" hidden>
+    <div class="seletor" id="sel-config" role="group" aria-label="Nó"></div>
+    <div id="config"></div>
+  </section>
+
+  <section id="aba-detalhe" class="aba" hidden>
+    <div class="seletor" id="sel-detalhe" role="group" aria-label="Nó"></div>
+    <p class="mudo">A <code>saude.json</code> inteira do nó, como o <code>uv-servico</code> grava.</p>
+    <pre id="detalhe" class="json"></pre>
+  </section>
+</main>
+
+<div id="dica" class="dica" hidden></div>
+<div id="aviso" class="aviso-flutuante" hidden></div>
+</body>
+</html>

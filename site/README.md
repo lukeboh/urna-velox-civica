@@ -8,10 +8,10 @@ integrar. Decisão de arquitetura: ADR-027 (`/mnt/d/git/lukeboh/urna-velox/docs/
 
 | caminho | o quê |
 |---|---|
-| `/mnt/d/git/lukeboh/urna-velox/site/src/` | fontes: `index.html`, `estilo.css`, `app.js` (tela, inscrições, desenho por quadro), `conexao.js` (WebSocket e reconexão), `hodometro.js`, `graficos.js` (anel e curva), `feed.js` (letreiro de marcos e folha de detalhe), `historico.js` (painel com o que já passou pelo letreiro), `textos.js` (nomes e textos do feed), `cores.js` (cor de cada candidato a partir da do partido), `replay.js` (barra do replay: velocidade e linha do tempo), `comparacao.js` (comparação Urna Velox × TSE: controle, células do TSE e da diferença, estado da fonte), `util.js`, `icone.svg` |
+| `/mnt/d/git/lukeboh/urna-velox/site/src/` | fontes: `index.html`, `estilo.css`, `app.js` (tela, inscrições, desenho por quadro), `conexao.js` (WebSocket e reconexão), `hodometro.js`, `graficos.js` (anel e curva), `feed.js` (letreiro de marcos e folha de detalhe), `historico.js` (painel com o que já passou pelo letreiro), `textos.js` (nomes e textos do feed), `cores.js` (cor de cada candidato a partir da do partido), `replay.js` (barra do replay: velocidade e linha do tempo), `comparacao.js` (comparação Urna Velox × TSE: controle, células do TSE e da diferença, estado da fonte), `previsao.js` (cartão da previsão do matematicamente e do fim da apuração), `util.js`, `icone.svg` |
 | `/mnt/d/git/lukeboh/urna-velox/site/dist/` | o que o binário embute (gerado por `build.mjs`, **versionado**): `index.html`, `app.js`, `estilo.css`, `archivo.woff2` (Archivo variável, latim, eixos de peso e largura; licença OFL em `LICENCA-FONTE.txt`), `icone.svg` |
 | `/mnt/d/git/lukeboh/urna-velox/aquisicao/src/pagina.rs` | tabela fixa dos arquivos embutidos (`include_bytes!`), CSP e `index.html` com a versão |
-| `/mnt/d/git/lukeboh/urna-velox/site/testes/` | ensaios: `rodar.mjs` (Playwright/Chromium: acompanha um replay, mede CLS, fps, tarefas longas, memória, reconexão, e lê os números da tela), `conferir.py` (tela × `-u.json` oficiais), `conferir_marcos.py` (`marcos.csv` × `secoes.log`/`eventos.csv`), `cores.mjs` (todo partido de um `candidatos.json` tem cor e nenhuma disputa repete cor: `node testes/cores.mjs <candidatos.json>`), `comparacao.mjs` (N abas da comparação com o TSE em modos variados; no fim, tela × `-u.json` oficial nas duas colunas, CLS, marco "TSE confirmou"; usado por `aquisicao/scripts/ensaio_comparacao.sh`), `sonda.mjs` (depuração) |
+| `/mnt/d/git/lukeboh/urna-velox/site/testes/` | ensaios: `rodar.mjs` (Playwright/Chromium: acompanha um replay, mede CLS, fps, tarefas longas, memória, reconexão, e lê os números da tela), `conferir.py` (tela × `-u.json` oficiais), `conferir_marcos.py` (`marcos.csv` × `secoes.log`/`eventos.csv`), `cores.mjs` (todo partido de um `candidatos.json` tem cor e nenhuma disputa repete cor: `node testes/cores.mjs <candidatos.json>`), `comparacao.mjs` (N abas da comparação com o TSE em modos variados; no fim, tela × `-u.json` oficial nas duas colunas, CLS, marco "TSE confirmou"; usado por `aquisicao/scripts/ensaio_comparacao.sh`), `sonda.mjs` (depuração), `indisponivel.mjs` (B-008: uma URL abre como página HTML no Chromium e no Firefox, nunca como download; usado por `deploy/oci/testes/pagina_indisponivel.sh`, que precisa de `npx playwright install firefox`), `carga_pagina.mjs` (B-014: a página como celular numa disputa durante um replay; mensagens e bytes por minuto, tópicos de resultado recebidos, tarefas longas, capturas a 390 e 1366 px; usado por `aquisicao/scripts/ensaio_carga_pagina.sh`) |
 
 ## Desenvolver
 
@@ -117,3 +117,17 @@ fundo na linha quando a ordem diverge; "TSE" troca a lista, a apuração, os vot
 cabeçalho das fontes mostra as seções de cada uma, a idade do arquivo do TSE e o estado (aguardando, desatualizado,
 indisponível, pausado). Marco no feed: "TSE confirmou o matematicamente às hh:mm — Urna Velox às hh:mm, N min antes".
 Mesmas regras de sempre: hodômetros, CLS 0, nada de rolagem horizontal no celular.
+
+## Previsão (etapa 8)
+
+Cartão **"Previsão (estimativa)"** entre "Apuração" e "Curva da apuração" (`src/previsao.js`), alimentado pela
+mensagem `previsao` (`docs/PROTOCOLO_WS.md` §4.7), que chega sozinha para os tópicos inscritos: a faixa de horário do
+"matematicamente" ("entre 20:10 e 20:35", ou "ainda incerto", ou "deve ir até o fim da apuração"), o hodômetro do
+horário mais provável (P50), a chance de sair antes do fim e a fração apurada com que deve sair, a faixa P10–P90 de
+cada previsão da noite (a previsão convergindo; tracejado verde = horário real depois que saiu) e o fim da apuração
+("Seções: 99% entre … · 100% …"). Num tópico que não é a circunscrição (Presidente numa UF), o "matematicamente" é o da
+circunscrição e o fim é o da tela. Depois da definição: "saiu às hh:mm — dentro da faixa prevista desde hh:mm" (ou
+"fora da faixa", com honestidade) e o marco "Previsão confirmada" no letreiro. Se a chegada dos BUs para no país
+(`situacao` = `suspensa`, desde a `0.7.8`), a faixa ganha "(adiada)" e a nota, em cor de alerta, diz "chegada de BUs
+parada desde hh:mm — previsão adiada". Antes de 5 % apurado e 10 min de
+apuração: "aguardando base". Altura fixa, cada linha com reticência: CLS 0.

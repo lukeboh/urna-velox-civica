@@ -1,0 +1,19 @@
+# Playlist de Simulados das Eleições (só no nó A): agenda, votos por IP e decisão do próximo simulado do ciclo.
+# Instalado por deploy/oci/63_ciclo.sh --playlist. Atrás do Caddy (/playlist e /api/v1/playlist).
+[Unit]
+Description=Urna Velox - playlist de simulados
+After=network.target
+
+[Service]
+User=urnavelox
+Group=urnavelox
+EnvironmentFile=-/etc/urna-velox/playlist.env
+ExecStart=/usr/bin/python3 /opt/urna-velox/bin/uv-playlist.py --ciclo /srv/urna-velox/ciclo --escuta 127.0.0.1:8090 --html /opt/urna-velox/bin/uv-playlist.html
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=full
+ReadWritePaths=/srv/urna-velox/ciclo
+
+[Install]
+WantedBy=multi-user.target

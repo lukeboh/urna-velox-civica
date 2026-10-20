@@ -39,6 +39,8 @@ pub type ChaveUf = ([u8; 2], u64);
 #[derive(Clone, Debug)]
 pub struct Config {
     pub alvo: Alvo,
+    /// borda pública (limite de 100 req/s por órgão) ou modo espelho, `interno` (teto calibrado ou nenhum); ver `coletor::Acesso`
+    pub acesso: coletor::Acesso,
     pub candidatos: PathBuf,
     /// pacotes `.uvpk` do serviço (retomada: os que já estão aqui são relidos)
     pub dados: PathBuf,
@@ -88,6 +90,11 @@ pub struct Config {
     /// sem coleta: nenhum `cs.json`, `aux.json` ou BU — só a publicação da partida, a difusão e a comparação com o TSE
     /// (ensaio da comparação contra o site real, etapa 7, sem coletar uma eleição inteira)
     pub sem_coleta: bool,
+    /// previsão do "matematicamente" e do fim da apuração (etapa 8, `crate::previsao`); intervalo 0 = desligada
+    pub previsao: crate::previsao::Opcoes,
+    /// Rótulo de simulação (ciclo diário de 18 a 23/10/2026): vai na `saude.json` e na mensagem `estado` (`simulacao`),
+    /// e a página mostra no selo do topo que é uma simulação com dados reais do TSE. `None` = noite real.
+    pub simulacao: Option<String>,
 }
 
 /// Horário de recebimento no TSE de cada seção, das métricas em `cfg.ordem` (vazio sem arquivos).
@@ -192,6 +199,8 @@ pub struct Comum {
     pub cache: Mutex<HashMap<ChaveUf, Vec<([u8; 32], PathBuf, u64, u32)>>>,
     /// relógio do site: maior `Date` visto (hora de Brasília, segundos)
     pub relogio_site: AtomicI64,
+    /// relógio do sistema e a âncora com a noite do TSE (M-003, `crate::relogio`)
+    pub relogio: Arc<crate::relogio::Relogio>,
     pub t0: Instant,
     /// multiplica as esperas (novas tentativas, ritmo dos oficiais): 1/aceleração no site simulado (bits de um `f64`;
     /// muda com o controle de replay)
@@ -232,13 +241,15 @@ impl Comum {
         self.registrar("alerta", tipo, json!({"texto": texto}));
     }
     pub(crate) fn ver_relogio(&self, data: Option<&str>) -> i64 {
-        let t = data.and_then(crate::data_http_brasilia).unwrap_or_else(crate::agora_brasilia);
+        let site = data.and_then(crate::data_http_brasilia);
+        let t = site.unwrap_or_else(crate::agora_brasilia);
         self.relogio_site.fetch_max(t, Relaxed);
+        if let Some(s) = site { self.relogio.ver_site(s); }
         t
     }
     pub(crate) fn espera(&self, s: f64) -> Duration { Duration::from_secs_f64((s * f64::from_bits(self.escala.load(Relaxed))).max(0.01)) }
-    /// Esperas para a aceleração `a` do site simulado (pausa = esperas de 1×).
-    pub fn definir_escala(&self, a: f64) { self.escala.store((1.0 / a.max(1.0)).to_bits(), Relaxed); }
+    /// Esperas para a aceleração `a` do site simulado (pausa = esperas de 1×); a âncora do relógio do sistema segue.
+    pub fn definir_escala(&self, a: f64) { self.escala.store((1.0 / a.max(1.0)).to_bits(), Relaxed); self.relogio.mudar_aceleracao(a); }
     fn escala_atual(&self) -> f64 { f64::from_bits(self.escala.load(Relaxed)) }
     /// Dorme `s` segundos **em hora do site**, seguindo a velocidade do momento: em fatias de até 200 ms, cada uma contada
     /// pela escala atual — se o controle de replay muda a velocidade no meio da espera, o resto da espera já segue a nova.
@@ -963,6 +974,8 @@ struct Motor<'a> {
     /// chegada dos BUs aplicados que ainda não foram publicados
     aguardando: Vec<Instant>,
     ultimo_bu_site: Option<i64>,
+    /// relógio do sistema (ms, hora de Brasília) quando o último BU foi aplicado (M-003: `totalizado_em`)
+    ultimo_bu_sis: Option<i64>,
     /// dentro da retotalização do replay ([`reconstruir`]): as publicações levam as versões superadas para a difusão
     retotalizando: bool,
     /// thread de gravação dos arquivos publicados
@@ -1000,6 +1013,10 @@ struct Motor<'a> {
     /// conta periódica do `faltam_para_mat`, viradas e % das seções na verificação de 1 s (ms)
     custo_faltam: Amostra,
     rodada_verif: u64,
+    /// previsão (etapa 8): o instante em que cada circunscrição ficou matematicamente decidida vai para a thread
+    /// `uv-previsao`; o bloco `previsao` da saúde vem de lá
+    prev_tx: Option<crossbeam_channel::Sender<crate::previsao::Definicao>>,
+    prev_saude: Arc<Mutex<Value>>,
 }
 
 impl<'a> Motor<'a> {
@@ -1080,9 +1097,15 @@ impl<'a> Motor<'a> {
             let horario = format!("{a:04}-{m:02}-{d:02} {h:02}:{mi:02}:{se:02}");
             let _ = writeln!(s, "{},{horario},{},{},{},{}", e.seq, c.abr().codigo(), c.cargo, e.numero.map(|n| n.to_string()).unwrap_or_default(), e.estado);
             if self.com.difusao.is_some() {
-                difundir.push(crate::difusao::EventoBruto { classe: "matematicamente", seq: e.seq, horario, abrangencia: Some(c.abr().codigo()), cargo: Some(c.cargo),
+                // M-003: horário do sistema em que o Urna Velox viu o evento (na retotalização do replay, o equivalente pela âncora)
+                let anc = if self.retotalizando { self.com.relogio.ancora() } else { None };
+                let sistema = Some(crate::relogio::iso_ms(anc.map_or_else(crate::relogio::agora_ms, |a| a.sistema_ms(e.em as f64))));
+                difundir.push(crate::difusao::EventoBruto { classe: "matematicamente", seq: e.seq, horario, sistema, abrangencia: Some(c.abr().codigo()), cargo: Some(c.cargo),
                     candidato: e.numero, estado: e.estado.to_string(), motivo: if e.estado.starts_with("revogado:") { e.motivo.to_string() } else { String::new() } });
             }
+            // a previsão anda pelo relógio do sistema (M-003): o instante da decisão é o do sistema, na escala da noite
+            let em_sis = if self.retotalizando { None } else { self.com.relogio.noite_agora() };
+            if let (Some(tx), None, true) = (&self.prev_tx, e.numero, e.estado.starts_with("matematicamente_")) { let _ = tx.send((c.cargo, c.abr().clone(), em_sis.unwrap_or(e.em))); }
             if e.estado.starts_with("revogado:") {
                 self.com.alerta("revogacao", &format!("{} cargo {} candidato {}: {} — motivo: {}", c.abr().codigo(), c.cargo,
                     e.numero.map(|n| n.to_string()).unwrap_or("-".into()), e.estado, if e.motivo.is_empty() { "BUs aplicados" } else { &e.motivo }));
@@ -1100,7 +1123,7 @@ impl<'a> Motor<'a> {
         let t = self.com.relogio_site.load(Relaxed);
         let (a, m, d, hh, mi, se) = urna_velox::metricas::civil(t);
         h.entregar(crate::difusao::Entrada::Eventos(vec![crate::difusao::EventoBruto { classe: "apuracao", seq: self.seq(),
-            horario: format!("{a:04}-{m:02}-{d:02} {hh:02}:{mi:02}:{se:02}"), abrangencia: None, cargo: None, candidato: None, estado: estado.into(), motivo: motivo.into() }]));
+            horario: format!("{a:04}-{m:02}-{d:02} {hh:02}:{mi:02}:{se:02}"), sistema: Some(crate::relogio::iso_ms(crate::relogio::agora_ms())), abrangencia: None, cargo: None, candidato: None, estado: estado.into(), motivo: motivo.into() }]));
     }
 
     /// Aplica (ou substitui, ou anula) o BU de uma seção. Devolve a hora do site se o estado mudou.
@@ -1191,6 +1214,10 @@ impl<'a> Motor<'a> {
         self.reabrir(&format!("BU {acao} na seção {}", texto_secao(k)));
         self.aguardando.push(b.chegada);
         self.ultimo_bu_site = Some(self.ultimo_bu_site.map_or(b.hora_site, |x| x.max(b.hora_site)));
+        // na retotalização do replay (voltar no tempo) tudo é aplicado de uma vez: o horário do sistema de cada BU é o
+        // equivalente do horário dele pela âncora (fixada no alvo da retotalização)
+        let anc = if self.retotalizando { self.com.relogio.ancora() } else { None };
+        self.ultimo_bu_sis = Some(anc.map_or_else(crate::relogio::agora_ms, |a| a.sistema_ms(b.hora_site as f64)));
         Some(b.hora_site)
     }
 
@@ -1246,7 +1273,7 @@ impl<'a> Motor<'a> {
     fn publicar(&mut self, tudo: bool) -> anyhow::Result<()> {
         if !self.sujo && !tudo { return Ok(()); }
         let t = Instant::now();
-        let mo = Momento { encerrada: self.encerrada, seq: self.seq(), ultimo_bu: self.ultimo_bu_site };
+        let mo = Momento { encerrada: self.encerrada, seq: self.seq(), ultimo_bu: self.ultimo_bu_site, totalizado_ms: self.ultimo_bu_sis };
         if self.encerrada { self.pubr.limpar_cache(); }
         let mut arquivos = vec![];
         for (cargo, abrs) in &self.abrs {
@@ -1366,7 +1393,7 @@ impl<'a> Motor<'a> {
         self.conferindo = false;
         self.conferencias += 1;
         let ofs: Vec<Oficial> = baixados.iter().filter_map(|p| Oficial::ler(p).ok()).collect();
-        let mo = Momento { encerrada: true, seq: self.seq(), ultimo_bu: self.ultimo_bu_site };
+        let mo = Momento { encerrada: true, seq: self.seq(), ultimo_bu: self.ultimo_bu_site, totalizado_ms: self.ultimo_bu_sis };
         let r = if self.encerrada {
             self.sincronizar()?;
             conferir_pasta_publicacoes(&self.pub_dir, &ofs)
@@ -1453,8 +1480,9 @@ impl<'a> Motor<'a> {
         if let Some(t) = self.prox_oficiais { if Instant::now() >= t { self.prox_oficiais = None; self.pedir_oficiais("nova tentativa dos oficiais"); } }
         self.repedir_pendentes();
         self.sondar();
-        // marcos: eleitores que faltam para o "matematicamente" (no máximo 1×/s por circunscrição; orçamento de 0,5 ms
-        // por rodada, em rodízio — a thread do motor não fica parada esperando a conta: BUs chegando esperariam junto)
+        // marcos: eleitores que faltam para o "matematicamente" (no máximo 1×/s por circunscrição). A conta roda na thread
+        // uv-faltam (B-009): aqui só a fotografia das circunscrições que mudaram e as respostas da rodada anterior; o
+        // orçamento só vale sem a thread (testes de unidade)
         let t = Instant::now();
         let agora = self.ultimo_bu_site.unwrap_or_else(|| self.com.relogio_site.load(Relaxed));
         let v = self.marcos.faltam(&self.ac, self.seq(), agora, Duration::from_micros(500));
@@ -1615,7 +1643,7 @@ impl<'a> Motor<'a> {
                 "nao_instaladas": por_uf.values().map(|v| v[2]).sum::<u64>(), "anuladas": por_uf.values().map(|v| v[3]).sum::<u64>(),
                 "pendentes": self.pendentes.len(), "repedidas": self.repedidas, "agregadas": agregadas, "sondadas": self.sondadas.len()},
             "por_uf": uf_json, "fila": c.fila.load(Relaxed), "ritmo_cs": if c.cs_ocioso.load(Relaxed) { "ocioso" } else { "trabalhando" },
-            "rede": {"requisicoes": reqs, "req_s_atual": arred((reqs - r_ant) as f64 / dt), "req_s_media": arred(reqs as f64 / up), "teto_req_s": c.rede.teto(),
+            "rede": {"requisicoes": reqs, "req_s_atual": arred((reqs - r_ant) as f64 / dt), "req_s_media": arred(reqs as f64 / up), "teto_req_s": c.rede.teto(), "acesso": c.cfg.acesso.texto(),
                 "http429": c.rede.http429.load(Relaxed), "pausas_429": c.rede.pausas.load(Relaxed), "pausa_restante_s": arred(pausa.as_secs_f64()),
                 "retomada_em": (!pausa.is_zero()).then(|| crate::texto_hora(crate::agora_brasilia() + pausa.as_secs() as i64)),
                 "nao_modificado_304": c.rede.nao_modificado.load(Relaxed), "novas_tentativas": c.rede.tentativas_extras.load(Relaxed),
@@ -1627,7 +1655,8 @@ impl<'a> Motor<'a> {
             "custos_ms": {"matematicamente": self.custo_mat.json(), "publicacao": self.custo_pub.json(), "gravacao": p(&c.custo_grav),
                 "lote": self.custo_lote.json(), "saude": self.custo_saude.json(), "verificacao": self.custo_verif.json(), "sincronia_disco": p(&c.custo_sync),
                 "marcos": self.custo_marcos.json(), "faltam": self.custo_faltam.json()},
-            "ultimo_bu": {"seq": self.seq(), "site": self.ultimo_bu_site.map(crate::texto_hora)},
+            "ultimo_bu": {"seq": self.seq(), "site": self.ultimo_bu_site.map(crate::texto_hora), "sistema": self.ultimo_bu_sis.map(crate::relogio::iso_ms)},
+            "relogio_sistema": c.relogio.json(),
             "acoes": self.acoes, "alertas": alertas,
             "motor": {"bus": self.est.bus.load(Relaxed), "duplicados": self.est.duplicados.load(Relaxed), "fora_catalogo": self.est.fora_catalogo.load(Relaxed),
                 "erros": self.est.erros.load(Relaxed), "cargos_invalidos": self.est.cargos_invalidos.load(Relaxed), "votaveis_desconhecidos": self.est.desconhecidos.load(Relaxed),
@@ -1642,18 +1671,24 @@ impl<'a> Motor<'a> {
         let mut j = j;
         if let Some(f) = &c.federado { j["federacao"] = f.saude_json(); }
         if let Some(t) = &c.tse { j["tse_resultados"] = t.saude_json(c.relogio_site.load(Relaxed)); }
+        if self.prev_tx.is_some() { j["previsao"] = self.prev_saude.lock().unwrap().clone(); }
+        if let Some(s) = &c.cfg.simulacao { j["simulacao"] = json!({"rotulo": s}); }
+        // caminhos do site fora do padrão (--rotas): o painel dos nós mostra quais estão valendo
+        if !c.cfg.alvo.rotas.padrao() { j["rotas"] = serde_json::to_value(&*c.cfg.alvo.rotas).unwrap_or_default(); }
         if let Some(h) = &c.difusao {
             // calculado pela thread de difusão (até 2 s atrás): os percentis não rodam aqui, na thread do motor
             j["difusao"] = h.saude_guardada();
             // subconjunto estável para a mensagem `estado` e o GET /api/v1/estado (docs/PROTOCOLO_WS.md §4.3)
             let mut e = json!({
                 "versao": urna_velox::VERSAO, "estado": estado, "encerrada": self.encerrada, "pleito": c.cfg.alvo.pleito, "relogio_site": j["relogio_site"],
+                "relogio_sistema": j["relogio_sistema"],
                 "secoes": {"catalogo": self.cat.secoes.len(), "publicadas_cs": j["secoes"]["publicadas_cs"], "aplicadas": self.seq(),
                     "nao_instaladas": j["secoes"]["nao_instaladas"], "pendentes": self.pendentes.len()},
                 "ultimo_bu": j["ultimo_bu"], "pausa_429": {"ativa": !pausa.is_zero(), "retomada_em": j["rede"]["retomada_em"], "pausas": pausas},
                 "conferencias": self.conferencias, "alertas": j["alertas"]});
             // só com --controle-replay (docs/PROTOCOLO_WS.md §4.3)
             if let Some(r) = h.replay_json() { e["replay"] = r; }
+            if let Some(s) = &c.cfg.simulacao { e["simulacao"] = json!({"rotulo": s}); }
             h.entregar(crate::difusao::Entrada::Estado(e));
         }
         gravar_atomico(&c.cfg.saida, "saude.json", &(serde_json::to_string_pretty(&j)? + "\n"))?;
@@ -1788,6 +1823,8 @@ fn reconstruir(m: &mut Motor, alvo: i64, disp: &mut HashMap<ChaveUf, i64>) -> an
     let mut faltaram = 0;
     // publica a cada 2 min da noite: a curva da apuração de cada tópico (difusão) ganha os pontos do trecho retotalizado
     let mut ult_pub = i64::MIN;
+    // M-003: o alvo da retotalização é "agora" no relógio do sistema; o trecho retotalizado fica antes dele, na velocidade
+    m.com.relogio.ver_site(alvo);
     m.retotalizando = true;
     for it in v {
         if it.td > fim_bloco {
@@ -1933,22 +1970,35 @@ fn rodar_motor(com: Arc<Comum>, rx: crossbeam_channel::Receiver<Msg>, pedidos: t
     // marcos (etapa 5): nomes dos municípios para os marcos, municípios que são circunscrição, histórico do marcos.csv
     let nomes_mun: HashMap<u32, String> = arq.municipios.iter().filter(|x| !x.nome.is_empty()).map(|x| (x.codigo, x.nome.clone())).collect();
     let munis_circ: HashSet<([u8; 2], u32)> = ac.circs.iter().filter_map(|c| match c.abr() { Abrangencia::Municipio(u, mu) => Some((*u, *mu)), _ => None }).collect();
-    let marcos = crate::marcos::Marcos::abrir(Some(&cfg.saida), nomes_mun, munis_circ, ac.circs.len())?;
+    let mut marcos = crate::marcos::Marcos::abrir(Some(&cfg.saida), nomes_mun, munis_circ, ac.circs.len())?;
+    // B-009: a conta do faltam_para_mat na thread uv-faltam (fora da thread do motor, sem orçamento por rodada)
+    marcos.contar_em_paralelo(&ac)?;
     if let Some(h) = &com.difusao { h.definir_nomes(crate::difusao::montar_nomes(&arq)); }
+    // previsão (etapa 8): todos os tópicos publicados; roda na thread `uv-previsao` (abaixo, junto com o laço do motor)
+    let (prev_tx, prev_rx) = crossbeam_channel::unbounded::<crate::previsao::Definicao>();
+    let prev_saude: Arc<Mutex<Value>> = Arc::default();
+    let previsor = (cfg.previsao.intervalo_s > 0).then(|| {
+        let topicos: Vec<(u8, Abrangencia)> = abrs.iter().flat_map(|(c, v)| v.iter().map(move |a| (*c, a.clone()))).collect();
+        urna_velox::previsao::Previsor::novo(&cat, &cad, &topicos, &cad.agregadas, urna_velox::previsao::Gabaritos::embutidos(), None,
+            urna_velox::previsao::Parametros::default())
+    });
     let mut m = Motor {
         com: &com, cat: &cat, cad: &cad, est: &est, ag: Agregador::novo(&cat, &est), pubr, ac,
         secoes: HashMap::new(), pendentes: HashMap::new(), repedidas: 0, sondadas: HashMap::new(), sonda_recusada: HashSet::new(), esc: Escritor::novo(&cfg.dados)?, diario, eventos, n_eventos: 0,
         pub_dir, abrs, esperado: esperado.into_iter().collect(), secoes_muni, munis_sujos: vec![false; nm], ufs_sujas: vec![false; nu], sujo: false,
-        aguardando: vec![], ultimo_bu_site: None, retotalizando: false, gravacao: grav_tx, sincronia: sinc_tx, custo_mat: Amostra::default(), custo_pub: Amostra::default(),
+        aguardando: vec![], ultimo_bu_site: None, ultimo_bu_sis: None, retotalizando: false, gravacao: grav_tx, sincronia: sinc_tx, custo_mat: Amostra::default(), custo_pub: Amostra::default(),
         custo_lote: Amostra::default(), custo_saude: Amostra::default(), custo_verif: Amostra::default(),
         ultima_pub: Instant::now(), encerrada: false, conferindo: false, conferencias: 0, tentativas_oficiais: 0, prox_oficiais: None,
         prox_conf_periodica: (cfg.conferir_a_cada_min > 0.0).then(|| Instant::now() + Duration::from_secs_f64(cfg.conferir_a_cada_min * 60.0)),
         pedidos, acoes: BTreeMap::new(), saude_ant: (Instant::now(), 0, 0.0), pausas_avisadas: 0, sair: false,
         marcos, lote_secoes: vec![], marcos_novos: vec![], custo_marcos: Amostra::com_janela(4096), marcos_ms: 0.0, custo_faltam: Amostra::com_janela(1024), rodada_verif: 0,
+        prev_tx: previsor.is_some().then_some(prev_tx), prev_saude: prev_saude.clone(),
     };
     // histórico dos marcos (retomada): vai para a difusão antes de a camada HTTP aceitar conexões
     if let Some(h) = &com.difusao {
-        let hist = std::mem::take(&mut m.marcos.historico);
+        let mut hist = std::mem::take(&mut m.marcos.historico);
+        // M-003: o horário do sistema em que foram vistos não ficou gravado (a difusão não carimba a hora da retomada)
+        for v in hist.iter_mut() { v["sistema"] = Value::Null; }
         if !hist.is_empty() { h.entregar(crate::difusao::Entrada::Marcos(hist)); }
     }
     let t1 = Instant::now();
@@ -1975,6 +2025,15 @@ fn rodar_motor(com: Arc<Comum>, rx: crossbeam_channel::Receiver<Msg>, pedidos: t
     m.saude("acompanhando")?;
     if let Some(p) = pronto.take() { let _ = p.send(Ok((disp, ufs))); }
 
+    let prev_parar = AtomicBool::new(false);
+    let laco = std::thread::scope(|s| -> anyhow::Result<()> {
+    // previsão (etapa 8): thread própria, só lê o estado e os candidatos (nada aqui na thread do motor espera por ela)
+    if let Some(p) = previsor {
+        let (comr, cadr, estr, pp, ps, saida) = (&*com, &cad, &est, &prev_parar, &*prev_saude, cfg.saida.clone());
+        let op = cfg.previsao.clone();
+        std::thread::Builder::new().name("uv-previsao".into()).spawn_scoped(s, move || crate::previsao::rodar(comr, cadr, estr, p, prev_rx, op, pp, ps, &saida))?;
+    }
+    let r = (|| -> anyhow::Result<()> {
     let mut prox_verif = Instant::now();
     let mut prox_saude = Instant::now() + Duration::from_secs(2);
     let mut parar = false;
@@ -2016,6 +2075,12 @@ fn rodar_motor(com: Arc<Comum>, rx: crossbeam_channel::Receiver<Msg>, pedidos: t
         }
         if com.parar.load(Relaxed) || m.sair { parar = true; }
     }
+    Ok(())
+    })();
+    prev_parar.store(true, Relaxed);
+    r
+    });
+    laco?;
     // parada limpa: o lote já terminou; grava publicação, pacotes, diário e saúde
     m.publicar(true)?;
     m.sincronizar()?;
@@ -2044,11 +2109,14 @@ pub fn executar(mut cfg: Config) -> anyhow::Result<()> {
     }
     // com o controle de replay a busca anda a até 3 × 300×: teto de requisições (local) dessa velocidade
     let a_teto = if cfg.controle_replay { cfg.aceleracao_local.max(3.0 * crate::controle_replay::REPLAY_MAX) } else { cfg.aceleracao_local };
-    let (teto, rps, pausa) = coletor::limites(&base, cfg.rps, a_teto)?;
+    // modo espelho: nem a base nem a dos arquivos de urna podem ser a borda pública (lá vale sempre o limite de 100)
+    let base_arq = cfg.alvo.rotas.base_arquivos.clone().unwrap_or_else(|| base.clone());
+    cfg.acesso.validar(&[base.as_str(), base_arq.as_str()])?;
+    let (teto, rps, pausa) = coletor::limites_acesso(&base, cfg.rps, a_teto, cfg.acesso)?;
     std::fs::create_dir_all(&cfg.saida)?;
     std::fs::create_dir_all(&cfg.dados)?;
-    let rede = Rede::para(&base, &ConfigRede { concorrencia: cfg.concorrencia, conexoes: 1, rps, adaptativo: false, rps_inicial: 0.0, http1: false,
-        tentativas: 4, timeout_s: cfg.timeout_s, max_429: 0, teto, pausa_429_s: pausa, ip_local: cfg.ip_local })?;
+    let rede = Rede::para_acesso(&base, &ConfigRede { concorrencia: cfg.concorrencia, conexoes: 1, rps, adaptativo: false, rps_inicial: 0.0, http1: false,
+        tentativas: 4, timeout_s: cfg.timeout_s, max_429: 0, teto, pausa_429_s: pausa, ip_local: cfg.ip_local }, cfg.acesso)?;
     let federado = match &cfg.federacao {
         Some(op) => {
             let escala_f = if coletor::base_local(&base) { 1.0 / cfg.aceleracao_local.max(1.0) } else { 1.0 };
@@ -2064,11 +2132,14 @@ pub fn executar(mut cfg: Config) -> anyhow::Result<()> {
     if novo { writeln!(alertas, "t,tipo,texto")?; }
     let local = coletor::base_local(&base);
     let escala = if local { 1.0 / cfg.aceleracao_local.max(1.0) } else { 1.0 };
+    // relógio do sistema (M-003): a âncora com a noite do TSE se fixa no primeiro `Date` do site
+    let relogio = Arc::new(crate::relogio::Relogio::novo(1.0 / escala));
     // difusão (--http): a thread uv-difusao existe desde a partida, para a publicação a frio já entrar nos tópicos;
     // não precisa ser esperada no fim (só monta mensagens)
     let (difusao, _dif_h) = match &cfg.http {
         Some(op) => {
             let (h, rx) = crate::difusao::Hub::novo(op.clone());
+            h.definir_relogio(relogio.clone());
             let h2 = h.clone();
             let t = std::thread::Builder::new().name("uv-difusao".into()).spawn(move || crate::difusao::difundir(h2, rx))?;
             (Some(h), Some(t))
@@ -2082,13 +2153,13 @@ pub fn executar(mut cfg: Config) -> anyhow::Result<()> {
     };
     let com = Arc::new(Comum {
         cfg: cfg.clone(), rede, parar: AtomicBool::new(false), cs_ocioso: AtomicBool::new(false), fila: AtomicI64::new(0), lat_aux: Mutex::default(), lat_bu: Mutex::default(),
-        cont: Contadores::default(), publicadas_cs: Mutex::default(), agregadas_cs: Mutex::default(), aplicados: Mutex::default(), cache: Mutex::default(), relogio_site: AtomicI64::new(0),
+        cont: Contadores::default(), publicadas_cs: Mutex::default(), agregadas_cs: Mutex::default(), aplicados: Mutex::default(), cache: Mutex::default(), relogio_site: AtomicI64::new(0), relogio,
         t0: Instant::now(), escala: AtomicU64::new(escala.to_bits()), tx_motor, lat_pub: Mutex::default(), custo_grav: Mutex::default(), custo_sync: Mutex::default(), difusao: difusao.clone(), federado: federado.clone(), tse: tse.clone(), log: Mutex::new(Some(log)), alertas_arq: Mutex::new(Some(alertas)), alertas: Mutex::default(),
     });
     com.registrar("info", "inicio", json!({"versao": urna_velox::VERSAO, "base": base, "ambiente": cfg.alvo.ambiente, "ciclo": cfg.alvo.ciclo, "pleito": cfg.alvo.pleito,
-        "servidor_local": local, "teto_req_s": com.rede.teto(), "req_s": rps, "pausa_429_s": pausa, "intervalo_cs_s": cfg.intervalo_cs, "intervalo_cs_ocioso_s": cfg.intervalo_cs_ocioso, "concorrencia": cfg.concorrencia}));
+        "servidor_local": local, "acesso": cfg.acesso.texto(), "teto_req_s": com.rede.teto(), "req_s": rps, "pausa_429_s": pausa, "intervalo_cs_s": cfg.intervalo_cs, "intervalo_cs_ocioso_s": cfg.intervalo_cs_ocioso, "concorrencia": cfg.concorrencia}));
     eprintln!("uv-servico {}: {base} pleito {}, {rps} req/s (teto {}), pausa de {pausa} s depois de um 429{}", urna_velox::VERSAO, cfg.alvo.pleito, com.rede.teto(),
-        if local { " — servidor local" } else { "" });
+        if local { " — servidor local".to_string() } else if cfg.acesso.interno() { format!(" — acesso {}", cfg.acesso.texto()) } else { String::new() });
     if let (true, Some(hub)) = (cfg.controle_replay, &difusao) {
         let (f1, f2, f3) = (Arc::downgrade(&com), Arc::downgrade(&com), Arc::downgrade(&com));
         hub.definir_replay(crate::controle_replay::Replay::novo(&base, cfg.aceleracao_local, crate::controle_replay::Ganchos {
@@ -2186,8 +2257,10 @@ pub fn executar(mut cfg: Config) -> anyhow::Result<()> {
             use crate::federacao::no;
             let acel = if local { cfg.aceleracao_local.max(1.0) } else { 1.0 };
             match no::republicar(f, &cfg.saida, &cfg.dados) {
-                Ok(n) if n > 0 => com.registrar("info", "federacao_republicados", json!({"registros": n})),
-                Ok(_) => {}
+                Ok(r) => {
+                    if r.registros > 0 { com.registrar("info", "federacao_republicados", json!({"registros": r.registros, "lotes": r.lotes})); }
+                    if let Some(motivo) = r.desalinhado { com.alerta("federacao_diario_desalinhado", &motivo); }
+                }
                 Err(e) => com.registrar("aviso", "federacao_republicar", json!({"erro": format!("{e:#}")})),
             }
             // sincronização direta com os pares (sem storage compartilhado): serve o diretório do nó e copia o dos outros

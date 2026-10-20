@@ -9,6 +9,8 @@ export class Conexao {
     this.aoReceber = aoReceber;
     this.aoEstado = aoEstado;
     this.topicos = new Set();
+    // tópicos de que a página quer o `faltam_para_mat` (B-014: não o das 5.574 circunscrições)
+    this.faltam = [];
     this.ws = null;
     this.espera = 1000;
     this.timer = null;
@@ -31,8 +33,9 @@ export class Conexao {
       this.espera = 1000;
       this.aoEstado('vivo');
       this.#mandarInscricoes([...this.topicos]);
-      this.#mandar({ op: 'eventos' });
-      this.#mandar({ op: 'marcos' });
+      // B-014: eventos e marcos do Brasil e das UFs (e os dos tópicos inscritos), não os das 5.574 circunscrições municipais
+      this.#mandar({ op: 'eventos', escopo: 'uf' });
+      this.#mandar({ op: 'marcos', escopo: 'uf', faltam: this.faltam });
     };
     ws.onmessage = (e) => {
       const d = e.data;
@@ -68,6 +71,13 @@ export class Conexao {
 
   #mandarInscricoes(lista) {
     for (let i = 0; i < lista.length; i += MAX_POR_MSG) this.#mandar({ op: 'inscrever', topicos: lista.slice(i, i + MAX_POR_MSG) });
+  }
+
+  /** Troca a lista de tópicos com `faltam_para_mat` (o servidor manda o valor atual dos que entraram). */
+  definirFaltam(lista) {
+    if (lista.length === this.faltam.length && lista.every((t, i) => t === this.faltam[i])) return;
+    this.faltam = lista;
+    this.#mandar({ op: 'marcos', escopo: 'uf', faltam: lista });
   }
 
   /** Inscreve os tópicos que faltam e cancela os que saíram (a lista inteira desejada). */

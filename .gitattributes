@@ -2,6 +2,8 @@
 *.sh text eol=lf
 *.py text eol=lf
 .githooks/* text eol=lf
+# painel dos nós: o ajudante de ações roda como root no servidor (bash)
+deploy/oci/servidor/uv-painel-acao text eol=lf
 VERSION text eol=lf
 # Fixtures dos testes do motor: BUs, pacotes e arquivos oficiais com os bytes intocados
 *.uvpk binary

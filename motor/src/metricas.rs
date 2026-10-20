@@ -113,6 +113,12 @@ pub fn iso_brasilia(t: i64) -> String {
     format!("{a:04}-{m:02}-{d:02}T{h:02}:{mi:02}:{s:02}-03:00")
 }
 
+/// [`iso_brasilia`] de um instante em milissegundos, com os milissegundos: "2026-10-18T20:41:03.512-03:00".
+pub fn iso_brasilia_ms(ms: i64) -> String {
+    let (a, m, d, h, mi, s) = civil(ms.div_euclid(1000));
+    format!("{a:04}-{m:02}-{d:02}T{h:02}:{mi:02}:{s:02}.{:03}-03:00", ms.rem_euclid(1000))
+}
+
 #[cfg(test)]
 mod testes {
     use super::*;

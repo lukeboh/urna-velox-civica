@@ -87,6 +87,10 @@ pub struct Config {
     pub limite_ip_rps: f64,
     /// TSE simulado (etapa 7, [`crate::tse_simulado`]): `-u.json` progressivos durante a noite
     pub tse: Option<crate::tse_simulado::Opcoes>,
+    /// Acompanhar o serviço (B-011, modo rápido do ciclo): o relógio não passa do instante em que as seções
+    /// disponibilizadas e ainda sem o BU servido seriam mais que esta % das seções com BU; 0 = desligado (o relógio
+    /// anda solto, como antes)
+    pub acompanhar_pct: f64,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -243,7 +247,21 @@ pub struct Sim {
     limite_ip_rps: f64,
     /// TSE simulado: `-u.json` progressivos (sem ele, os oficiais só depois do último BU)
     tse: Option<crate::tse_simulado::TseSimulado>,
+    /// acompanhar o serviço (B-011): folga em seções (0 = desligado), disponibilizações das seções com BU em ordem, BU
+    /// já servido por seção e quantas seções já tiveram o BU servido
+    folga: u64,
+    disps: Vec<i64>,
+    servida: Vec<AtomicBool>,
+    n_servidas: AtomicU64,
+    freadas: AtomicU64,
+    /// ms (desde `criado`) do último BU servido pela primeira vez: sem BU novo há mais de `FREIO_MAX`, o relógio volta a
+    /// andar solto (seção que o serviço nunca busca não trava a noite)
+    ult_servida_ms: AtomicU64,
+    criado: Instant,
 }
+
+/// Tempo real máximo com o relógio freado sem nenhum BU novo servido (acompanhar o serviço, B-011).
+const FREIO_MAX: Duration = Duration::from_secs(10);
 
 /// "hh:mm:ss" (no dia de `dia_ref`) ou "dd/mm/aaaa hh:mm:ss".
 pub fn hora(s: &str, dia_ref: i64) -> Option<i64> {
@@ -443,7 +461,12 @@ impl Sim {
             crate::texto_hora(inicio), oficiais.len(), t_carga.elapsed().as_secs_f64())
             + &tse.as_ref().map(|t| format!("; TSE simulado: divulgação até {} (atraso p50 {:.0} s, p90 {:.0} s, máx. {:.0} s)",
                 crate::texto_hora(t.t_final), t.atraso.0, t.atraso.1, t.atraso.2)).unwrap_or_default();
+        let mut disps: Vec<i64> = secs.iter().filter(|s| s.bu.is_some()).filter_map(|s| s.disp).collect();
+        disps.sort_unstable();
+        let folga = if cfg.acompanhar_pct > 0.0 { ((disps.len() as f64 * cfg.acompanhar_pct / 100.0).ceil() as u64).max(1) } else { 0 };
+        let servida = (0..secs.len()).map(|_| AtomicBool::new(false)).collect();
         Ok(Sim {
+            folga, disps, servida, n_servidas: AtomicU64::new(0), freadas: AtomicU64::new(0), ult_servida_ms: AtomicU64::new(0), criado: Instant::now(),
             secs, idx, ufs, mem, oficiais, t_oficiais, inicio, primeira, ultima,
             relogio: Mutex::new(Relogio { base_sim: inicio as f64, base_real: Instant::now(), acelerar: cfg.acelerar.max(0.001), alvo: None,
                 limite: (t_oficiais + 6 * 3600) as f64 }),
@@ -456,7 +479,26 @@ impl Sim {
 
     /// Relógio simulado (segundos, hora de Brasília).
     pub fn agora(&self) -> f64 {
-        let (t, chegou, x) = { let mut r = self.relogio.lock().unwrap(); let (t, c) = r.ler(); (t, c, r.acelerar) };
+        let (t, chegou, x) = {
+            let mut r = self.relogio.lock().unwrap();
+            let (mut t, c) = r.ler();
+            // acompanhar o serviço (B-011): o relógio para no instante em que a fila de seções disponibilizadas e ainda
+            // sem BU servido chegaria à folga; anda de novo, da mesma aceleração, quando o serviço busca os BUs
+            let parado = self.criado.elapsed().saturating_sub(Duration::from_millis(self.ult_servida_ms.load(Relaxed)));
+            if self.folga > 0 && (parado < FREIO_MAX || self.n_servidas.load(Relaxed) == 0) {
+                let k = (self.n_servidas.load(Relaxed) + self.folga) as usize;
+                if let Some(&teto) = self.disps.get(k) {
+                    let teto = teto as f64;
+                    if t > teto {
+                        r.base_sim = teto;
+                        r.base_real = Instant::now();
+                        t = teto;
+                        self.freadas.fetch_add(1, Relaxed);
+                    }
+                }
+            }
+            (t, c, r.acelerar)
+        };
         if chegou { self.anotar(&format!("alvo alcançado; aceleração {x}×"), t); }
         t
     }
@@ -621,6 +663,10 @@ impl Sim {
                         let Some(b) = sec.bu else { return nada };
                         if sec.disp.is_none_or(|d| d > t) || seg[10] != sec.nome_bu(self.pleito) { return nada; }
                         if !sec.hashes_em(t).iter().any(|h| h.0 == seg[9]) { return nada; }
+                        if !self.servida[i as usize].swap(true, Relaxed) {
+                            self.n_servidas.fetch_add(1, Relaxed);
+                            self.ult_servida_ms.store(self.criado.elapsed().as_millis() as u64, Relaxed);
+                        }
                         (200, Bytes::copy_from_slice(self.mem.bu(b as usize)), None, "application/octet-stream")
                     }
                 }
@@ -708,6 +754,7 @@ impl Sim {
         let e = self.est.lock().unwrap();
         let mut s = String::from("{");
         let _ = write!(s, "\"fora_do_ar\":{},", self.caido.load(Relaxed));
+        let _ = write!(s, "\"acompanhar\":{{\"folga_secoes\":{},\"bus_servidos\":{},\"freadas\":{}}},", self.folga, self.n_servidas.load(Relaxed), self.freadas.load(Relaxed));
         let _ = write!(s, "\"relogio\":\"{}\",\"inicio\":\"{}\",\"primeira\":\"{}\",\"ultima\":\"{}\",\"oficiais\":\"{}\",\"acelerar\":{},\"requisicoes\":{},\"max_por_segundo\":{},\"por_tipo\":{{",
             crate::texto_hora(self.agora() as i64), crate::texto_hora(self.inicio), crate::texto_hora(self.primeira), crate::texto_hora(self.ultima),
             crate::texto_hora(self.t_oficiais), self.aceleracao(), self.n_req.load(Relaxed), e.por_segundo.iter().max().copied().unwrap_or(0));

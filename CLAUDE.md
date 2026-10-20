@@ -14,8 +14,23 @@ Leia isto antes de qualquer trabalho no repositório.
 * Desde a `v0.1.0` as conferências da etapa 0 são **testes automatizados** do motor: `cargo test --release -p urna-velox` (unidade + fixtures) e `UV_DADOS=/home/dev/uvreal cargo test --release -p urna-velox -- --ignored --test-threads 1` (2026 83/83, 2024 5.574/5.574 e 51/51, com a situação de cada candidato e o "matematicamente"). Os scripts Python (`comparar_oficial.py`, `comparar_municipal.py`, `aquisicao/scripts/conferir_tres.sh`) ficam como conferência secundária do `uv-coletor`.
 * Cobertura: `scripts/cobertura.sh` (motor: 84,3 % das linhas na `v0.1.0`).
 
+## Bugs — primeiro o teste que comprova, depois a correção (regra de 18/10/2026)
+* Todo bug vai para a lista [docs/BUGS.md](docs/BUGS.md) assim que é visto, só com o sintoma (sem análise). **A ordem de
+  ataque é decidida pelo Luciano**: nenhum bug da lista é analisado ou corrigido antes disso.
+* Para corrigir um bug, nesta ordem:
+  1. **Criar o caso de teste que comprova o bug** (teste automatizado: `cargo test`, `--ignored` com dados reais, teste
+     da página em `site/testes/`, teste de script). Rodar e **ver o teste falhar** pelo motivo do bug; registrar no
+     `docs/BUGS.md` o nome do teste e a saída da falha.
+  2. **Só então implementar a correção.**
+  3. Rodar o teste de novo (agora passa) e a suíte inteira (nada que passava pode quebrar); se mexe em totalização ou
+     resultado, vale também a verificação contra os oficiais (seção acima).
+  4. No commit (com versão nova): o teste fica no repositório para sempre; CHANGELOG e `docs/BUGS.md` citam o bug, o
+     teste e o resultado antes/depois.
+* Bug que não dá para reproduzir em teste automatizado: registrar por que e combinar com o Luciano antes de corrigir.
+
 ## Rede e servidores do TSE
 * **No máximo 100 requisições por segundo ao TSE por órgão**, somando tudo o que sai do órgão (cada órgão acessa pelo seu IP; acima de 100 req/s a borda do TSE responde HTTP 429). Coletas longas usam 95 req/s. Nunca usar vários IPs, proxies ou processos **do mesmo órgão** para contornar o limite.
+  * **O limite é da borda pública** (`resultados.tse.jus.br`, `cdn.tse.jus.br`; regra do Luciano, 19/10/2026). Contra um **servidor espelho** dos arquivos públicos (fora da borda pública; modo `interno`) o operador calibra o teto ou o desliga: `ACESSO=interno` e `TETO_RPS_INTERNO` no `no.env`, pelo painel dos nós ([docs/PAINEL.md](docs/PAINEL.md)). O código recusa o modo espelho para os endereços da borda pública (e quando os BUs vêm de lá): neles o limite de 100 vale sempre. A pausa de 10 min depois de um 429 vale nos dois modos.
 * **Órgãos diferentes podem colaborar** (consórcio, acordo entre si): é o que a federação (etapa 6) faz. Cada nó é de um órgão diferente, no IP desse órgão, com o seu próprio limite de 100 req/s; a vazão da federação soma os limites dos órgãos participantes. Um órgão não roda mais de um nó.
 * **Órgãos hospedados na mesma infraestrutura** (ADR-029): cada órgão tem máquina e IP público reservado **exclusivos** e saída direta por ele (sem NAT/gateway comum). Isso é garantia da operação: um órgão nunca pode perder vazão por dividir IP com outro. Os órgãos colaboram numa só federação.
 * **O limite vale por IP de saída** (o que a CDN do TSE vê). Cada nó da federação publica o seu IP de saída e conhece o dos outros; nós que saem pelo **mesmo IP** (NAT, proxy, rede compartilhada) contam como um só e **dividem** os 100 req/s desse IP. IPs de saída diferentes não têm por que somar no mesmo limite.

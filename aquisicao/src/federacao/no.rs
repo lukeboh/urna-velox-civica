@@ -134,6 +134,27 @@ pub struct ContFed {
     pub puladas: AtomicU64,
 }
 
+/// Contadores do nó gravados no armazém local (B-006): fora de `nos/` e `bus/`, não vão para os pares.
+fn chave_contadores(no: &str) -> String { format!("estado/{no}/contadores.json") }
+
+impl ContFed {
+    fn campos(&self) -> [(&'static str, &AtomicU64); 11] {
+        [("publicados", &self.publicados), ("lotes_gravados", &self.lotes_gravados), ("recebidos", &self.recebidos),
+         ("ja_aplicados", &self.ja_aplicados), ("lotes_lidos", &self.lotes_lidos), ("rejeitados", &self.rejeitados),
+         ("delegadas_total", &self.delegadas_total), ("assumidas", &self.assumidas), ("republicados", &self.republicados),
+         ("mudancas_particao", &self.mudancas_particao), ("puladas", &self.puladas)]
+    }
+    fn instantaneo(&self) -> Value {
+        Value::Object(self.campos().iter().map(|(k, a)| (k.to_string(), json!(a.load(Relaxed)))).collect())
+    }
+    /// Retomada: soma o que foi contado antes da queda (o processo novo pode já ter contado algo na partida).
+    fn restaurar(&self, v: &Value) {
+        for (k, a) in self.campos() {
+            if let Some(n) = v.get(k).and_then(Value::as_u64) { a.fetch_add(n, Relaxed); }
+        }
+    }
+}
+
 pub struct Federado {
     pub cfg: Federacao,
     pub id: String,
@@ -191,10 +212,18 @@ impl Federado {
             Lido::Novo(o) => String::from_utf8_lossy(&o.bytes).trim().parse().unwrap_or(0),
             _ => 0,
         };
+        // retomada (mesmo armazém): os contadores seguem de onde estavam (B-006)
+        let cont = ContFed::default();
+        if let Ok(Lido::Novo(o)) = armazem.ler(&chave_contadores(&no.id), None) {
+            if let Ok(v) = serde_json::from_slice::<Value>(&o.bytes) { cont.restaurar(&v); }
+        }
+        // os lotes do nó são numerados de 1 em diante: o exato é o `ultimo` (os contadores podem ter ficado um lote
+        // atrás num kill -9 entre a gravação do lote e a dos contadores)
+        cont.lotes_gravados.store(seq, Relaxed);
         Ok(Federado {
             id: no.id.clone(), estado: RwLock::new(estado::calcular(&cfg, &[], SystemTime::now())), cfg, armazem, eco,
             ip_medido: Mutex::default(), saida: Mutex::default(), delegadas: Mutex::default(), resolvidas: Mutex::default(), seq: AtomicU64::new(seq),
-            lidos: Mutex::default(), cont: ContFed::default(), sinc: Default::default(), batidas: AtomicU64::new(0), fim: Default::default(), batimento, troca, morte_s,
+            lidos: Mutex::default(), cont, sinc: Default::default(), batidas: AtomicU64::new(0), fim: Default::default(), batimento, troca, morte_s,
             sincronizando: std::sync::atomic::AtomicBool::new(true), alvos: Mutex::default(), inicio: Instant::now(), vistos: Mutex::default(),
         })
     }
@@ -383,7 +412,8 @@ async fn bater(f: &Federado, com: &Arc<Comum>, tx: &tokio::sync::mpsc::Unbounded
         let e = f.estado.read().unwrap();
         e.ativos != novo.ativos || e.fora.iter().map(|x| &x.0).ne(novo.fora.iter().map(|x| &x.0))
     };
-    if let Some(me) = novo.ativo(&f.id) { com.rede.lim.definir_cota(me.rps * acel); }
+    // a cota é a fatia do IP de saída na borda; no modo espelho (sem o limite da borda) vale o teto do próprio nó
+    if let Some(me) = novo.ativo(&f.id) { if !com.cfg.acesso.interno() { com.rede.lim.definir_cota(me.rps * acel); } }
     if mudou {
         f.cont.mudancas_particao.fetch_add(1, Relaxed);
         com.registrar("info", "particao", json!({"ativos": novo.ativos.iter().map(|n| json!({"no": n.id, "ip": n.ip_saida, "rps": n.rps, "peso": n.peso})).collect::<Vec<_>>(),
@@ -425,30 +455,55 @@ pub async fn batimentos(f: Arc<Federado>, com: Arc<Comum>, tx: tokio::sync::mpsc
     }
 }
 
-/// Grava no storage o que este nó resolveu desde o último lote.
+/// Máximo de registros num lote gravado no storage (~8 MB de BUs): uma rajada, ou a republicação da partida, vira
+/// vários lotes em vez de um buffer do tamanho de tudo.
+pub const LOTE_MAX_REGISTROS: usize = 500;
+
+/// Grava os contadores do nó no armazém local (B-006): a retomada os lê em [`Federado::novo`].
+pub fn gravar_contadores(f: &Federado) -> Result<()> {
+    f.armazem.gravar(&chave_contadores(&f.id), f.cont.instantaneo().to_string().as_bytes())?;
+    Ok(())
+}
+
+/// Grava no storage o que este nó resolveu desde o último lote (fracionado em lotes de até [`LOTE_MAX_REGISTROS`]).
+/// Se gravou algum lote, grava também os contadores.
 pub fn gravar_lote(f: &Federado) -> Result<()> {
-    let regs = std::mem::take(&mut *f.saida.lock().unwrap());
-    if regs.is_empty() { return Ok(()); }
-    let seq = f.seq.load(Relaxed) + 1;
-    if let Err(e) = f.armazem.gravar(&chave_lote(&f.id, seq), &codificar(&regs)) {
-        // devolve para a próxima tentativa, na ordem
-        let mut s = f.saida.lock().unwrap();
-        let resto = std::mem::take(&mut *s);
-        *s = regs; s.extend(resto);
-        return Err(e);
+    let mut gravou = false;
+    loop {
+        let regs: Vec<(Cabecalho, Bytes)> = {
+            let mut s = f.saida.lock().unwrap();
+            if s.is_empty() { break; }
+            let n = s.len().min(LOTE_MAX_REGISTROS);
+            s.drain(..n).collect()
+        };
+        let seq = f.seq.load(Relaxed) + 1;
+        if let Err(e) = f.armazem.gravar(&chave_lote(&f.id, seq), &codificar(&regs)) {
+            // devolve para a próxima tentativa, na ordem
+            let mut s = f.saida.lock().unwrap();
+            let mut resto = std::mem::take(&mut *s);
+            *s = regs;
+            s.append(&mut resto);
+            return Err(e);
+        }
+        f.armazem.gravar(&chave_ultimo(&f.id), seq.to_string().as_bytes())?;
+        f.seq.store(seq, Relaxed);
+        f.cont.lotes_gravados.fetch_add(1, Relaxed);
+        gravou = true;
     }
-    f.armazem.gravar(&chave_ultimo(&f.id), seq.to_string().as_bytes())?;
-    f.seq.store(seq, Relaxed);
-    f.cont.lotes_gravados.fetch_add(1, Relaxed);
+    if gravou { gravar_contadores(f)?; }
     Ok(())
 }
 
 pub async fn publicador(f: Arc<Federado>, com: Arc<Comum>) {
+    // os contadores do consumo (recebidos, já aplicados…) mudam sem lote próprio: também a cada ~1 s
+    let mut ult = Instant::now();
     while !com.parar.load(Relaxed) {
         tokio::time::sleep(f.troca).await;
         if let Err(e) = gravar_lote(&f) { com.registrar("aviso", "lote", json!({"erro": format!("{e:#}")})); }
+        if ult.elapsed() >= Duration::from_secs(1) { let _ = gravar_contadores(&f); ult = Instant::now(); }
     }
     let _ = gravar_lote(&f);
+    let _ = gravar_contadores(&f);
 }
 
 /// Lê os lotes novos dos outros nós e os entrega ao motor.
@@ -518,21 +573,57 @@ impl Sha {
     fn de(b: &[u8]) -> [u8; 32] { use sha2::Digest; sha2::Sha256::digest(b).into() }
 }
 
+/// Resultado de [`republicar`].
+#[derive(Debug, Default, PartialEq)]
+pub struct Republicacao {
+    /// registros do diário postos de novo em lotes
+    pub registros: usize,
+    /// lotes gravados na republicação
+    pub lotes: u64,
+    /// diário e storage de execuções diferentes (nada republicado): o motivo, para o alerta
+    pub desalinhado: Option<String>,
+}
+
 /// Na partida: republica o que o diário registrou depois do último lote deste nó no storage (o que estava em memória
-/// num `kill -9`). Republicar a mais é inofensivo: quem já tem ignora (`ja_aplicados`).
-pub fn republicar(f: &Federado, saida: &std::path::Path, dados: &std::path::Path) -> Result<usize> {
+/// num `kill -9`, com 30 s de folga). Republicar a mais é inofensivo: quem já tem ignora (`ja_aplicados`). Por isso não
+/// há teto. O diário é lido em fluxo e os registros vão para o storage em lotes de [`LOTE_MAX_REGISTROS`], e a memória
+/// fica em um lote, qualquer que seja o tamanho do que falta.
+///
+/// O diário só cresce (`secoes.log` é aberto para acréscimo), então a primeira linha dele é anterior ao primeiro lote
+/// da mesma execução. Se ela é **posterior ao último lote**, o diário foi recomeçado (saída arquivada ou trocada) sem o
+/// storage da federação acompanhar. Nesse caso nada é republicado e o motivo volta em
+/// [`Republicacao::desalinhado`] para virar alerta. Republicar o diário inteiro, como antes da `0.8.2`, levou o nó A
+/// da OCI a ~12 GB e à morte por falta de memória a cada partida (17/10/2026).
+pub fn republicar(f: &Federado, saida: &std::path::Path, dados: &std::path::Path) -> Result<Republicacao> {
+    use std::io::BufRead;
+    let mut r = Republicacao::default();
     let ultimo = f.seq.load(Relaxed);
-    if ultimo == 0 { return Ok(0); }
-    let corte_ms = match f.armazem.ler(&chave_lote(&f.id, ultimo), None)? {
-        Lido::Novo(o) => o.versao.modificado.duration_since(SystemTime::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0).saturating_sub(30_000),
-        _ => 0,
+    if ultimo == 0 { return Ok(r); }
+    let lote_ms = match f.armazem.ler(&chave_lote(&f.id, ultimo), None)? {
+        Lido::Novo(o) => o.versao.modificado.duration_since(SystemTime::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0),
+        _ => return Ok(r),
     };
-    let Ok(txt) = std::fs::read_to_string(saida.join("secoes.log")) else { return Ok(0) };
-    let mut n = 0;
-    for l in txt.lines() {
+    if lote_ms == 0 { return Ok(r); }
+    let corte_ms = lote_ms.saturating_sub(30_000);
+    let Ok(arq) = std::fs::File::open(saida.join("secoes.log")) else { return Ok(r) };
+    let seq0 = f.seq.load(Relaxed);
+    let mut primeira = true;
+    for l in std::io::BufReader::with_capacity(1 << 20, arq).lines() {
+        let Ok(l) = l else { continue };
         let c: Vec<&str> = l.split(',').collect();
         if c.len() != 16 || c[0] == "t_ms" { continue; }
-        if c[0].parse::<u64>().unwrap_or(0) < corte_ms { continue; }
+        let Ok(t_ms) = c[0].parse::<u64>() else { continue };
+        if primeira {
+            primeira = false;
+            if t_ms > lote_ms {
+                r.desalinhado = Some(format!(
+                    "o diário ({}) começou em {} ms, depois do último lote deste nó no storage ({ultimo}, de {lote_ms} ms): \
+                     saída e storage da federação são de execuções diferentes; nada foi republicado. Arquive saída, \
+                     dados e federação juntos.", saida.join("secoes.log").display(), t_ms));
+                return Ok(r);
+            }
+        }
+        if t_ms < corte_ms { continue; }
         let (Ok(uf), Ok(m), Ok(z), Ok(s)) = (<[u8; 2]>::try_from(c[2].as_bytes()), c[3].parse::<u32>(), c[4].parse::<u16>(), c[5].parse::<u16>()) else { continue };
         let k = (uf, tse::chave(m, z, s));
         match c[1] {
@@ -548,15 +639,31 @@ pub fn republicar(f: &Federado, saida: &std::path::Path, dados: &std::path::Path
             "agregada" => f.publicar_sem_bu("agregada", k, ""),
             _ => continue,
         }
-        n += 1;
+        r.registros += 1;
+        f.cont.republicados.fetch_add(1, Relaxed);
+        // memória limitada: um lote cheio vai para o storage antes de ler o resto
+        if f.saida.lock().unwrap().len() >= LOTE_MAX_REGISTROS { gravar_lote(f)?; }
     }
-    f.cont.republicados.fetch_add(n as u64, Relaxed);
-    Ok(n)
+    gravar_lote(f)?;
+    r.lotes = f.seq.load(Relaxed) - seq0;
+    Ok(r)
 }
 
 #[cfg(test)]
 mod testes {
     use super::*;
+
+    fn federado_teste(d: &std::path::Path) -> Federado {
+        let fed_json = d.join("federacao.json");
+        std::fs::write(&fed_json, r#"{"versao":1,"nos":[{"id":"no-a","orgao":"A","ip_saida":"127.0.0.2"}]}"#).unwrap();
+        Federado::novo(&Opcoes {
+            federacao: fed_json,
+            no: "no-a".into(),
+            armazem: d.join("armazem"),
+            eco_ip: None,
+            escuta: None,
+        }, "http://127.0.0.1", 1.0).unwrap()
+    }
 
     #[test]
     fn lote_ida_e_volta() {
@@ -571,4 +678,177 @@ mod testes {
         assert!(decodificar(b"outra coisa").is_err());
         assert_eq!(k_de(&regs[0].0), Some((*b"am", tse::chave(2550, 1, 550))));
     }
+
+    #[test]
+    fn gravar_lote_fraciona_em_tamanho_maximo() {
+        let tmp = std::env::temp_dir().join(format!("uv-fed-lote-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let f = federado_teste(&tmp);
+
+        // Enfileira 1.200 registros (mais que 2x LOTE_MAX_REGISTROS = 500)
+        for i in 0..1200u16 {
+            let c = Cabecalho {
+                tipo: "nao_instalada".into(),
+                uf: "am".into(),
+                m: 2550,
+                z: 1,
+                s: i,
+                hash: String::new(),
+                sha: String::new(),
+                situacao: String::new(),
+                anulada: false,
+                disp: "04/10/2026 17:00:00".into(),
+                recebido: String::new(),
+                hora_site: 0,
+            };
+            f.guardar(c, Bytes::new());
+        }
+        assert_eq!(f.saida.lock().unwrap().len(), 1200);
+
+        gravar_lote(&f).unwrap();
+        assert_eq!(f.saida.lock().unwrap().len(), 0);
+        assert_eq!(f.seq.load(Relaxed), 3); // 500 + 500 + 200 = 3 lotes
+        assert_eq!(f.cont.lotes_gravados.load(Relaxed), 3);
+
+        // Confere os tamanhos de cada lote no armazém
+        let l1 = decodificar(&match f.armazem.ler(&chave_lote(&f.id, 1), None).unwrap() { Lido::Novo(o) => o.bytes, _ => panic!() }).unwrap();
+        let l2 = decodificar(&match f.armazem.ler(&chave_lote(&f.id, 2), None).unwrap() { Lido::Novo(o) => o.bytes, _ => panic!() }).unwrap();
+        let l3 = decodificar(&match f.armazem.ler(&chave_lote(&f.id, 3), None).unwrap() { Lido::Novo(o) => o.bytes, _ => panic!() }).unwrap();
+        assert_eq!(l1.len(), 500);
+        assert_eq!(l2.len(), 500);
+        assert_eq!(l3.len(), 200);
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// B-006: os contadores da federação sobrevivem à retomada (mesmo armazém, `--continuar`): depois de reiniciar,
+    /// `publicados`, `lotes_gravados` e os demais seguem de onde estavam (antes recomeçavam do zero: o nó B mostrou
+    /// 91 mil publicados ao fim tendo coletado ~240 mil).
+    #[test]
+    fn contadores_sobrevivem_a_retomada() {
+        let tmp = std::env::temp_dir().join(format!("uv-fed-contadores-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let f = federado_teste(&tmp);
+        for i in 0..700u16 { f.guardar(Federado::cab("nao_instalada", (*b"am", tse::chave(2550, 1, i))), Bytes::new()); }
+        f.cont.recebidos.fetch_add(42, Relaxed);
+        f.cont.ja_aplicados.fetch_add(7, Relaxed);
+        gravar_lote(&f).unwrap();
+        assert_eq!((f.cont.publicados.load(Relaxed), f.cont.lotes_gravados.load(Relaxed)), (700, 2));
+        drop(f);
+
+        // retomada: novo processo, mesmo armazém
+        let g = federado_teste(&tmp);
+        assert_eq!(g.seq.load(Relaxed), 2);
+        assert_eq!((g.cont.publicados.load(Relaxed), g.cont.lotes_gravados.load(Relaxed)), (700, 2), "publicados/lotes recomeçaram");
+        assert_eq!((g.cont.recebidos.load(Relaxed), g.cont.ja_aplicados.load(Relaxed)), (42, 7));
+        // e continuam acumulando
+        g.guardar(Federado::cab("nao_instalada", (*b"am", tse::chave(2550, 2, 1))), Bytes::new());
+        gravar_lote(&g).unwrap();
+        assert_eq!((g.cont.publicados.load(Relaxed), g.cont.lotes_gravados.load(Relaxed), g.seq.load(Relaxed)), (701, 3, 3));
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn republicar_ignora_diario_desalinhado_ou_antigo() {
+        let tmp = std::env::temp_dir().join(format!("uv-fed-desalinhado-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let f = federado_teste(&tmp);
+
+        // Cria o lote 1 no armazém
+        f.guardar(Cabecalho {
+            tipo: "nao_instalada".into(),
+            uf: "am".into(),
+            m: 2550,
+            z: 1,
+            s: 1,
+            hash: String::new(),
+            sha: String::new(),
+            situacao: String::new(),
+            anulada: false,
+            disp: String::new(),
+            recebido: String::new(),
+            hora_site: 0,
+        }, Bytes::new());
+        gravar_lote(&f).unwrap();
+        assert_eq!(f.seq.load(Relaxed), 1);
+
+        // Pega o mtime do lote 1
+        let lote_ms = match f.armazem.ler(&chave_lote(&f.id, 1), None).unwrap() {
+            Lido::Novo(o) => o.versao.modificado.duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis() as u64,
+            _ => panic!(),
+        };
+
+        // Cria um secoes.log com timestamp 2 horas após o lote 1 (caso do nó A que causou OOM)
+        let log_p = tmp.join("secoes.log");
+        let ts_futuro = lote_ms + 7_200_000;
+        let mut log_conteudo = String::from(crate::servico::CAB_DIARIO);
+        log_conteudo.push('\n');
+        for i in 0..10_000u32 {
+            log_conteudo.push_str(&format!("{ts_futuro},nao_instalada,am,2550,1,{i},,,Nao instalada,0,04/10/2026 17:00:00,,,0,0,1\n"));
+        }
+        std::fs::write(&log_p, log_conteudo).unwrap();
+
+        // republicar deve reconhecer o desalinhamento e não carregar nada na memória
+        let r = republicar(&f, &tmp, &tmp).unwrap();
+        assert_eq!(r.registros, 0, "não deve republicar se o diário for de outra execução");
+        assert!(r.desalinhado.is_some(), "o desalinhamento tem de voltar para virar alerta");
+        assert_eq!(f.saida.lock().unwrap().len(), 0);
+        assert_eq!(f.seq.load(Relaxed), 1);
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn republicar_recupera_apenas_ultimos_bus_do_corte() {
+        let r = cenario_corte("poucas", 5);
+        assert_eq!(r.registros, 5, "deve republicar exatamente as 5 seções posteriores ao corte");
+        assert_eq!(r.lotes, 1);
+        assert!(r.desalinhado.is_none());
+    }
+
+    /// Queda com muito por publicar (ex.: storage fora do ar por minutos antes do `kill -9`): tudo o que passou do corte
+    /// é republicado, sem teto, mas em lotes de no máximo [`LOTE_MAX_REGISTROS`].
+    #[test]
+    fn republicar_sem_teto_em_lotes_limitados() {
+        let r = cenario_corte("muitas", 2_345);
+        assert_eq!(r.registros, 2_345);
+        assert_eq!(r.lotes, 5); // 500 × 4 + 345
+        assert!(r.desalinhado.is_none());
+    }
+
+    /// Um lote no storage, um diário com 50 linhas antes do corte (lote − 60 s) e `novas` depois dele (lote − 10 s);
+    /// republica e confere que a memória terminou vazia e que cada lote gravado tem no máximo [`LOTE_MAX_REGISTROS`].
+    fn cenario_corte(nome: &str, novas: u32) -> Republicacao {
+        let tmp = std::env::temp_dir().join(format!("uv-fed-corte-{nome}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let f = federado_teste(&tmp);
+        f.guardar(Federado::cab("nao_instalada", (*b"am", tse::chave(2550, 1, 1))), Bytes::new());
+        gravar_lote(&f).unwrap();
+        let lote_ms = match f.armazem.ler(&chave_lote(&f.id, 1), None).unwrap() {
+            Lido::Novo(o) => o.versao.modificado.duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis() as u64,
+            _ => panic!(),
+        };
+        let mut log = String::from(crate::servico::CAB_DIARIO);
+        log.push('\n');
+        for i in 0..50u64 {
+            log.push_str(&format!("{},nao_instalada,am,2550,1,{i},,,Nao instalada,0,04/10/2026 17:00:00,,,0,0,1\n", lote_ms - 60_000 + i));
+        }
+        for i in 0..novas as u64 {
+            log.push_str(&format!("{},nao_instalada,am,2550,2,{i},,,Nao instalada,0,04/10/2026 17:00:00,,,0,0,1\n", lote_ms - 10_000 + i % 1_000));
+        }
+        std::fs::write(tmp.join("secoes.log"), log).unwrap();
+        let r = republicar(&f, &tmp, &tmp).unwrap();
+        assert_eq!(f.saida.lock().unwrap().len(), 0, "nada fica em memória depois da republicação");
+        for s in 2..=f.seq.load(Relaxed) {
+            let o = match f.armazem.ler(&chave_lote(&f.id, s), None).unwrap() { Lido::Novo(o) => o, _ => panic!() };
+            assert!(decodificar(&o.bytes).unwrap().len() <= LOTE_MAX_REGISTROS);
+        }
+        let _ = std::fs::remove_dir_all(&tmp);
+        r
+    }
 }
+
