@@ -127,7 +127,7 @@ fn esperar(mut f: Child, limite_s: u64) {
 
 fn json(p: &Path) -> Value { serde_json::from_slice(&std::fs::read(p).unwrap_or_else(|e| panic!("{}: {e}", p.display()))).unwrap() }
 
-/// Publicação final sem os campos que dependem do instante (horário do último BU e o "matematicamente" de cada
+/// Publicação final sem os campos que dependem do instante (horário do último BU, no TSE e no sistema — M-003 —, e o "matematicamente" de cada
 /// candidato, que tem a sequência e a hora em que aconteceu).
 fn publicacao(dir: &Path) -> BTreeMap<String, Value> {
     let mut out = BTreeMap::new();
@@ -135,7 +135,9 @@ fn publicacao(dir: &Path) -> BTreeMap<String, Value> {
         let n = e.file_name().to_string_lossy().into_owned();
         if !n.ends_with(".json") || n.starts_with('.') { continue; }
         let mut v = json(&e.path());
-        v.as_object_mut().unwrap().remove("ultimo_bu");
+        let o = v.as_object_mut().unwrap();
+        o.remove("ultimo_bu");
+        o.remove("totalizado_em");
         for c in v["cand"].as_array_mut().unwrap() { c.as_object_mut().unwrap().remove("mat"); }
         out.insert(n, v);
     }
@@ -652,4 +654,192 @@ fn tse_simulado_progressivo() {
     assert_eq!(s["tse_resultados"]["fora_do_intervalo"].as_u64(), Some(0));
     assert_eq!(s["rede"]["http429"].as_u64(), Some(0));
     eprintln!("tse_simulado_progressivo: {} arquivos do TSE, seções {:?}…, Urna Velox decidiu {} s antes do TSE", com_dados.len(), &st[..st.len().min(8)], tse - uv);
+}
+
+/// B-009: o contador de eleitores que faltam para o "matematicamente" (`faltam_para_mat`) acompanha a apuração da
+/// circunscrição na tela mesmo quando os BUs chegam depressa (modo rápido do ciclo). Replay a 120× só de SP do 1º turno
+/// de 2024 (645 circunscrições de Prefeito); para Prefeito de São Paulo (sp71072), enquanto a disputa está em aberto,
+/// nenhum trecho com mais de 5 % dos BUs da noite pode passar sem um valor novo no `marcos.csv` (antes da correção o
+/// valor ficava parado em quase toda a noite: a conta tinha 0,5 ms por segundo para todas as circunscrições).
+#[test]
+#[ignore]
+fn faltam_acompanha_a_apuracao() {
+    let c = conj("2024-1t");
+    let d = pasta("faltam");
+    let acel = 120.0; // ~3 min; a 500× numa máquina rápida 1 s (o valor sai no máximo 1×/s) já é ~5 % dos BUs de SP
+    let sim = simulador(&d, &c, "sp", acel, &["--horario", "recebido"]);
+    esperar(servico(&d, &c, "sp", sim.porta, acel), 900);
+    let s = json(&d.join("saida/saude.json"));
+    let total = s["secoes"]["aplicadas"].as_u64().unwrap();
+    // seq,horario,classe,abrangencia,cargo,uf,municipio,zona,secao,estado,valor,lote_bus
+    let mc = std::fs::read_to_string(d.join("saida/marcos.csv")).unwrap();
+    let sp: Vec<(u64, String, Option<u64>)> = mc.lines().skip(1).map(|l| l.split(',').collect::<Vec<_>>())
+        .filter(|f| f.len() == 12 && f[2] == "faltam_para_mat" && f[3] == "sp71072" && f[4] == "11")
+        .map(|f| (f[0].parse().unwrap(), f[9].to_string(), f[10].parse().ok())).collect();
+    let fim_aberto = sp.iter().find(|x| x.1 != "apurando").map(|x| x.0).unwrap_or(total);
+    let mut pontos: Vec<u64> = sp.iter().filter(|x| x.1 == "apurando").map(|x| x.0).collect();
+    pontos.insert(0, 0);
+    pontos.push(fim_aberto);
+    let maior = pontos.windows(2).map(|w| w[1].saturating_sub(w[0])).max().unwrap_or(total);
+    eprintln!("faltam_acompanha_a_apuracao: {} valores de faltam_para_mat para São Paulo antes do matematicamente (seq {fim_aberto} de {total}); maior trecho sem valor novo: {maior} BUs ({:.1} %)",
+        sp.iter().filter(|x| x.1 == "apurando").count(), 100.0 * maior as f64 / total as f64);
+    assert!(maior * 20 <= total, "o faltam de São Paulo ficou parado por {maior} BUs ({:.1} % da noite); valores: {sp:?}", 100.0 * maior as f64 / total as f64);
+}
+
+/// B-013/B-016: a previsão acompanha a apuração mesmo quando o serviço fica atrás do relógio do simulador (modo rápido
+/// do ciclo nos nós ARM: o relógio da noite chega ao fim muito antes dos BUs serem todos aplicados). Replay só do AC do
+/// 1º turno de 2026 a 500× com o simulador respondendo em 200–300 ms e o serviço com 8 seções ao mesmo tempo (bem
+/// mais lento que a chegada simulada: a noite do simulador acaba na metade da coleta): a última
+/// previsão de Governador do AC (`ac-c0003`) tem de ter sido feita com pelo menos 90 % das seções apuradas, e a
+/// previsão não pode ter parado enquanto os BUs ainda entravam (antes da correção ela usava só o relógio do site e
+/// parava quando ele parava).
+#[test]
+#[ignore]
+fn previsao_acompanha_servico_atrasado() {
+    let c = conj("2026-1t");
+    let d = pasta("previsao");
+    // a linha do tempo do ciclo diário (horário de recebimento no TSE de cada seção), como no modo rápido
+    let c = Conj { metricas: std::env::var("UV_LINHA_3220").unwrap_or_else(|_| "/mnt/d/dados/urna-velox/linha-do-tempo/3220.csv".into()), ..c };
+    let acel = 500.0;
+    let sim = simulador(&d, &c, "ac", acel, &["--horario", "recebido", "--corte", "05/10/2026 02:00:00", "--latencia-ms", "200-300"]);
+    let f = servico_com(&d, &c, "ac", sim.porta, acel, &["--concorrencia", "8"]);
+    esperar(f, 900);
+    let csv = std::fs::read_to_string(d.join("saida/previsoes.csv")).unwrap();
+    // instante,topico,situacao,apurado,secoes,…
+    let ac: Vec<(String, String, f64)> = csv.lines().skip(1).map(|l| l.split(',').collect::<Vec<_>>())
+        .filter(|f| f.len() > 5 && f[1] == "ac-c0003").map(|f| (f[0].to_string(), f[2].to_string(), f[4].parse().unwrap_or(0.0))).collect();
+    let ultima = ac.last().cloned();
+    eprintln!("previsao_acompanha_servico_atrasado: {} previsões de ac-c0003; primeira {:?}; última {:?}", ac.len(), ac.first(), ultima);
+    let (inst, sit, secoes) = ultima.expect("nenhuma previsão de ac-c0003");
+    assert!(secoes >= 0.9 || sit == "definida", "a previsão parou com {:.1} % das seções apuradas ({sit} às {inst})", 100.0 * secoes);
+}
+
+/// Argumentos do `uv-simulador` no modo rápido do ciclo diário (`deploy/oci/servidor/uv-ciclo.sh`), para os testes
+/// que reproduzem o que se vê nos nós.
+const SIM_RAPIDO: &[&str] = &["--acompanhar-servico", "1"];
+
+/// GET local com o `curl` (corpo como texto; vazio se falhar).
+fn get(url: &str) -> String {
+    Command::new("curl").args(["-s", "-m", "10", url]).output().map(|o| String::from_utf8_lossy(&o.stdout).into_owned()).unwrap_or_default()
+}
+
+/// B-011: a curva da apuração não pula no modo rápido. Nos nós, o serviço fica atrás do relógio do simulador: a curva
+/// (eixo = horário do site) subia devagar a noite toda e dava um salto vertical quando o relógio do simulador parava no
+/// fim da noite. Replay só do AC do 1º turno de 2026 a 500× (como o ciclo: `SIM_RAPIDO`), com o simulador respondendo
+/// em 200–300 ms e o serviço com 8 seções ao mesmo tempo; na curva de Governador do AC (`/api/v1/curva/ac-c0003`, um
+/// ponto por minuto da noite) nenhum passo pode subir mais de 15 pontos percentuais das seções.
+#[test]
+#[ignore]
+fn curva_sem_salto_no_modo_rapido() {
+    let c = conj("2026-1t");
+    let d = pasta("curva");
+    let c = Conj { metricas: std::env::var("UV_LINHA_3220").unwrap_or_else(|_| "/mnt/d/dados/urna-velox/linha-do-tempo/3220.csv".into()), ..c };
+    let acel = 500.0;
+    let mut args = vec!["--horario", "recebido", "--corte", "05/10/2026 02:00:00", "--latencia-ms", "200-300"];
+    args.extend_from_slice(SIM_RAPIDO);
+    let sim = simulador(&d, &c, "ac", acel, &args);
+    let http = porta_livre();
+    let f = servico_com(&d, &c, "ac", sim.porta, acel, &["--concorrencia", "8", "--http", &format!("127.0.0.1:{http}"), "--continuar"]);
+    let t = Instant::now();
+    loop {
+        let e = get(&format!("http://127.0.0.1:{http}/api/v1/estado"));
+        if serde_json::from_str::<Value>(&e).ok().is_some_and(|v| v["encerrada"] == true) { break; }
+        assert!(t.elapsed() < Duration::from_secs(900), "a apuração não encerrou");
+        std::thread::sleep(Duration::from_millis(500));
+    }
+    let curva: Value = serde_json::from_str(&get(&format!("http://127.0.0.1:{http}/api/v1/curva/ac-c0003"))).expect("curva");
+    Command::new("kill").args(["-TERM", &f.id().to_string()]).status().unwrap();
+    esperar(f, 60);
+    // pontos: [t, apuradas, total, [[n, pct], …]]
+    let p: Vec<(i64, f64)> = curva["pontos"].as_array().unwrap().iter()
+        .map(|x| (x[0].as_f64().unwrap() as i64, 100.0 * x[1].as_f64().unwrap() / x[2].as_f64().unwrap().max(1.0))).collect();
+    let (i, salto) = p.windows(2).enumerate().map(|(i, w)| (i, w[1].1 - w[0].1)).fold((0, 0.0f64), |a, b| if b.1 > a.1 { b } else { a });
+    eprintln!("curva_sem_salto_no_modo_rapido: {} pontos, de {} a {}; maior passo {:.1} p.p. (ponto {i}: {:?} → {:?})", p.len(),
+        uv_aquisicao::texto_hora(p[0].0), uv_aquisicao::texto_hora(p[p.len() - 1].0), salto, p.get(i).map(|x| (uv_aquisicao::texto_hora(x.0), x.1)),
+        p.get(i + 1).map(|x| (uv_aquisicao::texto_hora(x.0), x.1)));
+    assert!(salto <= 15.0, "a curva de seções salta {salto:.1} pontos percentuais de um minuto para o outro");
+}
+
+/// "2026-10-18T20:41:03.512-03:00" ou "2026-10-18 20:41:03" → segundos na hora de Brasília (escala de
+/// `urna_velox::metricas::segundos`); None se não for um horário.
+fn seg_iso(s: &str) -> Option<i64> {
+    if s.len() < 19 { return None; }
+    urna_velox::metricas::segundos(&format!("{}/{}/{} {}", &s[8..10], &s[5..7], &s[0..4], &s[11..19]))
+}
+
+/// M-003: no simulado, os horários do Urna Velox são os do relógio do sistema (a data e a hora reais em que ele
+/// totalizou), separados dos do TSE. Replay do AC do 1º turno de 2026 a 500× no modo rápido do ciclo; durante e depois:
+/// * a publicação de Governador do AC tem `ultimo_bu` (horário do TSE, outubro de 2026 da eleição) **e**
+///   `totalizado_em` (relógio do sistema, dentro da janela do ensaio);
+/// * `/api/v1/estado` traz o `relogio_sistema` (âncora: início da noite no TSE, início no sistema, aceleração 500) para
+///   a página converter os horários do TSE e medir a distância entre as duas apurações;
+/// * a curva, a previsão (instante e faixas) e os eventos do "matematicamente" (`sistema`) estão no relógio do sistema;
+/// * a curva continua sem salto (o critério do B-011).
+#[test]
+#[ignore]
+fn horarios_do_sistema_no_simulado() {
+    let c = conj("2026-1t");
+    let d = pasta("horarios");
+    let c = Conj { metricas: std::env::var("UV_LINHA_3220").unwrap_or_else(|_| "/mnt/d/dados/urna-velox/linha-do-tempo/3220.csv".into()), ..c };
+    let acel = 500.0;
+    let mut args = vec!["--horario", "recebido", "--corte", "05/10/2026 02:00:00", "--latencia-ms", "200-300"];
+    args.extend_from_slice(SIM_RAPIDO);
+    let ini = uv_aquisicao::agora_brasilia() - 5;
+    let sim = simulador(&d, &c, "ac", acel, &args);
+    let http = porta_livre();
+    let f = servico_com(&d, &c, "ac", sim.porta, acel, &["--concorrencia", "8", "--http", &format!("127.0.0.1:{http}"), "--continuar"]);
+    let t = Instant::now();
+    let mut prev: Option<Value> = None;
+    let estado = loop {
+        let e: Option<Value> = serde_json::from_str(&get(&format!("http://127.0.0.1:{http}/api/v1/estado"))).ok();
+        if let Ok(p) = serde_json::from_str::<Value>(&get(&format!("http://127.0.0.1:{http}/api/v1/previsao/ac-c0003"))) { if p.get("instante").is_some() { prev = Some(p); } }
+        if let Some(e) = e.filter(|v| v["encerrada"] == true) { break e; }
+        assert!(t.elapsed() < Duration::from_secs(900), "a apuração não encerrou");
+        std::thread::sleep(Duration::from_millis(500));
+    };
+    let curva: Value = serde_json::from_str(&get(&format!("http://127.0.0.1:{http}/api/v1/curva/ac-c0003"))).expect("curva");
+    let eventos: Value = serde_json::from_str(&get(&format!("http://127.0.0.1:{http}/api/v1/eventos"))).unwrap_or(Value::Null);
+    let res: Value = serde_json::from_str(&get(&format!("http://127.0.0.1:{http}/api/v1/resultado/ac-c0003"))).unwrap_or(Value::Null);
+    Command::new("kill").args(["-TERM", &f.id().to_string()]).status().unwrap();
+    esperar(f, 60);
+    let fim = uv_aquisicao::agora_brasilia() + 5;
+    let no_ensaio = |s: Option<i64>| s.is_some_and(|x| x >= ini && x <= fim);
+    let mut falhas: Vec<String> = vec![];
+    // 1. publicação: TSE e sistema separados
+    let ub = res["ultimo_bu"].as_str().unwrap_or("");
+    let tz = res["totalizado_em"].as_str().unwrap_or("");
+    eprintln!("horarios_do_sistema_no_simulado: ensaio {} a {}; ultimo_bu {ub:?}; totalizado_em {tz:?}", uv_aquisicao::texto_hora(ini), uv_aquisicao::texto_hora(fim));
+    if !ub.starts_with("2026-10-0") { falhas.push(format!("ultimo_bu (TSE) {ub:?} não é da noite da eleição")); }
+    if !no_ensaio(seg_iso(tz)) { falhas.push(format!("totalizado_em {tz:?} fora do relógio do sistema")); }
+    // 2. âncora para a comparação
+    let r = &estado["relogio_sistema"];
+    eprintln!("  relogio_sistema {r}");
+    if r["acelerar"].as_f64() != Some(acel) || !r["noite0"].as_str().unwrap_or("").starts_with("2026-10-0") || !no_ensaio(r["sistema0"].as_str().and_then(seg_iso)) {
+        falhas.push(format!("estado sem a âncora do relógio do sistema: {r}"));
+    }
+    // 3. curva no relógio do sistema e sem salto
+    let p: Vec<(f64, f64)> = curva["pontos"].as_array().map(|v| v.iter()
+        .map(|x| (x[0].as_f64().unwrap_or(0.0), 100.0 * x[1].as_f64().unwrap_or(0.0) / x[2].as_f64().unwrap_or(1.0).max(1.0))).collect()).unwrap_or_default();
+    let fora = p.iter().filter(|x| !no_ensaio(Some(x.0 as i64))).count();
+    let salto = p.windows(2).map(|w| w[1].1 - w[0].1).fold(0.0f64, f64::max);
+    eprintln!("  curva: {} pontos, {fora} fora do relógio do sistema, maior passo {salto:.1} p.p.", p.len());
+    if p.len() < 20 || fora > 0 { falhas.push(format!("curva: {} pontos, {fora} fora do relógio do sistema", p.len())); }
+    if salto > 15.0 { falhas.push(format!("curva salta {salto:.1} p.p.")); }
+    // 4. previsão no relógio do sistema
+    match &prev {
+        Some(pv) => {
+            let mut hs = vec![pv["instante"].as_str().unwrap_or("").to_string()];
+            for k in ["mat", "fim99", "fim100"] { for q in ["p10", "p50", "p90"] { if let Some(s) = pv[k][q].as_str() { hs.push(s.into()); } } }
+            let ruins: Vec<&String> = hs.iter().filter(|s| seg_iso(s).is_none_or(|x| x < ini - 86_400 || x > fim + 86_400)).collect();
+            eprintln!("  previsão: instante {} relogio {} · {} horários, {} fora", pv["instante"], pv["relogio"], hs.len(), ruins.len());
+            if pv["relogio"] != "sistema" || !ruins.is_empty() { falhas.push(format!("previsão fora do relógio do sistema: {ruins:?}")); }
+        }
+        None => falhas.push("nenhuma previsão de ac-c0003".into()),
+    }
+    // 5. eventos do "matematicamente" com o horário do sistema
+    let evs: Vec<&Value> = eventos.as_array().map(|v| v.iter().filter(|e| e["classe"] == "matematicamente").collect()).unwrap_or_default();
+    let sem = evs.iter().filter(|e| !no_ensaio(e["sistema"].as_str().and_then(seg_iso))).count();
+    eprintln!("  eventos do matematicamente: {}, {sem} sem horário do sistema", evs.len());
+    if evs.is_empty() || sem > 0 { falhas.push(format!("{sem} de {} eventos sem horário do sistema", evs.len())); }
+    assert!(falhas.is_empty(), "M-003:\n  - {}", falhas.join("\n  - "));
 }

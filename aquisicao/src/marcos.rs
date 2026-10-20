@@ -11,9 +11,12 @@
 //!   BUs o lote teve). A 1× os lotes têm 1–3 BUs; a 60× podem ter dezenas, e qualquer seção da circunscrição no mesmo
 //!   lote poderia ser "a decisiva" (ambiguidade documentada);
 //! * `faltam_para_mat` — quantos eleitores ainda precisam ser apurados até o "matematicamente" ficar garantido
-//!   ([`urna_velox::matematica::faltam_para_mat`]); mandado quando muda, no máximo 1×/s por circunscrição (calculado na
-//!   verificação de 1 s, em rodízio, com orçamento de 0,5 ms por rodada), e **0 no `seq` exato do evento** (no próprio
-//!   lote);
+//!   ([`urna_velox::matematica::faltam_para_mat`]); mandado quando muda, no máximo 1×/s por circunscrição, e **0 no
+//!   `seq` exato do evento** (no próprio lote). No `uv-servico` a conta é feita na thread `uv-faltam` ([`ContaFaltam`],
+//!   desde a 0.8.10, B-009): a verificação de 1 s da thread do motor só tira uma fotografia dos votos das
+//!   circunscrições que mudaram e recolhe as respostas da rodada anterior. Antes, a conta rodava na própria verificação
+//!   com orçamento de 0,5 ms por rodada e, com os BUs chegando depressa, a circunscrição da tela ficava minutos sem
+//!   valor novo;
 //! * `bu_marco` — o BU nº 10 mil, 50 mil, 100 mil, 250 mil… da noite (`seq` exato);
 //! * `virada` — troca do 1º colocado de uma circunscrição (verificação de 1 s, depois de 1 % do eleitorado apurado);
 //! * `pct_secoes` — 25/50/75/90/99/100 % das seções do Brasil e de cada UF (conferido a cada 5 s);
@@ -56,6 +59,40 @@ pub fn dentro(abr: &Abrangencia, k: &ChaveUf) -> bool {
 
 fn uf_txt(k: &ChaveUf) -> String { String::from_utf8_lossy(&k.0).into_owned() }
 
+/// Fotografia de uma circunscrição em disputa para a conta do `faltam_para_mat` (índice em `Acompanhamento::circs`).
+struct PedidoFaltam { i: usize, seq: u64, em: i64, votos: Vec<u64>, restante: u64 }
+/// Resultado da conta de um [`PedidoFaltam`].
+struct RespostaFaltam { i: usize, seq: u64, em: i64, restante: u64, valor: Option<u64> }
+
+/// Thread `uv-faltam` (B-009): faz a conta do `faltam_para_mat` (uma busca binária sobre o restante, dezenas de
+/// avaliações do "matematicamente" por circunscrição) fora da thread do motor, com prioridade baixa. Recebe lotes de
+/// fotografias e, se chegarem lotes enquanto conta, fica só com a fotografia mais nova de cada circunscrição.
+pub struct ContaFaltam {
+    tx: crossbeam_channel::Sender<Vec<PedidoFaltam>>,
+    rx: crossbeam_channel::Receiver<RespostaFaltam>,
+}
+
+impl ContaFaltam {
+    /// Abre a thread com as circunscrições (na ordem de `Acompanhamento::circs`); ela termina quando o `ContaFaltam` sai.
+    pub fn iniciar(circs: Vec<urna_velox::candidatos::Circunscricao>) -> std::io::Result<ContaFaltam> {
+        let (tx, rx_ped) = crossbeam_channel::unbounded::<Vec<PedidoFaltam>>();
+        let (tx_resp, rx) = crossbeam_channel::unbounded::<RespostaFaltam>();
+        std::thread::Builder::new().name("uv-faltam".into()).spawn(move || {
+            crate::difusao::prioridade_baixa();
+            while let Ok(lote) = rx_ped.recv() {
+                let mut ped: std::collections::BTreeMap<usize, PedidoFaltam> = lote.into_iter().map(|p| (p.i, p)).collect();
+                while let Ok(l) = rx_ped.try_recv() { ped.extend(l.into_iter().map(|p| (p.i, p))); }
+                for p in ped.into_values() {
+                    let Some(c) = circs.get(p.i) else { continue };
+                    let valor = faltam_para_mat(c, &p.votos, p.restante);
+                    if tx_resp.send(RespostaFaltam { i: p.i, seq: p.seq, em: p.em, restante: p.restante, valor }).is_err() { return; }
+                }
+            }
+        })?;
+        Ok(ContaFaltam { tx, rx })
+    }
+}
+
 pub struct Marcos {
     arq: Option<std::fs::File>,
     /// município → nome (do `candidatos.json`, para o marco já sair legível)
@@ -73,6 +110,10 @@ pub struct Marcos {
     /// por circunscrição (índice em `Acompanhamento::circs`): `seq` da última conta e o último valor mandado
     faltam: Vec<(Option<u64>, Option<Option<u64>>)>,
     prox_faltam: usize,
+    /// conta em paralelo (`uv-servico`; `None` = na própria verificação, com orçamento) e, por circunscrição, o `seq` do
+    /// último valor mandado (uma resposta com fotografia mais velha que ele é descartada)
+    conta: Option<ContaFaltam>,
+    ult_seq: Vec<u64>,
     /// marcos relidos do `marcos.csv` na partida (histórico depois de um reinício)
     pub historico: Vec<Value>,
     /// líder (número) de cada circunscrição na verificação anterior; viradas por (abrangência, cargo)
@@ -89,7 +130,7 @@ impl Marcos {
     /// Abre (ou cria) `<saida>/marcos.csv` e relê o que já estava lá (retomada). `saida = None`: sem arquivo (testes).
     pub fn abrir(saida: Option<&Path>, nomes: HashMap<u32, String>, munis_circ: HashSet<([u8; 2], u32)>, n_circs: usize) -> anyhow::Result<Marcos> {
         let mut m = Marcos { arq: None, nomes, munis_circ, primeira: HashSet::new(), decisivas: HashSet::new(), bu_feitos: HashSet::new(), ultima: None,
-            ultima_enviada: None, faltam: vec![(None, None); n_circs], prox_faltam: 0, historico: vec![], lideres: vec![None; n_circs],
+            ultima_enviada: None, faltam: vec![(None, None); n_circs], prox_faltam: 0, conta: None, ult_seq: vec![0; n_circs], historico: vec![], lideres: vec![None; n_circs],
             n_viradas: HashMap::new(), pct_feitos: HashSet::new() };
         let Some(dir) = saida else { return Ok(m) };
         let p = dir.join("marcos.csv");
@@ -199,6 +240,7 @@ impl Marcos {
             let v = json!({"classe": "faltam_para_mat", "seq": e.seq, "horario": horario(e.em), "abrangencia": abr, "cargo": c.cargo,
                 "faltam": 0, "restante": c.restante, "estado": e.estado});
             self.faltam[e.circ] = (Some(e.seq), Some(Some(0)));
+            if let Some(u) = self.ult_seq.get_mut(e.circ) { *u = (*u).max(e.seq); }
             out.push(v);
         }
         for v in &out { self.gravar(v); }
@@ -209,6 +251,7 @@ impl Marcos {
     /// a última conta, em rodízio, até `orcamento`. Manda só o que mudou. `seq`/`horario` = os da última reavaliação da
     /// circunscrição (os votos usados na conta são os desse instante); antes do primeiro BU, `seq_atual`/`agora`.
     pub fn faltam(&mut self, ac: &Acompanhamento, seq_atual: u64, agora: i64, orcamento: Duration) -> Vec<Value> {
+        if self.conta.is_some() { return self.faltam_paralelo(ac, seq_atual, agora); }
         let t0 = Instant::now();
         let n = ac.circs.len();
         let mut out = vec![];
@@ -225,6 +268,52 @@ impl Marcos {
             if ant == Some(valor) { continue; }
             out.push(json!({"classe": "faltam_para_mat", "seq": seq, "horario": horario(em), "abrangencia": c.abr().codigo(), "cargo": c.cargo,
                 "faltam": valor, "restante": c.restante, "estado": if valor.is_none() { "indefinido" } else { estado }}));
+        }
+        for v in &out { self.gravar(v); }
+        out
+    }
+
+    /// Liga a conta do `faltam_para_mat` na thread `uv-faltam` (B-009): daqui em diante [`Marcos::faltam`] não faz conta
+    /// nenhuma na thread de quem chama.
+    pub fn contar_em_paralelo(&mut self, ac: &Acompanhamento) -> std::io::Result<()> {
+        if self.ult_seq.len() != ac.circs.len() { self.ult_seq = vec![0; ac.circs.len()]; }
+        self.conta = Some(ContaFaltam::iniciar(ac.circs.iter().map(|c| c.circ.clone()).collect())?);
+        Ok(())
+    }
+
+    /// [`Marcos::faltam`] com a conta em paralelo: recolhe as respostas da rodada anterior (descarta as de fotografia
+    /// mais velha que o último valor mandado — o `faltam = 0` do evento, por exemplo) e manda fotografar as
+    /// circunscrições em disputa que receberam BU desde a última rodada. Circunscrição já decidida não vai para a conta.
+    fn faltam_paralelo(&mut self, ac: &Acompanhamento, seq_atual: u64, agora: i64) -> Vec<Value> {
+        let mut out = vec![];
+        let resp: Vec<RespostaFaltam> = self.conta.as_ref().map(|c| c.rx.try_iter().collect()).unwrap_or_default();
+        for r in resp {
+            let Some(c) = ac.circs.get(r.i) else { continue };
+            if r.seq < self.ult_seq[r.i] || c.mat_circ != MatCirc::Apurando { continue; }
+            self.ult_seq[r.i] = r.seq;
+            if self.faltam[r.i].1 == Some(r.valor) { continue; }
+            self.faltam[r.i].1 = Some(r.valor);
+            out.push(json!({"classe": "faltam_para_mat", "seq": r.seq, "horario": horario(r.em), "abrangencia": c.abr().codigo(), "cargo": c.cargo,
+                "faltam": r.valor, "restante": r.restante, "estado": if r.valor.is_none() { "indefinido" } else { "apurando" }}));
+        }
+        let mut ped = vec![];
+        for (i, c) in ac.circs.iter().enumerate() {
+            let (seq, em) = c.ultimo.unwrap_or((seq_atual, agora));
+            if self.faltam[i].0 == Some(seq) { continue; }
+            self.faltam[i].0 = Some(seq);
+            if c.mat_circ == MatCirc::Apurando {
+                ped.push(PedidoFaltam { i, seq, em, votos: c.votos.clone(), restante: c.restante });
+                continue;
+            }
+            // decidida (o 0 do evento normalmente já saiu em `decisivas`)
+            if self.faltam[i].1 == Some(Some(0)) { continue; }
+            self.faltam[i].1 = Some(Some(0));
+            self.ult_seq[i] = self.ult_seq[i].max(seq);
+            out.push(json!({"classe": "faltam_para_mat", "seq": seq, "horario": horario(em), "abrangencia": c.abr().codigo(), "cargo": c.cargo,
+                "faltam": 0, "restante": c.restante, "estado": c.mat_circ.texto()}));
+        }
+        if !ped.is_empty() {
+            if let Some(c) = &self.conta { let _ = c.tx.send(ped); }
         }
         for v in &out { self.gravar(v); }
         out

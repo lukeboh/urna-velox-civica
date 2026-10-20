@@ -174,7 +174,10 @@ pub struct EventoBruto {
     /// `matematicamente` (linha do `eventos.csv`) ou `apuracao`
     pub classe: &'static str,
     pub seq: u64,
+    /// horário do BU que provocou o evento (relógio do TSE/site)
     pub horario: String,
+    /// horário do sistema em que o Urna Velox o viu (M-003; ISO com ms)
+    pub sistema: Option<String>,
     pub abrangencia: Option<String>,
     pub cargo: Option<u8>,
     pub candidato: Option<u32>,
@@ -200,7 +203,14 @@ pub enum Entrada {
     /// marcos da noite (`crate::marcos`): cada um com `classe`; `faltam_para_mat` guarda só o último valor por
     /// circunscrição, os outros entram no histórico
     Marcos(Vec<Value>),
+    /// previsões do "matematicamente" e do fim da apuração (etapa 8, `crate::previsao::mensagem`): guarda só a última
+    /// de cada tópico; o `historico` vai só na mensagem da inscrição
+    Previsoes(Vec<Value>),
 }
+
+/// Última previsão de um tópico: versão (global, crescente), a mensagem das atualizações (sem o histórico), a da
+/// inscrição (com o histórico) e o valor (para o REST).
+struct Prev { ver: u64, msg: Utf8Bytes, inst: Utf8Bytes, corpo: Bytes }
 
 /// Último `faltam_para_mat` de uma circunscrição: versão (global, crescente), mensagem e valor.
 struct Faltam { ver: u64, msg: Utf8Bytes, valor: Value }
@@ -234,10 +244,13 @@ pub struct Medidas {
 /// Curva da apuração de um tópico (`GET /api/v1/curva/<topico>`, desde a `0.4.10`): um ponto por minuto da noite
 /// (o último ponto acompanha a publicação mais recente), com o % de seções e o % de cada candidato.
 pub const CURVA_PASSO_S: i64 = 60;
-struct PontoCurva { t: i64, ap: u64, tot: u64, cand: Vec<(u32, f64)> }
+/// Desde a M-003 o eixo `t` é o **relógio do sistema** (segundos com fração, hora de Brasília: o `totalizado_em` da
+/// publicação); o passo continua sendo um minuto **da noite** (no simulado a 500×, 0,12 s do sistema). Publicação sem
+/// `totalizado_em` (as do motor e dos testes antigos) usa o `ultimo_bu`, como antes.
+struct PontoCurva { t: f64, ap: u64, tot: u64, cand: Vec<(u32, f64)> }
 /// O que a curva lê de um arquivo publicado (o resto do JSON é ignorado).
 #[derive(serde::Deserialize)]
-struct PubCurva { ultimo_bu: Option<String>, secoes: Option<SecCurva>, #[serde(default)] cand: Vec<CandCurva> }
+struct PubCurva { ultimo_bu: Option<String>, #[serde(default)] totalizado_em: Option<String>, secoes: Option<SecCurva>, #[serde(default)] cand: Vec<CandCurva> }
 #[derive(serde::Deserialize)]
 struct SecCurva { total: u64, apuradas: u64 }
 #[derive(serde::Deserialize)]
@@ -280,6 +293,11 @@ pub struct Hub {
     curvas: Mutex<HashMap<Arc<str>, Vec<PontoCurva>>>,
     /// comparação com o TSE (etapa 7): tópicos `tse:<tópico>` (ver `crate::tse_resultados`)
     tse: OnceLock<Arc<crate::tse_resultados::TseResultados>>,
+    /// previsão (etapa 8): última de cada tópico e a versão mais alta
+    previsoes: RwLock<HashMap<Arc<str>, Arc<Prev>>>,
+    prev_ver: watch::Sender<u64>,
+    /// relógio do sistema do serviço (M-003): a curva anda por ele, com o passo de um minuto da noite
+    relogio: OnceLock<Arc<crate::relogio::Relogio>>,
     pub med: Medidas,
 }
 
@@ -291,6 +309,7 @@ impl Hub {
             desligar: watch::Sender::new(false), desligando: AtomicBool::new(false), escuta: Mutex::default(),
             saude: Mutex::new(Value::Null), saude_pedida: AtomicBool::new(false), marcos: RwLock::default(), n_marcos: watch::Sender::new(0),
             faltam: RwLock::default(), faltam_ver: watch::Sender::new(0), nomes: RwLock::new(None), replay: OnceLock::new(), curvas: Mutex::default(), tse: OnceLock::new(), med: Medidas::default(),
+            previsoes: RwLock::default(), prev_ver: watch::Sender::new(0), relogio: OnceLock::new(),
         };
         (Arc::new(h), rx)
     }
@@ -310,7 +329,12 @@ impl Hub {
     /// [`CURVA_PASSO_S`] da noite. Publicação com horário anterior ao último ponto (não acontece numa sessão) é ignorada.
     fn amostrar_curva(&self, t: &Arc<str>, json: &[u8]) {
         let Ok(p) = serde_json::from_slice::<PubCurva>(json) else { return };
-        let (Some(ts), Some(s)) = (p.ultimo_bu.as_deref().and_then(segundos_iso), p.secoes) else { return };
+        let ts = match &p.totalizado_em {
+            Some(s) => crate::relogio::ms_iso(s).map(|x| x as f64 / 1000.0),
+            None => p.ultimo_bu.as_deref().and_then(segundos_iso).map(|x| x as f64),
+        };
+        let (Some(ts), Some(s)) = (ts, p.secoes) else { return };
+        let passo = self.passo_curva(p.totalizado_em.is_some());
         let ponto = PontoCurva { t: ts, ap: s.apuradas, tot: s.total, cand: p.cand.iter().filter_map(|c| c.pct.map(|x| (c.n, x))).collect() };
         let mut m = self.curvas.lock().unwrap();
         let v = m.entry(t.clone()).or_default();
@@ -318,8 +342,17 @@ impl Hub {
         if n > 0 && ts < v[n - 1].t { return; }
         // o último ponto é provisório (é trocado pela publicação seguinte) enquanto estiver a menos de um passo do
         // penúltimo; daí em diante fica, e a próxima publicação abre um ponto novo
-        if n >= 2 && v[n - 1].t - v[n - 2].t < CURVA_PASSO_S { v[n - 1] = ponto; } else { v.push(ponto); }
+        if n >= 2 && v[n - 1].t - v[n - 2].t < passo { v[n - 1] = ponto; } else { v.push(ponto); }
     }
+
+    /// Passo da curva em segundos do eixo: um minuto da noite (no relógio do sistema, dividido pela aceleração).
+    fn passo_curva(&self, sistema: bool) -> f64 {
+        let x = if sistema { self.relogio.get().and_then(|r| r.ancora()).map_or(1.0, |a| a.acelerar) } else { 1.0 };
+        CURVA_PASSO_S as f64 / x.max(1.0)
+    }
+
+    /// Liga o relógio do sistema do serviço (M-003; antes de [`servir`]).
+    pub fn definir_relogio(&self, r: Arc<crate::relogio::Relogio>) { let _ = self.relogio.set(r); }
 
     /// Uma versão de arquivo que não vira mensagem (outra mais nova do mesmo tópico chegou junto, como na rajada da
     /// retotalização do replay) só entra na curva se fechar um ponto: lê o `ultimo_bu` sem interpretar o JSON e só
@@ -327,13 +360,18 @@ impl Hub {
     /// no tempo tem a noite inteira, com ~2 leituras completas por tópico por passo em vez de uma por publicação.
     fn amostrar_curva_superada(&self, nome: &str, json: &[u8]) {
         let Some(t) = topico_de(nome) else { return };
-        const CHAVE: &[u8] = b"\"ultimo_bu\":\"";
-        let Some(i) = json.windows(CHAVE.len()).take(4096).position(|w| w == CHAVE) else { return };
-        let Some(ts) = json.get(i + CHAVE.len()..i + CHAVE.len() + 19).and_then(|s| std::str::from_utf8(s).ok()).and_then(segundos_iso) else { return };
+        // o `totalizado_em` (relógio do sistema, M-003) vem logo depois do `ultimo_bu`; sem ele, o `ultimo_bu`
+        let achar = |chave: &[u8], n: usize| json.windows(chave.len()).take(4096).position(|w| w == chave)
+            .and_then(|i| json.get(i + chave.len()..i + chave.len() + n)).and_then(|s| std::str::from_utf8(s).ok());
+        let (ts, sistema) = match achar(b"\"totalizado_em\":\"", 23).and_then(crate::relogio::ms_iso) {
+            Some(ms) => (ms as f64 / 1000.0, true),
+            None => match achar(b"\"ultimo_bu\":\"", 19).and_then(segundos_iso) { Some(s) => (s as f64, false), None => return },
+        };
+        let passo = self.passo_curva(sistema);
         let precisa = {
             let m = self.curvas.lock().unwrap();
             match m.get(t) {
-                Some(v) if v.len() >= 2 => { let n = v.len(); v[n - 1].t - v[n - 2].t >= CURVA_PASSO_S || ts - v[n - 2].t >= CURVA_PASSO_S }
+                Some(v) if v.len() >= 2 => { let n = v.len(); v[n - 1].t - v[n - 2].t >= passo || ts - v[n - 2].t >= passo }
                 _ => true,
             }
         };
@@ -442,7 +480,7 @@ pub fn difundir(h: Arc<Hub>, rx: crossbeam_channel::Receiver<Entrada>) {
                 for e in v {
                     let n = evs.len() as u64;
                     let topico: Option<Arc<str>> = e.abrangencia.as_ref().zip(e.cargo).map(|(a, c)| format!("{a}-c{c:04}").into());
-                    let mut valor = json!({"n": n, "classe": e.classe, "seq": e.seq, "horario": e.horario, "abrangencia": e.abrangencia, "cargo": e.cargo,
+                    let mut valor = json!({"n": n, "classe": e.classe, "seq": e.seq, "horario": e.horario, "sistema": e.sistema, "abrangencia": e.abrangencia, "cargo": e.cargo,
                         "candidato": e.candidato, "estado": e.estado, "topico": topico.as_deref()});
                     if !e.motivo.is_empty() { valor["motivo"] = json!(e.motivo); }
                     let mut m = valor.clone();
@@ -458,8 +496,9 @@ pub fn difundir(h: Arc<Hub>, rx: crossbeam_channel::Receiver<Entrada>) {
                 v["clientes"] = json!(h.med.clientes.load(Relaxed));
                 // muda de verdade: estado, pausa, conferências, tipos de alerta, velocidade do replay (não as contagens que
                 // andam o tempo todo)
-                let chave = format!("{}|{}|{}|{}|{:?}|{}", v["estado"], v["encerrada"], v["pausa_429"]["ativa"], v["conferencias"],
-                    v["alertas"].as_object().map(|o| o.keys().cloned().collect::<Vec<_>>()), v["replay"]);
+                let chave = format!("{}|{}|{}|{}|{:?}|{}|{}|{}", v["estado"], v["encerrada"], v["pausa_429"]["ativa"], v["conferencias"],
+                    v["alertas"].as_object().map(|o| o.keys().cloned().collect::<Vec<_>>()), v["replay"],
+                    v["relogio_sistema"]["sistema0"], v["relogio_sistema"]["acelerar"]);
                 if chave == est_chave && est_t.elapsed() < h.op.estado_max { continue; }
                 est_chave = chave;
                 est_t = Instant::now();
@@ -473,6 +512,8 @@ pub fn difundir(h: Arc<Hub>, rx: crossbeam_channel::Receiver<Entrada>) {
                 for mut valor in v {
                     let topico: Option<Arc<str>> = valor["abrangencia"].as_str().zip(valor["cargo"].as_u64()).map(|(a, c)| format!("{a}-c{c:04}").into());
                     valor["topico"] = json!(topico.as_deref());
+                    // M-003: horário do sistema em que o marco saiu (o histórico da retomada vem com null: não se sabe)
+                    if valor.get("sistema").is_none() { valor["sistema"] = json!(crate::relogio::iso_ms(crate::relogio::agora_ms())); }
                     if valor["classe"] == "faltam_para_mat" {
                         let Some(t) = topico else { continue };
                         let ver = *h.faltam_ver.borrow() + 1;
@@ -494,6 +535,24 @@ pub fn difundir(h: Arc<Hub>, rx: crossbeam_channel::Receiver<Entrada>) {
                     }
                 }
                 if novos_hist { let n = h.n_marcos(); h.n_marcos.send_replace(n); }
+            }
+            Entrada::Previsoes(v) => {
+                let mut ver = *h.prev_ver.borrow();
+                let mut ps = h.previsoes.write().unwrap();
+                for mut valor in v {
+                    let Some(t) = valor["topico"].as_str().map(Arc::<str>::from) else { continue };
+                    ver += 1;
+                    let corpo = Bytes::from(valor.to_string());
+                    valor["tipo"] = json!("previsao");
+                    valor["t_envio"] = json!(agora_us());
+                    valor["instantaneo"] = json!(true);
+                    let inst = Utf8Bytes::from(valor.to_string());
+                    valor["instantaneo"] = json!(false);
+                    if let Some(o) = valor.as_object_mut() { o.remove("historico"); }
+                    ps.insert(t, Arc::new(Prev { ver, msg: Utf8Bytes::from(valor.to_string()), inst, corpo }));
+                }
+                drop(ps);
+                h.prev_ver.send_replace(ver);
             }
         } }
         if !lat.is_empty() { let mut l = h.med.lat_difusao.lock().unwrap(); for x in lat { l.por(x); } }
@@ -519,6 +578,7 @@ pub async fn servir(h: Arc<Hub>, pronto: impl FnOnce(std::net::SocketAddr)) -> a
         .route("/api/v1/marcos", get(rest_marcos))
         .route("/api/v1/nomes", get(rest_nomes))
         .route("/api/v1/curva/{topico}", get(rest_curva))
+        .route("/api/v1/previsao/{topico}", get(rest_previsao))
         // controle de velocidade do replay (só com --controle-replay; 404 sem ele)
         .route("/api/v1/replay", get(rest_replay))
         .route("/api/v1/replay/velocidade", post(rest_replay_velocidade))
@@ -526,6 +586,8 @@ pub async fn servir(h: Arc<Hub>, pronto: impl FnOnce(std::net::SocketAddr)) -> a
         // página de resultados embutida (etapa 5): tabela fixa, nada do cliente chega ao disco
         .route("/", get(pagina_index))
         .route("/static/{arquivo}", get(pagina_estatico))
+        .route("/robots.txt", get(pagina_robots))
+        .route("/sitemap.xml", get(pagina_sitemap))
         .fallback(|| async { (StatusCode::NOT_FOUND, cors(), "rota desconhecida\n") })
         .with_state(h.clone());
     let ouvinte = tokio::net::TcpListener::bind(&h.op.endereco).await?;
@@ -625,17 +687,29 @@ async fn rest_nomes(State(h): State<Arc<Hub>>, cab: HeaderMap) -> Response {
     (cors(), [(header::ETAG, etag_v), cache], corpo).into_response()
 }
 
-/// `GET /api/v1/curva/<topico>`: `{"topico", "passo_s", "pontos": [[t, apuradas, total, [[n, pct], …]], …]}` (t em
-/// segundos na hora de Brasília, como no controle do replay); tópico sem publicação → 404.
+/// `GET /api/v1/curva/<topico>`: `{"topico", "passo_s", "relogio", "pontos": [[t, apuradas, total, [[n, pct], …]], …]}`
+/// (t em segundos, com fração, na hora de Brasília; desde a M-003 no relógio do sistema — `relogio: "sistema"` —, com
+/// `passo_s` = um minuto da noite nesse relógio); tópico sem publicação → 404.
 async fn rest_curva(State(h): State<Arc<Hub>>, Path(t): Path<String>) -> Response {
     h.med.rest.fetch_add(1, Relaxed);
     let corpo = {
         let m = h.curvas.lock().unwrap();
         let Some(v) = m.get(t.as_str()) else { return (StatusCode::NOT_FOUND, cors(), "{\"erro\":\"topico_desconhecido\"}").into_response() };
-        let pontos: Vec<Value> = v.iter().map(|p| json!([p.t, p.ap, p.tot, p.cand.iter().map(|(n, x)| json!([n, x])).collect::<Vec<_>>()])).collect();
-        json!({"topico": t, "passo_s": CURVA_PASSO_S, "pontos": pontos}).to_string()
+        let pontos: Vec<Value> = v.iter().map(|p| json!([(p.t * 1000.0).round() / 1000.0, p.ap, p.tot, p.cand.iter().map(|(n, x)| json!([n, x])).collect::<Vec<_>>()])).collect();
+        json!({"topico": t, "passo_s": h.passo_curva(true), "relogio": if h.relogio.get().is_some() { "sistema" } else { "site" }, "pontos": pontos}).to_string()
     };
     (cors(), [(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"))], corpo).into_response()
+}
+
+/// `GET /api/v1/previsao/<topico>` (etapa 8): a última previsão do tópico, com o histórico (o objeto da §4.7 sem
+/// `tipo`/`t_envio`); sem previsão ainda (pouco apurado) ou tópico inexistente → 404.
+async fn rest_previsao(State(h): State<Arc<Hub>>, Path(t): Path<String>) -> Response {
+    h.med.rest.fetch_add(1, Relaxed);
+    let p = h.previsoes.read().unwrap().get(t.as_str()).cloned();
+    match p {
+        Some(p) => (cors(), [(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"))], p.corpo.clone()).into_response(),
+        None => (StatusCode::NOT_FOUND, cors(), "{\"erro\":\"sem_previsao\"}").into_response(),
+    }
 }
 
 fn cab_replay() -> [(header::HeaderName, HeaderValue); 2] {
@@ -719,6 +793,22 @@ async fn pagina_estatico(State(h): State<Arc<Hub>>, Path(a): Path<String>) -> Re
         Some(r) => (cab_pagina(r.tipo, "public, max-age=31536000, immutable"), Bytes::from_static(r.corpo)).into_response(),
         None => (StatusCode::NOT_FOUND, cors(), "rota desconhecida\n").into_response(),
     }
+}
+
+async fn pagina_robots(State(h): State<Arc<Hub>>) -> Response {
+    h.med.rest.fetch_add(1, Relaxed);
+    ([(header::CONTENT_TYPE, HeaderValue::from_static("text/plain; charset=utf-8")),
+      (header::CACHE_CONTROL, HeaderValue::from_static("public, max-age=86400")),
+      (header::X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"))],
+     crate::pagina::robots()).into_response()
+}
+
+async fn pagina_sitemap(State(h): State<Arc<Hub>>) -> Response {
+    h.med.rest.fetch_add(1, Relaxed);
+    ([(header::CONTENT_TYPE, HeaderValue::from_static("application/xml; charset=utf-8")),
+      (header::CACHE_CONTROL, HeaderValue::from_static("public, max-age=43200")),
+      (header::X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"))],
+     crate::pagina::sitemap()).into_response()
 }
 
 async fn ws(State(h): State<Arc<Hub>>, up: WebSocketUpgrade) -> Response {
@@ -845,6 +935,14 @@ async fn conexao_laco(h: &Arc<Hub>, tx: &mut futures::stream::SplitSink<WebSocke
     let mut mc_prox = 0usize;
     let mut fa_rx = h.faltam_ver.subscribe();
     let mut fa_ver = 0u64;
+    // `faltam_para_mat` só destes tópicos (`op: marcos` com `faltam: [...]`, B-014); `None` = de todas as circunscrições
+    let mut fa_quero: Option<HashSet<Arc<str>>> = None;
+    // `escopo: "uf"` em `eventos`/`marcos` (B-014): de fora dos tópicos inscritos, só os do Brasil e das UFs
+    let (mut ev_uf, mut mc_uf) = (false, false);
+    let amplo = |e: &Evento| e.valor["abrangencia"].as_str().is_none_or(|a| a.len() <= 2);
+    // previsão (etapa 8): versão da última mensagem `previsao` mandada por tópico inscrito
+    let mut pv_rx = h.prev_ver.subscribe();
+    let mut pv_env: HashMap<Arc<str>, u64> = HashMap::new();
     let mut des = h.desligar.subscribe();
     let mut ping = tokio::time::interval_at(tokio::time::Instant::now() + h.op.ping, h.op.ping);
     ping.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -925,6 +1023,10 @@ async fn conexao_laco(h: &Arc<Hub>, tx: &mut futures::stream::SplitSink<WebSocke
                                 // histórico de eventos do tópico
                                 let hist: Vec<Arc<Evento>> = h.eventos.read().unwrap()[..ev_prox].iter().filter(|e| e.topico.as_deref() == Some(&*chave) && !ev_env.contains(&e.n)).cloned().collect();
                                 for e in hist { ev_env.insert(e.n); enviar!(Message::Text(e.msg.clone())); }
+                                // a última previsão do tópico, com o histórico da noite
+                                let _ = pv_rx.borrow_and_update();
+                                let pv = h.previsoes.read().unwrap().get(&chave).cloned();
+                                if let Some(p) = pv { pv_env.insert(chave.clone(), p.ver); enviar!(Message::Text(p.inst.clone())); }
                             }
                         }
                         Some("cancelar") => {
@@ -936,23 +1038,39 @@ async fn conexao_laco(h: &Arc<Hub>, tx: &mut futures::stream::SplitSink<WebSocke
                                     tse_ver.remove(t.as_str());
                                     continue;
                                 }
-                                if subs.remove(t.as_str()).is_some() { h.med.inscricoes.fetch_sub(1, Relaxed); ult.remove(t.as_str()); }
+                                if subs.remove(t.as_str()).is_some() { h.med.inscricoes.fetch_sub(1, Relaxed); ult.remove(t.as_str()); pv_env.remove(t.as_str()); }
                             }
                         }
                         Some("eventos") => {
                             ev_todos = true;
-                            let hist: Vec<Arc<Evento>> = h.eventos.read().unwrap()[..ev_prox].iter().filter(|e| !ev_env.contains(&e.n)).cloned().collect();
+                            ev_uf = v["escopo"] == "uf";
+                            let hist: Vec<Arc<Evento>> = h.eventos.read().unwrap()[..ev_prox].iter()
+                                .filter(|e| !ev_env.contains(&e.n) && (!ev_uf || amplo(e) || e.topico.as_ref().is_some_and(|t| subs.contains_key(t)))).cloned().collect();
                             for e in hist { ev_env.insert(e.n); enviar!(Message::Text(e.msg.clone())); }
                         }
                         Some("marcos") => {
                             // histórico inteiro (só na primeira vez) e o último `faltam_para_mat` de cada circunscrição
                             mc_todos = true;
+                            mc_uf = v["escopo"] == "uf";
                             let _ = mc_rx.borrow_and_update();
                             let hist: Vec<Arc<Evento>> = h.marcos.read().unwrap()[mc_prox..].to_vec();
                             mc_prox += hist.len();
+                            let hist: Vec<Arc<Evento>> = hist.into_iter().filter(|e| !mc_uf || amplo(e) || e.topico.as_ref().is_some_and(|t| subs.contains_key(t))).collect();
                             for e in hist { enviar!(Message::Text(e.msg.clone())); }
                             let _ = fa_rx.borrow_and_update();
-                            let fs: Vec<(u64, Utf8Bytes)> = h.faltam.read().unwrap().values().filter(|f| f.ver > fa_ver).map(|f| (f.ver, f.msg.clone())).collect();
+                            // `faltam`: lista dos tópicos de que o cliente quer o `faltam_para_mat` (no máximo max_topicos);
+                            // pedir de novo troca a lista e manda o valor atual dos tópicos que entraram nela
+                            let antes = fa_quero.clone();
+                            if let Some(a) = v["faltam"].as_array() {
+                                fa_quero = Some(a.iter().filter_map(|x| x.as_str()).take(h.op.max_topicos).map(Arc::from).collect());
+                            } else if !v.get("faltam").is_some_and(|x| x.is_null()) && v.get("faltam").is_some() {
+                                h.med.erros_cliente.fetch_add(1, Relaxed);
+                                enviar!(Message::Text(msg_erro("faltam_invalido", "faltam: lista de tópicos")));
+                            }
+                            let novos = |t: &Arc<str>| antes.as_ref().is_some_and(|a| !a.contains(t));
+                            let fs: Vec<(u64, Utf8Bytes)> = h.faltam.read().unwrap().iter()
+                                .filter(|(t, f)| fa_quero.as_ref().is_none_or(|q| q.contains(*t)) && (f.ver > fa_ver || novos(t)))
+                                .map(|(_, f)| (f.ver, f.msg.clone())).collect();
                             for (v, m) in fs { fa_ver = fa_ver.max(v); enviar!(Message::Text(m)); }
                         }
                         _ => { h.med.erros_cliente.fetch_add(1, Relaxed); enviar!(Message::Text(msg_erro("op_desconhecida", "ops: inscrever, cancelar, eventos, marcos"))); }
@@ -991,7 +1109,7 @@ async fn conexao_laco(h: &Arc<Hub>, tx: &mut futures::stream::SplitSink<WebSocke
                 let novos: Vec<Arc<Evento>> = h.eventos.read().unwrap()[ev_prox.min(n)..n].to_vec();
                 ev_prox = n;
                 for e in novos {
-                    let quer = ev_todos || e.topico.as_ref().is_none_or(|t| subs.contains_key(t));
+                    let quer = (ev_todos && (!ev_uf || amplo(&e))) || e.topico.as_ref().is_none_or(|t| subs.contains_key(t));
                     if quer && ev_env.insert(e.n) { enviar!(Message::Text(e.msg.clone())); }
                 }
             }
@@ -999,17 +1117,37 @@ async fn conexao_laco(h: &Arc<Hub>, tx: &mut futures::stream::SplitSink<WebSocke
                 let n = *mc_rx.borrow_and_update();
                 let novos: Vec<Arc<Evento>> = h.marcos.read().unwrap()[mc_prox.min(n)..n].to_vec();
                 mc_prox = mc_prox.max(n);
-                for e in novos { enviar!(Message::Text(e.msg.clone())); }
+                for e in novos {
+                    if mc_uf && !amplo(&e) && !e.topico.as_ref().is_some_and(|t| subs.contains_key(t)) { continue; }
+                    enviar!(Message::Text(e.msg.clone()));
+                }
             }
             Ok(()) = fa_rx.changed(), if mc_todos => {
-                let _ = fa_rx.borrow_and_update();
-                let mut fs: Vec<(u64, Utf8Bytes)> = h.faltam.read().unwrap().values().filter(|f| f.ver > fa_ver).map(|f| (f.ver, f.msg.clone())).collect();
+                let ver_agora = *fa_rx.borrow_and_update();
+                let mut fs: Vec<(u64, Utf8Bytes)> = h.faltam.read().unwrap().iter()
+                    .filter(|(t, f)| f.ver > fa_ver && fa_quero.as_ref().is_none_or(|q| q.contains(*t))).map(|(_, f)| (f.ver, f.msg.clone())).collect();
+                // a versão anda mesmo sem nada para este cliente (o que ficou de fora não é mandado depois)
+                fa_ver = fa_ver.max(ver_agora);
                 fs.sort_by_key(|x| x.0);
                 for (v, m) in fs { fa_ver = fa_ver.max(v); enviar!(Message::Text(m)); }
             }
             Ok(()) = est_rx.changed() => {
                 let e = est_rx.borrow_and_update().clone();
                 if let Some(e) = e { enviar!(Message::Text(e.msg.clone())); }
+            }
+            Ok(()) = pv_rx.changed(), if !subs.is_empty() => {
+                let _ = pv_rx.borrow_and_update();
+                // só os tópicos inscritos com previsão mais nova que a mandada (≤ 200 por conexão)
+                let novas: Vec<(Arc<str>, Arc<Prev>)> = {
+                    let ps = h.previsoes.read().unwrap();
+                    subs.keys().filter_map(|t| ps.get(t).filter(|p| pv_env.get(t).is_none_or(|&v| p.ver > v)).map(|p| (t.clone(), p.clone()))).collect()
+                };
+                for (t, p) in novas {
+                    // primeira previsão do tópico nesta conexão: a de inscrição, com o histórico
+                    let m = if pv_env.contains_key(&t) { p.msg.clone() } else { p.inst.clone() };
+                    pv_env.insert(t, p.ver);
+                    enviar!(Message::Text(m));
+                }
             }
             _ = ping.tick() => {
                 let desde = t0.elapsed().as_millis() as u64 - ultimo.load(Relaxed);
@@ -1099,7 +1237,7 @@ mod testes {
         let arq = |seq: u64| Bytes::from(ARQ.replace("\"seq\":99", &format!("\"seq\":{seq}")));
         h.entregar(Entrada::Arquivos(vec![("br-c0001-e006257.json".into(), arq(10), None)]));
         h.entregar(Entrada::Arquivos(vec![("br-c0001-e006257.json".into(), arq(20), Some(agora_us()))]));
-        h.entregar(Entrada::Eventos(vec![EventoBruto { classe: "matematicamente", seq: 20, horario: "2026-10-04 21:00:00".into(), abrangencia: Some("br".into()),
+        h.entregar(Entrada::Eventos(vec![EventoBruto { classe: "matematicamente", seq: 20, horario: "2026-10-04 21:00:00".into(), sistema: None, abrangencia: Some("br".into()),
             cargo: Some(1), candidato: None, estado: "matematicamente_2t".into(), motivo: String::new() }]));
         h.entregar(Entrada::Estado(json!({"estado": "acompanhando", "encerrada": false, "pausa_429": {"ativa": false}, "conferencias": 0, "alertas": {}})));
         let t = Instant::now();
@@ -1200,7 +1338,7 @@ mod testes {
         ws.send(M::binary(vec![1u8])).await.unwrap();
         assert_eq!(prox(&mut ws, "erro").await.0["motivo"], "binario");
         // evento da circunscrição inscrita; estado
-        h.entregar(Entrada::Eventos(vec![EventoBruto { classe: "matematicamente", seq: 20, horario: "2026-10-04 21:00:00".into(), abrangencia: Some("br".into()),
+        h.entregar(Entrada::Eventos(vec![EventoBruto { classe: "matematicamente", seq: 20, horario: "2026-10-04 21:00:00".into(), sistema: None, abrangencia: Some("br".into()),
             cargo: Some(1), candidato: Some(13), estado: "2t".into(), motivo: String::new() }]));
         let (v, _) = prox(&mut ws, "evento").await;
         assert_eq!((v["estado"].as_str(), v["candidato"].as_u64(), v["topico"].as_str()), (Some("2t"), Some(13), Some("br-c0001")));

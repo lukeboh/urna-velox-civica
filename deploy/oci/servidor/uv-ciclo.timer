@@ -1,0 +1,11 @@
+[Unit]
+Description=Urna Velox — ciclo diário de simulações (07h, 11h, 13h, 17h de Brasília; 18 a 23/10/2026)
+
+[Timer]
+OnCalendar=*-*-* 07,11,13,17:00:00 America/Sao_Paulo
+AccuracySec=1s
+Persistent=false
+Unit=uv-ciclo.service
+
+[Install]
+WantedBy=timers.target

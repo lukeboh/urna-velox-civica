@@ -25,13 +25,13 @@ fn gravar_e_conferir_a_pasta() {
     let cad = Candidatos::dos_oficiais(&ofs);
     let p = Publicador::novo(&c.cat, Some(&cad), Some(&c.met));
     let dir = temp("1t");
-    let n = p.gravar_tudo(&c.est, None, Momento { encerrada: true, seq: c.est.bus.load(Relaxed), ultimo_bu: None }, false, &dir).unwrap();
+    let n = p.gravar_tudo(&c.est, None, Momento { encerrada: true, seq: c.est.bus.load(Relaxed), ultimo_bu: None, totalizado_ms: None }, false, &dir).unwrap();
     assert_eq!(n, 10);
     let r = conferir_pasta_publicacoes(&dir, &ofs);
     assert!(r.ok(), "{}\n{}", r.resumo(), r.detalhes(10));
     // uma publicação não encerrada não serve como resultado final
     let p2 = Publicador::novo(&c.cat, Some(&cad), Some(&c.met));
-    p2.gravar_tudo(&c.est, None, Momento { encerrada: false, seq: 1, ultimo_bu: None }, true, &dir).unwrap();
+    p2.gravar_tudo(&c.est, None, Momento { encerrada: false, seq: 1, ultimo_bu: None, totalizado_ms: None }, true, &dir).unwrap();
     let r = conferir_pasta_publicacoes(&dir, &ofs);
     assert!(!r.ok() && r.divergentes.iter().all(|x| x.difs.iter().any(|d| d == "publicação não encerrada")));
     // sem a pasta

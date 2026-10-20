@@ -249,13 +249,13 @@ fn kill9_e_reinicio() {
     let sim = simulador(&d);
     let mut filhos: Vec<(Child, &str)> = nos.iter().map(|(id, ip)| (no(&d, &fed, id, ip, sim.porta), *id)).collect();
     let t = Instant::now();
-    loop {
+    let antes = loop {
         let n = std::fs::read(d.join("b/saida/saude.json")).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok())
             .and_then(|v| v["federacao"]["publicados"].as_u64()).unwrap_or(0);
-        if n >= 400 { break; }
+        if n >= 400 { break n; }
         assert!(t.elapsed() < Duration::from_secs(300), "o b não chegou a 400 publicados");
         std::thread::sleep(Duration::from_millis(20));
-    }
+    };
     let (mut b, _) = filhos.remove(1);
     Command::new("kill").args(["-9", &b.id().to_string()]).status().unwrap();
     let _ = b.wait();
@@ -272,6 +272,12 @@ fn kill9_e_reinicio() {
     assert!(rep <= BUS / 50, "{rep} seções pedidas ao TSE por mais de um nó");
     let s = json(&d.join("b/saida/saude.json"));
     assert_eq!(s["federacao"]["sincronizando"].as_bool(), Some(false), "{}", s["federacao"]);
+    // B-006: os contadores do b atravessam o reinício — os lotes gravados são todos os do armazém (antes da correção,
+    // só os de depois do reinício) e os publicados não ficam abaixo do que ele tinha antes do kill -9
+    let ultimo: u64 = std::fs::read_to_string(d.join("b/federacao/bus/b/ultimo")).unwrap().trim().parse().unwrap();
+    let fe = &s["federacao"];
+    assert_eq!(fe["lotes_gravados"].as_u64(), Some(ultimo), "lotes_gravados × último lote no armazém: {fe}");
+    assert!(fe["publicados"].as_u64().unwrap() >= antes, "publicados {} < {antes} de antes do kill -9: {fe}", fe["publicados"]);
 }
 
 /// Seções (aux.json 200) pedidas ao simulador mais de uma vez, somando todos os IPs.

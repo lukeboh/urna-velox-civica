@@ -8,6 +8,7 @@ var Conexao = class {
     this.aoReceber = aoReceber;
     this.aoEstado = aoEstado;
     this.topicos = /* @__PURE__ */ new Set();
+    this.faltam = [];
     this.ws = null;
     this.espera = 1e3;
     this.timer = null;
@@ -32,8 +33,8 @@ var Conexao = class {
       this.espera = 1e3;
       this.aoEstado("vivo");
       this.#mandarInscricoes([...this.topicos]);
-      this.#mandar({ op: "eventos" });
-      this.#mandar({ op: "marcos" });
+      this.#mandar({ op: "eventos", escopo: "uf" });
+      this.#mandar({ op: "marcos", escopo: "uf", faltam: this.faltam });
     };
     ws.onmessage = (e) => {
       const d = e.data;
@@ -69,6 +70,12 @@ var Conexao = class {
   }
   #mandarInscricoes(lista) {
     for (let i = 0; i < lista.length; i += MAX_POR_MSG) this.#mandar({ op: "inscrever", topicos: lista.slice(i, i + MAX_POR_MSG) });
+  }
+  /** Troca a lista de tópicos com `faltam_para_mat` (o servidor manda o valor atual dos que entraram). */
+  definirFaltam(lista) {
+    if (lista.length === this.faltam.length && lista.every((t, i) => t === this.faltam[i])) return;
+    this.faltam = lista;
+    this.#mandar({ op: "marcos", escopo: "uf", faltam: lista });
   }
   /** Inscreve os tópicos que faltam e cancela os que saíram (a lista inteira desejada). */
   definirTopicos(lista) {
@@ -378,7 +385,7 @@ var Curva = class {
     });
     this.reposicionar(false);
   }
-  /** t = segundos (relógio do site), s = % seções, cand = [[n, pct], …] */
+  /** t = segundos com fração (relógio do sistema, M-003), s = % seções, cand = [[n, pct], …] */
   ponto(t, s, cand) {
     if (t == null) return;
     const u = this.pontos[this.pontos.length - 1];
@@ -454,8 +461,8 @@ var Curva = class {
       const x = this.mostrar.length ? f2(v) : "";
       if (this.rot[k].textContent !== x) this.rot[k].textContent = x;
     });
-    const hm2 = (t) => this.pontos.length ? new Date(t * 1e3).toISOString().slice(11, 16) : "";
-    [hm2(t0), hm2(t0 + span)].forEach((x, k) => {
+    const hm3 = (t) => this.pontos.length ? new Date(Math.floor(t) * 1e3).toISOString().slice(11, span < 600 ? 19 : 16) : "";
+    [hm3(t0), hm3(t0 + span)].forEach((x, k) => {
       if (this.rotT[k].textContent !== x) this.rotT[k].textContent = x;
     });
     return m;
@@ -646,6 +653,50 @@ var Folha = class {
   }
 };
 
+// src/relogio.js
+function segundosF(t) {
+  const s = segundos(t);
+  if (s == null) return null;
+  const m = /\d{2}:\d{2}:\d{2}\.(\d{1,3})/.exec(t);
+  return m ? s + Number(m[1].padEnd(3, "0")) / 1e3 : s;
+}
+function ancora(r) {
+  const noite0 = segundos(r?.noite0), sis0 = segundosF(r?.sistema0);
+  if (noite0 == null || sis0 == null) return null;
+  return { noite0, sis0, x: r.acelerar > 0 ? r.acelerar : 1 };
+}
+function tseNoSistema(a, t) {
+  if (t == null) return null;
+  return a ? a.sis0 + (t - a.noite0) / a.x : t;
+}
+function quando(m, campo = "sistema") {
+  return m?.[campo] || m?.horario || m?.ultimo_bu || null;
+}
+function horaDe(s) {
+  if (s == null || !Number.isFinite(s)) return "";
+  return new Date(Math.floor(s) * 1e3).toISOString().slice(11, 19);
+}
+function diaDe(s) {
+  if (s == null || !Number.isFinite(s)) return "";
+  const d = new Date(Math.floor(s) * 1e3).toISOString();
+  return `${d.slice(8, 10)}/${d.slice(5, 7)}`;
+}
+function distancia(s) {
+  if (s == null || !Number.isFinite(s)) return "";
+  const a = Math.abs(s), lado = s > 0 ? "antes" : "depois";
+  if (a < 1) return "no mesmo instante";
+  if (a < 90) return `${Math.round(a)} s ${lado}`;
+  const m = Math.round(a / 60);
+  if (m < 60) return `${m} min ${lado}`;
+  return `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, "0")} min ${lado}`;
+}
+function comparar(a, tUv, tTse) {
+  const tse = tseNoSistema(a, tTse);
+  if (tUv == null || tse == null) return null;
+  const s = tse - tUv;
+  return { tse, s, noite: s * (a?.x || 1), texto: distancia(s) };
+}
+
 // src/textos.js
 var Nomes = class {
   constructor(n) {
@@ -702,7 +753,7 @@ function lugar(N, m) {
   return `${nome} (${String(m.uf).toUpperCase()})`;
 }
 function linhasSecao(N, m) {
-  return [["Seção", String(m.secao)], ["Zona", String(m.zona)], ["Município", lugar(N, m)], ["Horário do BU", hora(m.horario)], ["BUs aplicados (seq)", mil(m.seq)]];
+  return [["Seção", String(m.secao)], ["Zona", String(m.zona)], ["Município", lugar(N, m)], ["Urna Velox (relógio do sistema)", hora(quando(m))], ["Horário do BU no TSE", hora(m.horario)], ["BUs aplicados (seq)", mil(m.seq)]];
 }
 var CATEGORIAS = [["decisao", "Decisões"], ["virada", "Viradas"], ["andamento", "Andamento"]];
 function itemMarco(N, m) {
@@ -712,7 +763,7 @@ function itemMarco(N, m) {
 }
 function corpoMarco(N, m) {
   const id = `m:${m.classe}:${m.abrangencia}:${m.cargo ?? ""}:${m.seq}:${m.secao ?? ""}:${m.valor ?? ""}`;
-  const t = hora(m.horario);
+  const t = hora(quando(m));
   switch (m.classe) {
     case "primeira_secao": {
       const onde = m.abrangencia === "br" ? "do Brasil" : `em ${N.local(m.abrangencia)}`;
@@ -765,7 +816,7 @@ function corpoMarco(N, m) {
         ic: "%",
         t,
         texto: `${onde}: ${m.valor}% das seções apuradas`,
-        detalhe: { titulo: `${onde}: ${m.valor}% das seções apuradas`, linhas: [["Horário", t], ["Seções", m.secoes != null ? `${mil(m.secoes)} de ${mil(m.total)}` : "—"], ["BUs aplicados (seq)", mil(m.seq)]] }
+        detalhe: { titulo: `${onde}: ${m.valor}% das seções apuradas`, linhas: [["Horário (Urna Velox)", t], ["Seções", m.secoes != null ? `${mil(m.secoes)} de ${mil(m.total)}` : "—"], ["BUs aplicados (seq)", mil(m.seq)]] }
       };
     }
     case "virada": {
@@ -776,7 +827,7 @@ function corpoMarco(N, m) {
         ic: "⇅",
         t,
         texto: `Virada — ${d}: ${novo} passa ${ant} (${m.valor}ª da noite)`,
-        detalhe: { titulo: `Virada de liderança — ${d}`, linhas: [["Novo líder", novo], ["Antes", ant], ["Viradas nesta disputa", String(m.valor)], ["Horário", t], ["BUs aplicados (seq)", mil(m.seq)]] }
+        detalhe: { titulo: `Virada de liderança — ${d}`, linhas: [["Novo líder", novo], ["Antes", ant], ["Viradas nesta disputa", String(m.valor)], ["Horário (Urna Velox)", t], ["BUs aplicados (seq)", mil(m.seq)]] }
       };
     }
     default:
@@ -784,7 +835,7 @@ function corpoMarco(N, m) {
   }
 }
 function itemEvento(N, e) {
-  const t = hora(e.horario);
+  const t = hora(quando(e));
   const id = `e:${e.seq}:${e.abrangencia}:${e.cargo}:${e.candidato}:${e.estado}`;
   if (e.classe === "apuracao") {
     if (e.estado !== "apuracao_encerrada") return null;
@@ -796,7 +847,7 @@ function itemEvento(N, e) {
       cat: "andamento",
       texto: "Apuração encerrada: todas as seções totalizadas",
       anunciar: "Apuração encerrada.",
-      detalhe: { titulo: "Apuração encerrada", linhas: [["Horário", t], ["BUs aplicados", mil(e.seq)]] }
+      detalhe: { titulo: "Apuração encerrada", linhas: [["Horário (Urna Velox)", t], ["BUs aplicados", mil(e.seq)]] }
     };
   }
   if (String(e.estado).startsWith("revogado:") || e.candidato == null) return null;
@@ -812,7 +863,7 @@ function itemEvento(N, e) {
     destaque: true,
     texto: `${quem}: ${o} — ${d}`,
     anunciar: `${d}: ${quem} ${o}.`,
-    detalhe: { titulo: `${quem} — ${o}`, linhas: [["Disputa", d], ["Horário do BU que decidiu", t], ["BUs aplicados (seq)", mil(e.seq)]] }
+    detalhe: { titulo: `${quem} — ${o}`, linhas: [["Disputa", d], ["Urna Velox (relógio do sistema)", t], ["Horário do BU que decidiu (TSE)", hora(e.horario)], ["BUs aplicados (seq)", mil(e.seq)]] }
   };
 }
 function primeiros(N, eventos) {
@@ -824,7 +875,7 @@ function primeiros(N, eventos) {
     const nome = NOME_CARGO_PLURAL[e.cargo];
     if (!nome) continue;
     const quem = N.nomeCand(e.abrangencia, e.cargo, e.candidato);
-    const t = hora(e.horario);
+    const t = hora(quando(e));
     const pais = `pais:${e.cargo}`;
     if (!vistos.has(pais) && e.cargo !== 1) {
       vistos.set(pais, 1);
@@ -836,7 +887,7 @@ function primeiros(N, eventos) {
         cat: "decisao",
         destaque: true,
         texto: `Primeiro ${nome} matematicamente eleito do país: ${quem}, ${N.local(e.abrangencia)}`,
-        detalhe: { titulo: `Primeiro ${nome} matematicamente eleito do país`, linhas: [["Eleito", quem], ["Onde", N.local(e.abrangencia)], ["Horário", t], ["BUs aplicados (seq)", mil(e.seq)]] }
+        detalhe: { titulo: `Primeiro ${nome} matematicamente eleito do país`, linhas: [["Eleito", quem], ["Onde", N.local(e.abrangencia)], ["Horário (Urna Velox)", t], ["BUs aplicados (seq)", mil(e.seq)]] }
       });
     }
     if (a.tipo === "mun") {
@@ -850,7 +901,7 @@ function primeiros(N, eventos) {
           seq: e.seq,
           cat: "decisao",
           texto: `Primeiro ${nome} eleito em ${N.uf(a.uf)}: ${quem}, ${N.local(e.abrangencia)}`,
-          detalhe: { titulo: `Primeiro ${nome} matematicamente eleito em ${N.uf(a.uf)}`, linhas: [["Eleito", quem], ["Onde", N.local(e.abrangencia)], ["Horário", t]] }
+          detalhe: { titulo: `Primeiro ${nome} matematicamente eleito em ${N.uf(a.uf)}`, linhas: [["Eleito", quem], ["Onde", N.local(e.abrangencia)], ["Horário (Urna Velox)", t]] }
         });
       }
     }
@@ -861,26 +912,32 @@ function hhmm(t) {
   const m = /(\d{2}):(\d{2}):\d{2}/.exec(t || "");
   return m ? `${m[1]}:${m[2]}` : "";
 }
-function itemConfirmou(N, circ, cargo, sit, emUv, geracao, tUv, tTse) {
+function itemConfirmou(N, circ, cargo, sit, emUv, geracao, cmp, anc) {
   const d = N.disputa(circ, cargo);
-  const min = Math.round((tTse - tUv) / 60);
-  const quando = min > 0 ? `${min} min antes` : min < 0 ? `${-min} min depois` : "no mesmo minuto";
+  const ante = cmp?.texto || "";
+  const sim = anc && (anc.x !== 1 || Math.abs(cmp.tse - (segundosHora(geracao) ?? cmp.tse)) > 3600);
   const o = sit === "2t" ? "o 2º turno" : "o matematicamente";
+  const tseTxt = sim ? `${hhmm(geracao)} do TSE (≙ ${horaDe(cmp.tse).slice(0, 5)} aqui)` : hhmm(geracao);
+  const linhas = [["Urna Velox (relógio do sistema)", hora(emUv)], ["TSE (arquivo gerado às, relógio do TSE)", hora(geracao)]];
+  if (sim) linhas.push(["TSE no relógio do sistema", `${horaDe(cmp.tse)} — a noite do TSE ${anc.x !== 1 ? `a ${String(anc.x).replace(".", ",")}× ` : ""}a partir do início deste simulado`]);
+  linhas.push(
+    ["Antecedência do Urna Velox", `${ante}${sim && anc.x !== 1 ? ` (${distancia(cmp.noite)} no tempo da noite)` : ""}`],
+    ["Como se compara", "o arquivo de resultado do TSE desta disputa (buscado a cada 30–60 s) passou a mostrar a mesma situação"]
+  );
   return {
     id: `c:tse-conf:${circ}:${cargo}`,
     ic: "⇄",
-    t: hora(geracao),
+    t: hora(emUv),
     cat: "decisao",
     destaque: true,
-    texto: `TSE confirmou ${o} às ${hhmm(geracao)} — Urna Velox às ${hhmm(emUv)}, ${quando} · ${d}`,
-    anunciar: `${d}: o TSE confirmou ${o} às ${hhmm(geracao)}; o Urna Velox às ${hhmm(emUv)}, ${quando}.`,
-    detalhe: { titulo: `TSE confirmou ${o} — ${d}`, linhas: [
-      ["Urna Velox", hora(emUv)],
-      ["TSE (arquivo gerado às)", hora(geracao)],
-      ["Antecedência do Urna Velox", quando],
-      ["Como se compara", "o arquivo de resultado do TSE desta disputa (buscado a cada 30–60 s) passou a mostrar a mesma situação"]
-    ] }
+    texto: `TSE confirmou ${o} às ${tseTxt} — Urna Velox às ${hhmm(emUv)}, ${ante} · ${d}`,
+    anunciar: `${d}: o TSE confirmou ${o} às ${tseTxt}; o Urna Velox às ${hhmm(emUv)}, ${ante}.`,
+    detalhe: { titulo: `TSE confirmou ${o} — ${d}`, linhas }
   };
+}
+function segundosHora(s) {
+  const m = /(\d{2})\/(\d{2})\/(\d{4}) (\d{2}):(\d{2}):(\d{2})/.exec(s || "");
+  return m ? Date.UTC(+m[3], +m[2] - 1, +m[1], +m[4], +m[5], +m[6]) / 1e3 : null;
 }
 function itemOrdemDiferente(N, circ, cargo, geracao, quem) {
   const d = N.disputa(circ, cargo);
@@ -1186,8 +1243,10 @@ function base(sigla, i) {
   const [, C, h] = oklch(hex);
   return C < 0.04 ? { h: 265, cromatica: false, chave: sg } : { h, cromatica: true, chave: sg };
 }
-var PASSOS = [[0, 0], [0.1, 4], [-0.1, -4], [0.16, 6], [-0.16, -6], [0.05, 10], [-0.05, -10], [0.12, -10], [-0.12, 10]];
-var DE_MIN = 0.075;
+var DL = [0, 0.07, -0.07, 0.14, -0.14];
+var DH = [0, 12, -12, 24, -24];
+var OPCOES = DL.flatMap((dl) => DH.map((dh) => [dl, dh])).sort((a, b) => Math.abs(a[0]) / 0.07 + Math.abs(a[1]) / 12 - (Math.abs(b[0]) / 0.07 + Math.abs(b[1]) / 12));
+var ALVO = 0.14;
 var f = (x, n = 3) => +x.toFixed(n);
 var lab = ([L, C, h]) => [L, C * Math.cos(h * Math.PI / 180), C * Math.sin(h * Math.PI / 180)];
 var de = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
@@ -1199,23 +1258,43 @@ function tons(b, [dL, dh]) {
 }
 var css = ([L, C, h]) => `oklch(${f(L)} ${f(C)} ${f(h, 1)})`;
 function coresDaDisputa(cands) {
-  const usados = [];
-  const saida = /* @__PURE__ */ new Map();
-  cands.forEach((k, i) => {
-    const b = base(k.partido, i);
-    let melhor = null;
-    for (const passo of PASSOS) {
-      const t = tons(b, passo);
-      const p = lab(t.escuro);
-      const d = usados.length ? Math.min(...usados.map((u) => de(u, p))) : Infinity;
-      if (!melhor || d > melhor.d) melhor = { t, p, d };
-      if (d >= DE_MIN) {
-        melhor = { t, p, d };
-        break;
+  const bases = cands.map((k, i) => base(k.partido, i));
+  const tabela = bases.map((b) => OPCOES.map((o) => {
+    const t = tons(b, o);
+    return { t, e: lab(t.escuro), c: lab(t.claro) };
+  }));
+  const esc = cands.map(() => 0);
+  const dist = (i, oi, j) => {
+    const a = tabela[i][oi], b = tabela[j][esc[j]];
+    return Math.min(de(a.e, b.e), de(a.c, b.c));
+  };
+  const menor = (i, oi) => {
+    let m = Infinity;
+    for (let j = 0; j < cands.length; j++) if (j !== i) m = Math.min(m, dist(i, oi, j));
+    return m;
+  };
+  for (let rodada = 0; rodada < 8; rodada++) {
+    let mudou = false;
+    for (let i = 0; i < cands.length; i++) {
+      let melhor = esc[i], vm = Math.min(ALVO, menor(i, esc[i]));
+      for (let oi = 0; oi < OPCOES.length; oi++) {
+        const v = Math.min(ALVO, menor(i, oi));
+        if (v > vm + 1e-4 || Math.abs(v - vm) <= 1e-4 && oi < melhor) {
+          melhor = oi;
+          vm = v;
+        }
+      }
+      if (melhor !== esc[i]) {
+        esc[i] = melhor;
+        mudou = true;
       }
     }
-    usados.push(melhor.p);
-    saida.set(k.n, `light-dark(${css(melhor.t.claro)}, ${css(melhor.t.escuro)})`);
+    if (!mudou) break;
+  }
+  const saida = /* @__PURE__ */ new Map();
+  cands.forEach((k, i) => {
+    const t = tabela[i][esc[i]].t;
+    saida.set(k.n, `light-dark(${css(t.claro)}, ${css(t.escuro)})`);
   });
   return saida;
 }
@@ -1503,21 +1582,220 @@ function idade(s) {
   if (m < 60) return `há ${m} min`;
   return `há ${Math.floor(m / 60)} h ${String(m % 60).padStart(2, "0")} min`;
 }
-function textoFontes(modo, res, tse, agoraSite2) {
+function textoFontes(modo, res, tse, agora, anc) {
   const tot = res?.secoes?.total || 0, ap = res?.secoes?.apuradas || 0;
   const uv = `Urna Velox ${pct(tot ? 100 * ap / tot : 0)}% das seções`;
   const d = tse?.dados;
   const ts = d?.secoes?.total || 0, st = d?.secoes?.totalizadas || 0;
   const tTse = d ? `TSE ${pct(ts ? 100 * st / ts : 0)}%` : "TSE —";
   const g = segundosBr(d?.geracao);
-  const arq = d?.geracao ? `arquivo das ${hora(d.geracao)}${agoraSite2 != null && g != null ? ` (${idade(agoraSite2 - g)})` : ""}` : "";
+  const eq = tseNoSistema(anc, g);
+  const sim = anc && g != null && (anc.x !== 1 || Math.abs(eq - g) > 3600);
+  const arq = d?.geracao ? `arquivo do TSE das ${hora(d.geracao)}${sim ? ` (≙ ${horaDe(eq)} aqui)` : ""}${agora != null && eq != null ? ` · ${idade(agora - eq)}` : ""}` : "";
   if (modo === "uv") return { a: uv, b: "" };
   if (modo === "tse") return { a: tTse + (d ? " das seções" : ""), b: arq };
   return { a: `${uv} · ${tTse}`, b: arq };
 }
 
-// src/app.js
+// src/previsao.js
+var comSegundos = false;
+var hm2 = (t) => {
+  const m = /(\d{2}):(\d{2}):(\d{2})/.exec(t || "");
+  return m ? comSegundos ? `${m[1]}:${m[2]}:${m[3]}` : `${m[1]}:${m[2]}` : "—";
+};
+var faixaTxt = (f2) => f2 ? f2.incerta ? "em horário ainda incerto" : `entre ${hm2(f2.p10)} e ${hm2(f2.p90)}` : "";
+function juntarPrevisao(ant, m, x = 1) {
+  const hist2 = m.instantaneo ? m.historico || [] : (ant?.historico || []).slice();
+  if (!m.instantaneo && m.mat) {
+    const p = [segundos(m.instante), segundos(m.mat.p10), segundos(m.mat.p50), segundos(m.mat.p90)];
+    const u = hist2[hist2.length - 1];
+    const passo = Math.max(1, 60 / (x || 1));
+    if (u && Math.floor(u[0] / passo) === Math.floor(p[0] / passo)) hist2[hist2.length - 1] = p;
+    else hist2.push(p);
+    if (hist2.length > 1500) hist2.splice(0, hist2.length - 1500);
+  }
+  return { ...m, historico: hist2 };
+}
+var CartaoPrevisao = class {
+  constructor() {
+    this.rot = el("div", "pv-rot", "Matematicamente");
+    this.hod = new Hodometro({ molde: "##:##" });
+    this.faixa = el("div", "pv-faixa", "");
+    this.nota = el("div", "pv-nota", "");
+    this.g = svg("svg", { viewBox: "0 0 300 80", preserveAspectRatio: "none", role: "img", "aria-label": "Faixa prevista ao longo da noite" });
+    this.banda = svg("path", { class: "pv-banda", d: "" });
+    this.med = svg("path", { class: "pv-med", d: "" });
+    this.real = svg("line", { class: "pv-real", x1: 0, x2: 300, y1: 0, y2: 0 });
+    this.real.style.opacity = "0";
+    this.g.append(this.banda, this.med, this.real);
+    this.fim = el("div", "pv-fim", "");
+    this.el = el("section", "vidro previsao", [
+      el("h2", "cartao-titulo", ["Previsão ", el("small", null, "(estimativa de horário)")]),
+      el("div", "pv-topo", [el("div", "pv-txt", [this.rot, this.faixa, this.nota]), el("div", "pv-hod", [this.hod.el, el("small", null, "mais provável")])]),
+      el("div", "pv-graf", this.g),
+      this.fim
+    ]);
+    this.el.setAttribute("aria-live", "off");
+    this.chave = "";
+    this.x = 1;
+  }
+  /** M-003: aceleração do simulado (âncora do relógio do sistema). Acima de 1×, horários com segundos. */
+  definirAceleracao(x) {
+    x = x > 0 ? x : 1;
+    if (x === this.x) return;
+    this.x = x;
+    comSegundos = x > 1;
+    const molde = comSegundos ? "##:##:##" : "##:##";
+    if (this.hod.molde !== molde) {
+      const novo = new Hodometro({ molde });
+      this.hod.el.replaceWith(novo.el);
+      this.hod = novo;
+      this.hod.molde = molde;
+    }
+    this.chave = "";
+  }
+  /** p = última previsão do tópico (ou null); circ = código da circunscrição do tópico; nomeCirc = nome para o texto. */
+  definir(p, ehCirc, nomeCirc) {
+    const chave = p ? `${p.instante}|${p.situacao}|${ehCirc}` : `nada|${ehCirc}`;
+    if (chave === this.chave) return;
+    this.chave = chave;
+    let rot = "Matematicamente", faixa2 = "", nota = "", hod = null, fim = "";
+    if (!p) {
+      rot = ehCirc ? "Matematicamente" : "Fim da apuração";
+      faixa2 = "aguardando base";
+      nota = "a previsão começa com 5% dos eleitores apurados e 10 min de apuração";
+    } else {
+      const conf = p.confirmacao;
+      if (p.situacao === "definida" || p.definida) {
+        rot = "Matematicamente: saiu";
+        faixa2 = `às ${hm2(p.definida || conf?.saiu)}`;
+        if (conf) nota = conf.dentro ? `dentro da faixa prevista (${hm2(conf.faixa.p10)}–${hm2(conf.faixa.p90)})${conf.desde ? ` desde ${hm2(conf.desde)}` : ""}` : `fora da faixa prevista (${hm2(conf.faixa.p10)}–${hm2(conf.faixa.p90)})`;
+        else nota = "saiu antes de haver base para a previsão";
+        hod = hm2(p.definida || conf?.saiu);
+      } else if (p.mat) {
+        const m = p.mat;
+        rot = m.tipo === "matematicamente_2t" ? "Matematicamente 2º turno sai" : "Matematicamente eleito sai";
+        faixa2 = faixaTxt(m);
+        const a = Math.round(100 * (m.apurado_p50 || 0));
+        nota = m.prob_antes_fim < 0.2 ? "deve ir até o fim da apuração" : `chance de sair antes do fim: ${Math.round(100 * m.prob_antes_fim)}% · com ~${a}% apurado`;
+        hod = m.incerta ? null : hm2(m.p50);
+      } else if (!ehCirc) {
+        rot = "O matematicamente";
+        faixa2 = `se decide em ${nomeCirc}`;
+        nota = "abra a circunscrição para ver a previsão";
+      }
+      if (p.parada && p.situacao === "suspensa") {
+        if (p.mat) faixa2 = `${faixaTxt(p.mat)} (adiada)`;
+        nota = `chegada de BUs parada desde ${hm2(p.parada.desde)} — previsão adiada`;
+      }
+      const f99 = p.chegou?.fim99 ? `99% às ${hm2(p.chegou.fim99)}` : p.fim99 ? `99% ${faixaTxt(p.fim99)}` : "";
+      const f100 = p.chegou?.fim100 ? `100% às ${hm2(p.chegou.fim100)}` : p.fim100 ? `100% ${faixaTxt(p.fim100)}` : "";
+      fim = [f99, f100].filter(Boolean).join(" · ");
+      if (fim) fim = `Fim da apuração: ${fim}`;
+    }
+    if (this.rot.textContent !== rot) this.rot.textContent = rot;
+    if (this.faixa.textContent !== faixa2) this.faixa.textContent = faixa2;
+    if (this.nota.textContent !== nota) {
+      this.nota.textContent = nota;
+      this.nota.title = nota;
+    }
+    this.nota.classList.toggle("alerta", !!(p?.parada && p.situacao === "suspensa"));
+    if (this.fim.textContent !== fim) {
+      this.fim.textContent = fim;
+      this.fim.title = fim;
+    }
+    this.hod.definir(hod);
+    this.desenhar(p);
+  }
+  /** A faixa P10–P90 (área) e o P50 (linha) de cada previsão da noite; a linha horizontal é o horário real. */
+  desenhar(p) {
+    const h = (p?.historico || []).filter((x) => x.every((v) => v != null));
+    const real = p?.definida ? segundos(p.definida) : null;
+    if (h.length < 2) {
+      this.banda.setAttribute("d", "");
+      this.med.setAttribute("d", "");
+      this.real.style.opacity = "0";
+      return;
+    }
+    const k = 1 / (this.x || 1);
+    const x0 = h[0][0], x1 = Math.max(h[h.length - 1][0], x0 + 60 * k);
+    let lo = Math.min(...h.map((x) => x[1])), hi = Math.max(...h.map((x) => x[3]));
+    if (real != null) {
+      lo = Math.min(lo, real);
+      hi = Math.max(hi, real);
+    }
+    const pad = Math.max(300 * k, (hi - lo) * 0.08);
+    lo -= pad;
+    hi += pad;
+    const X = (t) => (t - x0) / (x1 - x0) * 300, Y = (t) => 80 - (t - lo) / (hi - lo) * 80;
+    const cima = h.map((x) => `${X(x[0]).toFixed(1)},${Y(x[3]).toFixed(1)}`);
+    const baixo = h.map((x) => `${X(x[0]).toFixed(1)},${Y(x[1]).toFixed(1)}`).reverse();
+    this.banda.setAttribute("d", `M${cima.join("L")}L${baixo.join("L")}Z`);
+    this.med.setAttribute("d", `M${h.map((x) => `${X(x[0]).toFixed(1)},${Y(x[2]).toFixed(1)}`).join("L")}`);
+    if (real != null) {
+      const yr = Y(real).toFixed(1);
+      this.real.setAttribute("y1", yr);
+      this.real.setAttribute("y2", yr);
+    }
+    this.real.style.opacity = real != null ? "1" : "0";
+  }
+};
+
+// src/identificacao.js
 var $ = (s) => document.querySelector(s);
+var lembrar = (v) => {
+  try {
+    if (v == null) return localStorage.getItem("uv-ident");
+    localStorage.setItem("uv-ident", v);
+  } catch {
+  }
+  return null;
+};
+if (lembrar() === "recolhida") document.documentElement.classList.add("ident-recolhida");
+var Identificacao = class {
+  constructor() {
+    this.lugar = $("#ident");
+    const todos = (s) => [...this.lugar.querySelectorAll(s)];
+    this.el = { eleicao: todos(".id-eleicao"), tipo: todos(".id-tipo"), local: todos(".id-local"), cargo: todos(".id-cargo"), seg: todos(".id-seg") };
+    this.btns = todos(".id-recolher");
+    for (const b of this.btns) b.addEventListener("click", () => this.recolher(!document.documentElement.classList.contains("ident-recolhida")));
+    this.recolher(lembrar() === "recolhida", false);
+    const ver = () => {
+      const preso = this.lugar.getBoundingClientRect().bottom < 4;
+      if (this.lugar.classList.contains("preso") !== preso) this.lugar.classList.toggle("preso", preso);
+    };
+    window.addEventListener("scroll", ver, { passive: true });
+    window.addEventListener("resize", ver, { passive: true });
+    ver();
+  }
+  recolher(sim, guardar = true) {
+    document.documentElement.classList.toggle("ident-recolhida", sim);
+    for (const b of this.btns) {
+      b.textContent = sim ? "⌄" : "⌃";
+      b.setAttribute("aria-expanded", String(!sim));
+      b.setAttribute("aria-label", sim ? "Mostrar a identificação da eleição" : "Recolher a identificação da eleição");
+    }
+    if (guardar) lembrar(sim ? "recolhida" : "aberta");
+  }
+  /** { ano, geral, turno, cargo, local } */
+  definir(x) {
+    const t = (es, s) => {
+      for (const e of es) if (e.textContent !== s) e.textContent = s;
+    };
+    t(this.el.eleicao, `Eleições ${x.ano || ""}`.trim());
+    t(this.el.tipo, x.geral ? "Gerais" : "Municipais");
+    t(this.el.cargo, x.cargo || "");
+    t(this.el.local, x.local || "");
+    for (const seg of this.el.seg) {
+      [...seg.children].forEach((i, k) => i.classList.toggle("sel", k + 1 === x.turno));
+      seg.setAttribute("aria-label", x.turno ? `${x.turno}º turno` : "");
+    }
+    document.title = `${x.cargo ? `${x.cargo} · ${x.local} · ` : ""}${x.turno ? `${x.turno}º turno · ` : ""}Urna Velox`;
+  }
+};
+
+// src/app.js
+var $2 = (s) => document.querySelector(s);
 var cargo4 = (c) => String(c).padStart(4, "0");
 var Resultados = class {
   constructor() {
@@ -1578,10 +1856,19 @@ var S = {
   // tópico → última mensagem `tse` (PROTOCOLO_WS §4.6)
   relogio: null,
   // { t: segundos do site, em: performance.now(), x: velocidade } da última mensagem `estado`
+  // M-003 (relogio.js): relógio do sistema do servidor { t, em } e a âncora com a noite do TSE { noite0, sis0, x }
+  relSis: null,
+  anc: null,
+  matSis: /* @__PURE__ */ new Map(),
+  // tópico da circunscrição → horário do sistema do evento do "matematicamente" (sem candidato)
   confirmados: /* @__PURE__ */ new Map(),
   // tópico → marco "TSE confirmou" (para os ensaios)
-  ordemDesde: /* @__PURE__ */ new Map()
+  ordemDesde: /* @__PURE__ */ new Map(),
   // tópico → geração (s) do 1º arquivo do TSE com a ordem diferente
+  // previsão (etapa 8, previsao.js): tópico → última mensagem `previsao` (com o histórico das faixas)
+  prev: /* @__PURE__ */ new Map(),
+  prevConfirmadas: /* @__PURE__ */ new Map()
+  // tópico → confirmação (marco "previsão confirmada", para os ensaios)
 };
 window.__uv = S;
 try {
@@ -1609,6 +1896,7 @@ function receber(m) {
       const k = `${m.seq}|${m.abrangencia}|${m.cargo}|${m.candidato}|${m.estado}`;
       if (S.eventos.has(k)) return;
       S.eventos.set(k, m);
+      if (m.classe === "matematicamente" && m.sistema && m.topico && !String(m.estado).startsWith("revogado") && !S.matSis.has(m.topico)) S.matSis.set(m.topico, m.sistema);
       const it = itemEvento(S.N, m);
       if (it) porNoFeed(it);
       S.primeirosSujo = true;
@@ -1635,11 +1923,11 @@ function receber(m) {
         porNoFeed({
           id: "c:uf100",
           ic: "★",
-          t: hora(m.horario),
+          t: hora(quando(m)),
           seq: m.seq,
           cat: "andamento",
           texto: `Primeira UF com 100% das seções apuradas: ${S.N.uf(m.abrangencia)}`,
-          detalhe: { titulo: "Primeira UF 100% apurada", linhas: [["UF", S.N.uf(m.abrangencia)], ["Horário", hora(m.horario)], ["BUs aplicados (seq)", mil(m.seq)]] }
+          detalhe: { titulo: "Primeira UF 100% apurada", linhas: [["UF", S.N.uf(m.abrangencia)], ["Horário (Urna Velox)", hora(quando(m))], ["Horário do BU no TSE", hora(m.horario)], ["BUs aplicados (seq)", mil(m.seq)]] }
         });
       }
       break;
@@ -1655,9 +1943,48 @@ function receber(m) {
       pedirQuadro();
       break;
     }
+    case "previsao": {
+      S.prev.set(m.topico, juntarPrevisao(S.prev.get(m.topico), m, S.anc?.x || 1));
+      S.prevSujo = true;
+      const c = m.confirmacao;
+      if (c && m.circunscricao && !S.prevConfirmadas.has(m.topico)) {
+        S.prevConfirmadas.set(m.topico, c);
+        const d = S.N.disputa(m.abrangencia, m.cargo);
+        const hm3 = (t) => hora(t).slice(0, (S.anc?.x || 1) > 1 ? 8 : 5);
+        const txt = c.dentro ? `Previsão confirmada — ${d}: saiu às ${hm3(c.saiu)}, dentro da faixa prevista${c.desde ? ` desde ${hm3(c.desde)}` : ""}` : `Previsão fora da faixa — ${d}: saiu às ${hm3(c.saiu)}, previsto entre ${hm3(c.faixa.p10)} e ${hm3(c.faixa.p90)}`;
+        porNoFeed({
+          id: `p:prev:${m.topico}`,
+          ic: "◷",
+          t: hora(c.saiu),
+          seq: S.seqMax,
+          cat: "andamento",
+          texto: txt,
+          detalhe: { titulo: `Previsão do matematicamente — ${d}`, linhas: [
+            ["Saiu às", hora(c.saiu)],
+            ["Última faixa prevista", `${hora(c.faixa.p10)} a ${hora(c.faixa.p90)}`],
+            ["Dentro da faixa", c.dentro ? "sim" : "não"],
+            ["Faixas certas desde", c.desde ? hora(c.desde) : "—"],
+            ["O que é", "estimativa (P10–P90) a partir da velocidade de chegada dos BUs e da tendência dos votos; nunca um resultado"]
+          ] }
+        });
+      }
+      pedirQuadro();
+      break;
+    }
     case "estado":
       S.estado = m;
+      if (m.ultimo_bu?.seq != null) S.seqMax = Math.max(S.seqMax || 0, m.ultimo_bu.seq);
       S.relogio = { t: segundosBr(m.relogio_site), em: performance.now(), x: m.replay ? m.replay.pausado ? 0 : m.replay.acelerar || 1 : 1 };
+      if (m.relogio_sistema) {
+        S.relSis = { t: segundosF(m.relogio_sistema.agora), em: performance.now() };
+        const a = ancora(m.relogio_sistema);
+        if (a && (!S.anc || a.sis0 !== S.anc.sis0 || a.x !== S.anc.x)) {
+          S.anc = a;
+          S.ui?.prev?.definirAceleracao(a.x);
+          S.prevSujo = true;
+          S.fontesSujo = true;
+        }
+      }
       S.estadoSujo = true;
       S.player?.estadoWs(m.replay);
       pedirQuadro();
@@ -1725,7 +2052,7 @@ function cargosDe(a) {
   return [...S.topicos].filter((t) => t.startsWith(`${a}-c`)).map((t) => +t.slice(-4)).sort((x, y) => x - y);
 }
 function montarRota(t) {
-  const nav = $("#rota");
+  const nav = $2("#rota");
   const a = abr(t.abr);
   const ufs = [...new Set([...S.topicos].map((x) => x.split("-")[0]).filter((x) => x.length === 2 && x !== "br"))].sort();
   const munis = a.uf ? [...new Set([...S.topicos].map((x) => x.split("-")[0]).filter((x) => x.length === 7 && x.startsWith(a.uf)))] : [];
@@ -1765,7 +2092,7 @@ function irPara(a, c) {
   location.hash = `#/${a}/c${cargo4(cargo)}`;
 }
 function montarCargos(t) {
-  const nav = $("#cargos");
+  const nav = $2("#cargos");
   nav.replaceChildren(...cargosDe(t.abr).map((c) => {
     const b = el("button", null, S.N.cargo(c));
     b.type = "button";
@@ -1811,7 +2138,7 @@ function stat(rot, dig, comPct) {
 }
 function montarPainel(t) {
   const res = S.res.get(t.topico);
-  const painel = $("#painel");
+  const painel = $2("#painel");
   if (!res) {
     painel.replaceChildren(el("div", "carregando", "Esperando o primeiro resultado deste cargo…"));
     S.ui = { topico: t.topico, pendente: true };
@@ -1865,7 +2192,11 @@ function montarPainel(t) {
   const controle = new Controle(S.comparar, mudarModo);
   const fa = el("span", "f-a", ""), fb = el("span", "f-b", ""), fe = el("span", "f-est", "");
   const fontes = el("div", "fontes", [controle.el, el("div", "f-txt", [fa, fb]), fe]);
-  const colunas = el("div", "colunas", [el("span", "c-uv", "Urna Velox"), el("span", "c-tse", "TSE"), el("span", "c-dif", "Diferença")]);
+  const colunas = el("div", "colunas", [
+    el("span", "c-uv", [el("span", "uv-longo", "Urna Velox"), el("span", "uv-curto", "UV")]),
+    el("span", "c-tse", "TSE"),
+    el("span", "c-dif", "Diferença")
+  ]);
   colunas.setAttribute("aria-hidden", "true");
   const corrida = cardTatil(el("section", "vidro corrida", [el("header", "corrida-cab", [el("div", null, [h1, sub]), selo]), fontes, colunas, lista]));
   corrida.classList.add(`m-${S.comparar}`);
@@ -1882,7 +2213,8 @@ function montarPainel(t) {
     anel.el,
     el("div", "numeros", [
       el("div", null, [el("div", "rot", "Seções apuradas"), el("div", "val", [secAp.el, el("span", "de", " de "), secTot.el])]),
-      el("div", null, [el("div", "rot", "Horário do último BU"), el("div", "val", ultBu.el)])
+      // M-003: o horário do Urna Velox (relógio do sistema) em destaque; o do TSE embaixo, com rótulo próprio
+      el("div", null, [el("div", "rot", "Totalizado pelo Urna Velox às"), el("div", "val", ultBu.el), el("div", "hora-tse", "")])
     ]),
     el("div", "faltam", [camadaN, camadaD])
   ]));
@@ -1897,7 +2229,9 @@ function montarPainel(t) {
   const cardCurva = cardTatil(el("section", "vidro curva", [el("h2", "cartao-titulo", "Curva da apuração"), curva.el, legenda]));
   const comp = stat("Comparecimento", dig, true), abst = stat("Abstenção", dig, true), brancos = stat("Brancos", dig, true), nulos = stat("Nulos", dig, true);
   const cardVotos = cardTatil(el("section", "vidro votos", [el("h2", "cartao-titulo", "Votos"), comp.caixa, abst.caixa, brancos.caixa, nulos.caixa]));
-  painel.replaceChildren(corrida, el("aside", "lado", [apuracao, cardCurva, cardVotos]));
+  const prev = new CartaoPrevisao();
+  const cardPrev = cardTatil(prev.el);
+  painel.replaceChildren(corrida, el("aside", "lado", [apuracao, cardPrev, cardCurva, cardVotos]));
   S.ui = {
     topico: t.topico,
     circ,
@@ -1925,10 +2259,26 @@ function montarPainel(t) {
     fa,
     fb,
     fe,
-    rotBu: apuracao.querySelector(".numeros > div:nth-child(2) .rot")
+    rotBu: apuracao.querySelector(".numeros > div:nth-child(2) .rot"),
+    horaTse: apuracao.querySelector(".numeros .hora-tse"),
+    prev,
+    cargo: res.cargo
   };
+  if (S.anc) prev.definirAceleracao(S.anc.x);
   S.sujos.add(t.topico);
   S.faltamSujo = true;
+  S.prevSujo = true;
+  atualizarTopicos();
+  if (S.ident) {
+    const ano = [res.ultimo_bu, S.estado?.relogio_site].map((x) => /(20\d\d)/.exec(x || "")?.[1]).find(Boolean);
+    S.ident.definir({
+      ano,
+      geral: [...S.topicos].some((x) => x.startsWith("br-")),
+      turno: res.turno,
+      cargo: S.N.cargo(res.cargo),
+      local: t.abr === "br" ? "Brasil" : S.N.local(t.abr)
+    });
+  }
 }
 function montarTela() {
   const t = lerRota();
@@ -1941,13 +2291,16 @@ function montarTela() {
   pedirQuadro();
 }
 function atualizarTopicos() {
-  const todos = [...S.topicos];
-  const base2 = todos.filter((t) => t.split("-")[0].length <= 2);
-  const munis = todos.filter((t) => t.split("-")[0].length === 7);
-  const uf = S.tela ? abr(S.tela.abr).uf : null;
-  munis.sort((a, b) => b.startsWith(uf || "--") - a.startsWith(uf || "--") || a.localeCompare(b));
-  const lista = [...base2, ...munis].slice(0, 190);
-  if (S.tela && !lista.includes(S.tela.topico)) lista.push(S.tela.topico);
+  const lista = [];
+  if (S.tela) {
+    lista.push(S.tela.topico);
+    const circ = S.res.get(S.tela.topico)?.circ;
+    const tc = circ ? `${circ}-c${cargo4(S.tela.cargo)}` : null;
+    if (tc && tc !== S.tela.topico && S.topicos.has(tc)) lista.push(tc);
+    const fal = [tc || S.tela.topico];
+    if (S.topicos.has("br-c0001") && !fal.includes("br-c0001")) fal.push("br-c0001");
+    S.con.definirFaltam(fal);
+  }
   if (S.tela && S.comparar !== "uv" && document.visibilityState !== "hidden") lista.push(`tse:${S.tela.topico}`);
   S.con.definirTopicos(lista);
 }
@@ -1969,6 +2322,10 @@ function quadro(agora) {
   if (S.ui && !S.ui.pendente) {
     if (S.sujos.has(S.ui.topico)) desenharTopico(agora);
     if (S.faltamSujo) desenharFaltam();
+    if (S.prevSujo) {
+      S.prevSujo = false;
+      desenharPrevisao();
+    }
     mexe = S.ui.anel.quadro(dt) | S.ui.curva.quadro(dt);
   }
   S.sujos.clear();
@@ -2047,7 +2404,7 @@ function desenharTopico(agora) {
       if (k.st) pil = k.st;
       else if (k.e && sitTse) pil = sitTse === "eleito" ? "eleito (TSE)" : "2º turno (TSE)";
     } else if (encerrada && k.st) pil = k.st;
-    else if (k.mat) pil = k.mat.estado === "eleito" ? `eleito às ${hora(k.mat.em)}` : `2º turno às ${hora(k.mat.em)}`;
+    else if (k.mat) pil = k.mat.estado === "eleito" ? `eleito às ${horaMat(res, k.mat.em)}` : `2º turno às ${horaMat(res, k.mat.em)}`;
     if (l.pilula.textContent !== pil) {
       l.pilula.textContent = pil;
       l.pilula.classList.toggle("ligado", !!pil);
@@ -2075,11 +2432,11 @@ function desenharTopico(agora) {
     if (res.estado === "matematicamente_eleito" || res.estado === "definido" && res.cand.some((k) => k.st === "Eleito")) {
       const el2 = res.cand.filter((k) => k.mat?.estado === "eleito" || k.st === "Eleito");
       const em = el2[0]?.mat?.em;
-      selo = `${encerrada ? "Eleito" : "Matematicamente eleito"}: ${el2.map(nomeL).join(" e ") || nomeL(lider)}${em ? " às " + hora(em) : ""}`;
+      selo = `${encerrada ? "Eleito" : "Matematicamente eleito"}: ${el2.map(nomeL).join(" e ") || nomeL(lider)}${em ? " às " + horaMat(res, em) : ""}`;
     } else if (res.estado === "matematicamente_2t" || res.estado === "definido" && res.cand.some((k) => k.st === "2º turno")) {
       const dois = res.cand.filter((k) => k.mat?.estado === "2t" || k.st === "2º turno");
       const em = dois.map((k) => k.mat?.em).filter(Boolean).sort()[0];
-      selo = `${encerrada ? "2º turno" : "Matematicamente 2º turno"}${dois.length ? ": " + dois.map(nomeL).join(" × ") : ""}${em ? " às " + hora(em) : ""}`;
+      selo = `${encerrada ? "2º turno" : "Matematicamente 2º turno"}${dois.length ? ": " + dois.map(nomeL).join(" × ") : ""}${em ? " às " + horaMat(res, em) : ""}`;
     } else if (res.estado === "sem_eleito") selo = "Sem eleito (art. 224)";
   }
   if (ui.selo.textContent !== selo) {
@@ -2093,14 +2450,25 @@ function desenharTopico(agora) {
     }
   }
   const fonte = usaTse ? { secoes: { total: d.secoes.total, apuradas: d.secoes.totalizadas }, comparecimento: d.comparecimento, apurado: d.comparecimento + d.abstencao, vb: d.vb, vn: d.vn, vnt: d.vnt, ultimo_bu: d.geracao } : res;
-  const rot = usaTse ? "Horário do arquivo do TSE" : "Horário do último BU";
+  const rot = usaTse ? "Arquivo do TSE gerado às" : "Totalizado pelo Urna Velox às";
   if (ui.rotBu && ui.rotBu.textContent !== rot) ui.rotBu.textContent = rot;
   const tot = fonte.secoes?.total || 0, ap = fonte.secoes?.apuradas || 0;
   ui.anel.definir(tot ? ap / tot : 0);
   ui.pctSec.definir(tot ? 100 * ap / tot : 0);
   ui.secAp.definir(ap);
   ui.secTot.definir(tot);
-  ui.ultBu.definir(fonte.ultimo_bu ? hora(fonte.ultimo_bu) : null);
+  const grande = usaTse ? fonte.ultimo_bu : res.totalizado_em || res.ultimo_bu;
+  ui.ultBu.definir(grande ? hora(grande) : null);
+  if (ui.horaTse) {
+    const tb = segundos(res.ultimo_bu);
+    let txt = "";
+    if (usaTse) txt = res.totalizado_em ? `Urna Velox: ${hora(res.totalizado_em)}` : "";
+    else if (tb != null && res.totalizado_em) {
+      const ts = segundosF(res.totalizado_em);
+      txt = `último BU no TSE: ${hora(res.ultimo_bu)}${Math.abs(ts - tb) > 43200 ? ` de ${diaDe(tb)}` : ""}`;
+    }
+    if (ui.horaTse.textContent !== txt) ui.horaTse.textContent = txt;
+  }
   const c = fonte.comparecimento || 0, abst = Math.max(0, (fonte.apurado || 0) - c);
   const pc = (x, b) => b ? 100 * x / b : null;
   ui.comp.h.definir(c);
@@ -2116,7 +2484,7 @@ function desenharTopico(agora) {
     ui.ultCurva = agora;
     const a = res.cand[0], b = res.cand[1];
     ui.curva.linhas([a, b].filter(Boolean).map((k) => ({ n: k.n, cor: ui.linhas.get(k.n)?.cor })));
-    ui.curva.ponto(segundos(res.ultimo_bu), totUv ? 100 * apUv / totUv : 0, res.cand.map((k) => [k.n, k.pct]));
+    ui.curva.ponto(res.totalizado_em ? segundosF(res.totalizado_em) : segundos(res.ultimo_bu), totUv ? 100 * apUv / totUv : 0, res.cand.map((k) => [k.n, k.pct]));
     const leg = `${a?.n}|${b?.n}`;
     if (ui.leg !== leg) {
       ui.leg = leg;
@@ -2139,7 +2507,7 @@ function desenharFontes() {
   if (!ui || ui.pendente) return;
   const res = S.res.get(ui.topico);
   const tm = S.comparar !== "uv" ? S.tse.get(ui.topico) : null;
-  const f2 = textoFontes(S.comparar, res, tm, agoraSite());
+  const f2 = textoFontes(S.comparar, res, tm, agoraSistema(), S.anc);
   if (ui.fa.textContent !== f2.a) ui.fa.textContent = f2.a;
   if (ui.fb.textContent !== f2.b) ui.fb.textContent = f2.b;
   const e = S.comparar === "uv" ? "" : S.tseDesligada ? "comparação desligada neste servidor" : textoEstado(tm);
@@ -2149,10 +2517,15 @@ function desenharFontes() {
     ui.fe.classList.toggle("ligado", !!e);
   }
 }
-function agoraSite() {
-  const r = S.relogio;
+function horaMat(res, em) {
+  const s = S.matSis.get(`${res.circ}-c${cargo4(res.cargo)}`);
+  if (s) return hora(s);
+  return S.anc ? horaDe(tseNoSistema(S.anc, segundos(em))) : hora(em);
+}
+function agoraSistema() {
+  const r = S.relSis;
   if (!r || r.t == null) return null;
-  return r.t + (performance.now() - r.em) / 1e3 * r.x;
+  return r.t + (performance.now() - r.em) / 1e3;
 }
 function verificarConfirmacao(t) {
   if (S.confirmados.has(t)) return;
@@ -2163,10 +2536,13 @@ function verificarConfirmacao(t) {
   const uv = res.estado === "matematicamente_eleito" ? "eleito" : res.estado === "matematicamente_2t" ? "2t" : null;
   const ems = res.cand.map((k) => k.mat?.em).filter(Boolean).sort();
   if (uv !== sit || !ems.length) return;
-  const tUv = segundos(ems[0]), tTse = segundosBr(d.geracao);
+  const emSis = S.matSis.get(t) || null;
+  const tUv = emSis ? segundosF(emSis) : tseNoSistema(S.anc, segundos(ems[0])), tTse = segundosBr(d.geracao);
   if (tUv == null || tTse == null) return;
-  const it = itemConfirmou(S.N, res.circ, res.cargo, sit, ems[0], d.geracao, tUv, tTse);
-  S.confirmados.set(t, { sit, uv: ems[0], tse: d.geracao, min: Math.round((tTse - tUv) / 60) });
+  const cmp = comparar(S.anc, tUv, tTse);
+  const emUv = emSis || `${horaDe(tUv)}`;
+  const it = itemConfirmou(S.N, res.circ, res.cargo, sit, emUv, d.geracao, cmp, S.anc);
+  S.confirmados.set(t, { sit, uv: emUv, tse: d.geracao, tse_sistema: horaDe(cmp.tse), s: Math.round(cmp.s), min: Math.round(cmp.s / 60) });
   it.seq = S.seqMax || res.seq;
   porNoFeed(it);
 }
@@ -2208,6 +2584,19 @@ function mudarModo(m) {
   S.fontesSujo = true;
   pedirQuadro();
 }
+function desenharPrevisao() {
+  const ui = S.ui;
+  if (!ui || ui.pendente) return;
+  const pTela = S.prev.get(ui.topico) || null;
+  const tc = `${ui.circ}-c${cargo4(ui.cargo)}`;
+  const pCirc = tc === ui.topico ? pTela : S.prev.get(tc) || null;
+  if (!pCirc) {
+    ui.prev.definir(pTela, tc === ui.topico, S.N.local(ui.circ));
+    return;
+  }
+  const p = pTela === pCirc ? pTela : { ...pCirc, fim99: pTela?.fim99 ?? null, fim100: pTela?.fim100 ?? null, chegou: pTela?.chegou ?? {}, instante: `${pCirc.instante}|${pTela?.instante || ""}` };
+  ui.prev.definir(p, true, S.N.local(ui.circ));
+}
 function desenharFaltam() {
   const ui = S.ui, res = S.res.get(ui.topico);
   if (!res) return;
@@ -2215,7 +2604,8 @@ function desenharFaltam() {
   const decidido = res.estado !== "apurando" || f2?.faltam === 0;
   if (decidido) {
     const t = res.estado === "matematicamente_2t" ? "Matematicamente 2º turno" : res.estado === "sem_eleito" ? "Sem eleito" : "Matematicamente decidido";
-    const txt = `${t}${f2?.horario ? " às " + hora(f2.horario) : ""}`;
+    const hs = S.matSis.get(`${res.circ}-c${cargo4(res.cargo)}`) || quando(f2);
+    const txt = `${t}${hs ? " às " + hora(hs) : ""}`;
     if (ui.camadaD.dataset.txt !== txt) {
       ui.camadaD.dataset.txt = txt;
       ui.camadaD.replaceChildren(el("div", null, txt), el("small", null, f2 ? `no BU nº ${mil(f2.seq)} da noite` : ""));
@@ -2230,18 +2620,52 @@ function desenharFaltam() {
 var faixa;
 function montarFaixa() {
   const ritmoH = new Hodometro({ inteiros: 6 });
-  const ritmo = el("span", "chip", [ritmoH.el, el("span", null, " BUs/min")]);
+  const ritmo = el("span", "chip ritmo", [ritmoH.el, el("span", null, " BUs/min")]);
   ritmo.style.width = "150px";
   const pausa = el("span", "chip alerta oculto", "");
   pausa.style.width = "260px";
   const alerta = el("span", "chip alerta oculto", "");
-  $("#faixa").replaceChildren(ritmo, pausa, alerta);
-  faixa = { ritmoH, ritmo, pausa, alerta };
+  const sim = el("button", "chip sim oculto", "");
+  sim.type = "button";
+  sim.addEventListener("click", () => explicarSimulacao());
+  const playlist = el("a", "chip playlist oculto", ["▶ Playlist", el("span", "longo", " de simulados · escolha o próximo")]);
+  playlist.href = "/playlist";
+  $2("#faixa").replaceChildren(sim, playlist, ritmo, pausa, alerta);
+  faixa = { ritmoH, ritmo, pausa, alerta, sim, playlist };
+}
+function explicarSimulacao() {
+  const rot = S.estado?.simulacao?.rotulo;
+  if (!rot) return;
+  const link = el("a", null, "Playlist de simulados: agenda e votação do próximo");
+  link.href = "/playlist";
+  folha.abrir({ titulo: "Dados reais: isto é uma retotalização", linhas: [
+    ["Os dados", "Os boletins de urna reais, publicados pelo TSE. Nenhum voto é inventado."],
+    ["O que se repete", "A totalização: o Urna Velox começa do zero e soma tudo de novo, na ordem em que os boletins chegaram à Justiça Eleitoral."],
+    ["Para quê", "Ver a totalização e a auditoria acontecendo: no fim, o resultado é conferido com o oficial do TSE."],
+    ["Agora", rot],
+    ["A seguir", link]
+  ] });
+}
+function talvezExplicarSimulacao() {
+  if (S.simExplicada || !S.estado?.simulacao?.rotulo) return;
+  S.simExplicada = true;
+  const hoje = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  let visto = null;
+  try {
+    visto = localStorage.getItem("uv-sim-explicada");
+  } catch {
+  }
+  if (visto === hoje) return;
+  try {
+    localStorage.setItem("uv-sim-explicada", hoje);
+  } catch {
+  }
+  explicarSimulacao();
 }
 function desenharEstado() {
   S.estadoSujo = false;
   const e = S.estado;
-  const c = $("#conexao");
+  const c = $2("#conexao");
   let est = S.conexao, txt = "conectando…";
   if (S.conexao === "vivo") {
     txt = "ao vivo";
@@ -2266,6 +2690,28 @@ function desenharEstado() {
   if (c.dataset.estado !== est) c.dataset.estado = est;
   const t = c.querySelector(".txt");
   if (t.textContent !== txt) t.textContent = txt;
+  const rot = e?.simulacao?.rotulo || "";
+  if (c.classList.contains("sim") !== !!rot) c.classList.toggle("sim", !!rot);
+  let comp = c.querySelector(".comp");
+  if (rot && !comp) {
+    comp = el("span", "comp", "");
+    c.appendChild(comp);
+  }
+  if (comp) {
+    const ct = rot ? "simulação" : "";
+    if (comp.textContent !== ct) comp.textContent = ct;
+  }
+  const dica = rot ? `Simulação com dados reais: os boletins de urna são os publicados pelo TSE, totalizados de novo, do zero, na ordem em que chegaram à Justiça Eleitoral (${rot}); no fim, o resultado é conferido com o oficial. O relógio mostra o horário da noite da eleição.` : "";
+  if (c.title !== dica) c.title = dica;
+  const st = rot ? `Dados reais do TSE · retotalização · ${rot}` : "";
+  if (faixa.sim.textContent !== st) {
+    faixa.sim.replaceChildren(...rot ? [el("b", null, ["Dados reais", el("span", "tse", " do TSE")]), el("span", "resto", ` · retotalização · ${rot}`)] : []);
+    faixa.sim.title = dica;
+    faixa.sim.classList.toggle("oculto", !st);
+    faixa.sim.setAttribute("aria-label", rot ? `Por que é simulação e os dados são reais: ${rot}` : "");
+    faixa.playlist.classList.toggle("oculto", !st);
+  }
+  if (rot) talvezExplicarSimulacao();
   if (!e) return;
   const pz = e.pausa_429?.ativa ? `Pausa de rede (HTTP 429)${e.pausa_429.retomada_em ? " até " + hora(e.pausa_429.retomada_em) : ""}` : "";
   if (faixa.pausa.textContent !== pz) {
@@ -2296,41 +2742,6 @@ function curiosidades() {
   if (S.primeirosSujo) {
     S.primeirosSujo = false;
     for (const it of primeiros(S.N, S.eventos.values())) porNoFeed(it);
-  }
-  let aperto = null, folga = null, maiorC = null, menorC = null;
-  for (const [t, r] of S.res) {
-    if (!r?.cand || r.cand.length < 2) continue;
-    const ap = r.secoes?.apuradas || 0, tot = r.secoes?.total || 0;
-    if (r.circ === r.abr && tot && ap * 100 >= tot && r.cand[0].pct != null && r.cand[1].pct != null && !r.encerrada) {
-      const d = r.cand[0].pct - r.cand[1].pct;
-      if (!aperto || d < aperto.d) aperto = { t, r, d };
-      if (!folga || d > folga.d) folga = { t, r, d };
-    }
-    if (r.cargo === 1 && r.abr.length === 2 && r.abr !== "zz" && r.apurado > 0 && ap * 20 >= tot) {
-      const c = 100 * r.comparecimento / r.apurado;
-      if (!maiorC || c > maiorC.c) maiorC = { t, r, c };
-      if (!menorC || c < menorC.c) menorC = { t, r, c };
-    }
-  }
-  const disputa = (x) => S.N.disputa(x.r.circ, x.r.cargo);
-  const lider = (x, i) => S.N.nomeCand(x.r.circ, x.r.cargo, x.r.cand[i].n);
-  const linhasD = (x) => [
-    ["Disputa", disputa(x)],
-    ["1º", `${lider(x, 0)} — ${pct(x.r.cand[0].pct)}%`],
-    ["2º", `${lider(x, 1)} — ${pct(x.r.cand[1].pct)}%`],
-    ["Diferença", `${pct(x.d)} ponto(s) percentual(is)`],
-    ["Seções apuradas", `${pct(100 * x.r.secoes.apuradas / x.r.secoes.total)}%`]
-  ];
-  if (aperto) feed.por({ id: "c:aperto", fixo: true, ic: "≈", texto: `Disputa mais apertada agora: ${disputa(aperto)}, diferença de ${pct(aperto.d)} p.p.`, detalhe: { titulo: "Disputa mais apertada agora", linhas: linhasD(aperto) } });
-  if (folga && folga.t !== aperto?.t) feed.por({ id: "c:folga", fixo: true, ic: "↔", texto: `Mais folgada: ${disputa(folga)}, ${pct(folga.d)} p.p. entre 1º e 2º`, detalhe: { titulo: "Disputa mais folgada agora", linhas: linhasD(folga) } });
-  if (maiorC && menorC && maiorC.t !== menorC.t) {
-    feed.por({
-      id: "c:comp",
-      fixo: true,
-      ic: "◎",
-      texto: `Comparecimento: maior em ${S.N.uf(maiorC.r.abr)} (${pct(maiorC.c, 1)}%), menor em ${S.N.uf(menorC.r.abr)} (${pct(menorC.c, 1)}%)`,
-      detalhe: { titulo: "Comparecimento por UF (seções apuradas até agora)", linhas: [["Maior", `${S.N.uf(maiorC.r.abr)} — ${pct(maiorC.c, 1)}%`], ["Menor", `${S.N.uf(menorC.r.abr)} — ${pct(menorC.c, 1)}%`], ["Base", "Presidente, UFs com ao menos 5% das seções"]] }
-    });
   }
 }
 var itensFaltam = /* @__PURE__ */ new Map();
@@ -2382,7 +2793,7 @@ async function iniciar() {
     }
   })();
   if (tema) document.documentElement.dataset.tema = tema;
-  $("#tema").addEventListener("click", () => {
+  $2("#tema").addEventListener("click", () => {
     const t = document.documentElement.dataset.tema === "claro" ? "escuro" : "claro";
     document.documentElement.dataset.tema = t;
     try {
@@ -2390,9 +2801,9 @@ async function iniciar() {
     } catch {
     }
   });
-  folha = new Folha($("#folha"));
-  feed = new Feed($("#feed"), (d) => folha.abrir(d));
-  hist = new Historico($("#hist"), $("#feed-hist"));
+  folha = new Folha($2("#folha"));
+  feed = new Feed($2("#feed"), (d) => folha.abrir(d));
+  hist = new Historico($2("#hist"), $2("#feed-hist"));
   const fonte = document.fonts.load('700 20px "Archivo UV"').catch(() => null);
   const [nomes, topicos, player] = await Promise.all([
     fetch("/api/v1/nomes").then((r) => r.ok ? r.json() : null).catch(() => null),
@@ -2404,6 +2815,7 @@ async function iniciar() {
   S.player = player;
   await document.fonts.ready;
   montarFaixa();
+  S.ident = new Identificacao();
   S.N = new Nomes(nomes);
   S.topicos = new Set(topicos.map((t) => t.topico));
   S.con = new Conexao(receber, estadoConexao);

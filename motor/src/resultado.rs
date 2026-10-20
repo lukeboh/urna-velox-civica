@@ -122,8 +122,11 @@ pub struct Momento {
     pub encerrada: bool,
     /// nº de BUs aplicados
     pub seq: u64,
-    /// horário do último BU aplicado (segundos, hora de Brasília)
+    /// horário do último BU aplicado (segundos, hora de Brasília): o do TSE (recebimento/`Date` do site)
     pub ultimo_bu: Option<i64>,
+    /// relógio do sistema em que o último BU foi aplicado (ms, hora de Brasília; M-003): publicado como
+    /// `totalizado_em` quando presente
+    pub totalizado_ms: Option<i64>,
 }
 
 /// Monta os resultados por (cargo, abrangência) no formato documentado em `docs/FORMATO_RESULTADO.md`.
@@ -370,13 +373,19 @@ impl<'a> Publicador<'a> {
                 estado = "apurando";
             }
         }
-        Some(json!({
+        let mut v = json!({
             "v": VERSAO_FORMATO, "eleicao": eleicao, "turno": turno, "cargo": cargo, "abr": abr.codigo(), "circ": circ_abr.codigo(),
-            "seq": mo.seq, "ultimo_bu": mo.ultimo_bu.map(crate::metricas::iso_brasilia), "encerrada": mo.encerrada,
+            "seq": mo.seq, "ultimo_bu": mo.ultimo_bu.map(crate::metricas::iso_brasilia)});
+        // M-003: relógio do sistema em que o Urna Velox totalizou (só no serviço; logo depois do `ultimo_bu`)
+        if let Some(ms) = mo.totalizado_ms { v["totalizado_em"] = json!(crate::metricas::iso_brasilia_ms(ms)); }
+        let resto = json!({
+            "encerrada": mo.encerrada,
             "secoes": {"total": total.max(apuradas), "apuradas": apuradas}, "eleitorado": eleitorado, "apurado": apurado,
             "comparecimento": t.comparecimento, "vb": t.branco, "vn": t.nulo, "vnt": vnt, "validos": validos,
             "legenda": t.legenda, "estado": estado, "cand": cand,
-        }))
+        });
+        if let (Value::Object(m), Value::Object(r)) = (&mut v, resto) { m.extend(r); }
+        Some(v)
     }
 
     /// [`Publicador::valor`] em texto (uma linha, terminada em `\n`).

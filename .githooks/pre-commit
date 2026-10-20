@@ -26,4 +26,23 @@ for f in VERSION CHANGELOG.md Cargo.lock motor/Cargo.toml aquisicao/Cargo.toml b
   fi
 done
 sh "$RAIZ/scripts/versao.sh" verificar >&2 || { echo "pre-commit: versão incoerente entre VERSION, manifestos e CHANGELOG." >&2; exit 1; }
+
+# Verificação de segurança e prevenção de vazamento de dados restritos/sensíveis
+# (Windows: a versão PowerShell; fora dele, a versão Python ao lado; sem nenhuma das duas rodável, o commit é recusado)
+VERIF_PS="$(find . -maxdepth 3 -name "verificar_pendencias.ps1" 2>/dev/null | head -n 1)"
+VERIF_PY="$(find . -maxdepth 3 -name "verificar_pendencias.py" 2>/dev/null | head -n 1)"
+if [ -n "$VERIF_PS$VERIF_PY" ]; then
+  if [ -n "$VERIF_PS" ] && command -v powershell.exe >/dev/null 2>&1; then
+    powershell.exe -ExecutionPolicy Bypass -File "$VERIF_PS" >&2
+  elif [ -n "$VERIF_PY" ] && command -v python3 >/dev/null 2>&1; then
+    python3 "$VERIF_PY" >&2
+  else
+    echo "pre-commit: verificação de segurança presente mas sem powershell.exe nem python3 para rodá-la." >&2
+    false
+  fi || {
+    echo "pre-commit: violação de segurança detectada. Commit cancelado." >&2
+    exit 1
+  }
+fi
+
 exit 0

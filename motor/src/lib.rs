@@ -17,6 +17,7 @@
 //! * [`matematica`]: matematicamente eleito / matematicamente 2º turno;
 //! * [`acompanhamento`]: reavaliação por lote das circunscrições e eventos (sequência e horário);
 //! * [`noite`]: reprodução da noite em ordem de chegada dos BUs;
+//! * [`previsao`]: previsão (estimativa com intervalo) do horário do "matematicamente" e do fim da apuração;
 //! * [`conferencia`]: conferência da totalização e da situação com os arquivos oficiais.
 
 pub mod acompanhamento;
@@ -30,6 +31,7 @@ pub mod metricas;
 pub mod noite;
 pub mod oficial;
 pub mod pacote;
+pub mod previsao;
 pub mod resultado;
 pub mod situacao;
 

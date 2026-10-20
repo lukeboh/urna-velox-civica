@@ -85,7 +85,7 @@ export class Curva {
     this.ls.forEach((l, i) => { l.style.stroke = v[i]?.cor || 'transparent'; });
     this.reposicionar(false);
   }
-  /** t = segundos (relógio do site), s = % seções, cand = [[n, pct], …] */
+  /** t = segundos com fração (relógio do sistema, M-003), s = % seções, cand = [[n, pct], …] */
   ponto(t, s, cand) {
     if (t == null) return;
     const u = this.pontos[this.pontos.length - 1];
@@ -140,7 +140,8 @@ export class Curva {
     });
     const f = (v) => `${v.toFixed(alt < 6 ? 1 : 0).replace('.', ',')}%`;
     [this.hi.v, lo + alt / 2, lo].forEach((v, k) => { const x = this.mostrar.length ? f(v) : ''; if (this.rot[k].textContent !== x) this.rot[k].textContent = x; });
-    const hm = (t) => (this.pontos.length ? new Date(t * 1000).toISOString().slice(11, 16) : '');
+    // M-003: eixo no relógio do sistema; no simulado acelerado a noite cabe em poucos minutos: com os segundos
+    const hm = (t) => (this.pontos.length ? new Date(Math.floor(t) * 1000).toISOString().slice(11, span < 600 ? 19 : 16) : '');
     [hm(t0), hm(t0 + span)].forEach((x, k) => { if (this.rotT[k].textContent !== x) this.rotT[k].textContent = x; });
     return m;
   }

@@ -1,0 +1,8 @@
+[Unit]
+Description=Urna Velox — troca de eleição do ciclo rotativo contínuo (docs/CICLO_DIARIO.md)
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/urna-velox/bin/uv-ciclo.sh avancar
+TimeoutStartSec=900

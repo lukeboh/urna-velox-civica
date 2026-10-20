@@ -31,7 +31,7 @@ fi
 for N in B A; do
   msg "trocando os binários no $N"
   # só volta a iniciar se estava rodando (uma atualização nunca começa uma coleta sozinha)
-  em "$N" "ATIVO=\$(systemctl is-active urna-velox || true); sudo systemctl stop urna-velox; sudo cp /opt/urna-velox/novo/* /opt/urna-velox/bin/ &&
+  em "$N" "ATIVO=\$(systemctl is-active urna-velox || true); sudo systemctl stop urna-velox; sudo cp --remove-destination /opt/urna-velox/novo/* /opt/urna-velox/bin/ &&
            { [ ! -f /opt/urna-velox/VERSION.novo ] || sudo mv /opt/urna-velox/VERSION.novo /opt/urna-velox/VERSION; } &&
            sudo chmod 0755 /opt/urna-velox/bin/* &&
            sudo install -m 0755 /tmp/uv-implantar/uv-iniciar.sh /opt/urna-velox/bin/ &&

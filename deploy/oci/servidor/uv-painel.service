@@ -1,0 +1,25 @@
+[Unit]
+Description=Urna Velox — painel dos nós (uv-painel: monitoramento e configuração, login do Google)
+Documentation=https://github.com/lukeboh/urna-velox-civica/blob/main/docs/PAINEL.md
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+# usuário próprio: o painel lê a saude.json e o no.env; para mudar algo só tem o sudo do uv-painel-acao
+User=uvpainel
+Group=uvpainel
+WorkingDirectory=/srv/urna-velox/painel
+# segredos (Google, segredo comum dos nós, e-mails autorizados): 0640 root:uvpainel
+EnvironmentFile=/etc/urna-velox/painel.env
+ExecStart=/opt/urna-velox/bin/uv-painel-iniciar.sh
+Restart=always
+RestartSec=3
+# sem NoNewPrivileges nem ProtectSystem: o sudo do uv-painel-acao precisa de setuid e de escrever em /etc/urna-velox
+ProtectHome=true
+PrivateTmp=true
+MemoryMax=256M
+Nice=5
+
+[Install]
+WantedBy=multi-user.target

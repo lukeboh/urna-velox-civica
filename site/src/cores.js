@@ -57,10 +57,14 @@ function base(sigla, i) {
   return C < 0.04 ? { h: 265, cromatica: false, chave: sg } : { h, cromatica: true, chave: sg };
 }
 
-// tons alternativos da própria cor, em ordem de preferência: [ΔL, Δmatiz°]. O giro de matiz é pequeno de propósito
-// (o vermelho continua vermelho); quem distingue é a luminosidade.
-const PASSOS = [[0, 0], [0.1, 4], [-0.1, -4], [0.16, 6], [-0.16, -6], [0.05, 10], [-0.05, -10], [0.12, -10], [-0.12, 10]];
-const DE_MIN = 0.075; // distância mínima em OKLab entre dois candidatos da mesma disputa (no tema escuro)
+// tons alternativos da própria cor: [ΔL, Δmatiz°]. O giro de matiz é limitado (o verde continua verde, o vermelho
+// continua vermelho); a luminosidade é o que mais distingue. B-012: a escolha deixou de ser "o primeiro tom a 0,075 dos
+// já escolhidos" (dois verdes de SP, MDB e PRTB, ficavam a 0,05) e passou a maximizar a menor distância da disputa.
+const DL = [0, 0.07, -0.07, 0.14, -0.14];
+const DH = [0, 12, -12, 24, -24];
+// em ordem de preferência: quanto menos mexe na cor do partido, melhor
+const OPCOES = DL.flatMap((dl) => DH.map((dh) => [dl, dh])).sort((a, b) => (Math.abs(a[0]) / 0.07 + Math.abs(a[1]) / 12) - (Math.abs(b[0]) / 0.07 + Math.abs(b[1]) / 12));
+const ALVO = 0.14; // distância em OKLab que já basta (nos dois temas); acima dela, fica o tom mais perto da cor do partido
 const f = (x, n = 3) => +x.toFixed(n);
 const lab = ([L, C, h]) => [L, C * Math.cos((h * Math.PI) / 180), C * Math.sin((h * Math.PI) / 180)];
 const de = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
@@ -76,24 +80,30 @@ const css = ([L, C, h]) => `oklch(${f(L)} ${f(C)} ${f(h, 1)})`;
 
 /**
  * Cores de uma disputa. `cands` = [{ n, partido }] na ordem do número (estável a noite toda: a cor de um candidato não
- * muda quando ele troca de posição). Cada um recebe o primeiro tom da própria cor que fique a pelo menos DE_MIN de
- * todos os já escolhidos (ou, se nenhum ficar, o mais distante). Devolve Map n → `light-dark(<claro>, <escuro>)`.
+ * muda quando ele troca de posição; depende só de quem está na disputa). Cada um parte da própria cor e, em rodadas,
+ * troca para o tom que mais o afasta do candidato mais próximo (nos dois temas) até todos ficarem a `ALVO` dos outros ou
+ * nada mais melhorar; com folga, fica o tom mais perto da cor do partido. Devolve Map n → `light-dark(<claro>, <escuro>)`.
  */
 export function coresDaDisputa(cands) {
-  const usados = [];
-  const saida = new Map();
-  cands.forEach((k, i) => {
-    const b = base(k.partido, i);
-    let melhor = null;
-    for (const passo of PASSOS) {
-      const t = tons(b, passo);
-      const p = lab(t.escuro);
-      const d = usados.length ? Math.min(...usados.map((u) => de(u, p))) : Infinity;
-      if (!melhor || d > melhor.d) melhor = { t, p, d };
-      if (d >= DE_MIN) { melhor = { t, p, d }; break; }
+  const bases = cands.map((k, i) => base(k.partido, i));
+  const tabela = bases.map((b) => OPCOES.map((o) => { const t = tons(b, o); return { t, e: lab(t.escuro), c: lab(t.claro) }; }));
+  const esc = cands.map(() => 0);
+  const dist = (i, oi, j) => { const a = tabela[i][oi], b = tabela[j][esc[j]]; return Math.min(de(a.e, b.e), de(a.c, b.c)); };
+  const menor = (i, oi) => { let m = Infinity; for (let j = 0; j < cands.length; j++) if (j !== i) m = Math.min(m, dist(i, oi, j)); return m; };
+  for (let rodada = 0; rodada < 8; rodada++) {
+    let mudou = false;
+    for (let i = 0; i < cands.length; i++) {
+      let melhor = esc[i], vm = Math.min(ALVO, menor(i, esc[i]));
+      for (let oi = 0; oi < OPCOES.length; oi++) {
+        const v = Math.min(ALVO, menor(i, oi));
+        // melhora a distância (com margem, para não oscilar) ou empata com um tom mais perto da cor do partido
+        if (v > vm + 1e-4 || (Math.abs(v - vm) <= 1e-4 && oi < melhor)) { melhor = oi; vm = v; }
+      }
+      if (melhor !== esc[i]) { esc[i] = melhor; mudou = true; }
     }
-    usados.push(melhor.p);
-    saida.set(k.n, `light-dark(${css(melhor.t.claro)}, ${css(melhor.t.escuro)})`);
-  });
+    if (!mudou) break;
+  }
+  const saida = new Map();
+  cands.forEach((k, i) => { const t = tabela[i][esc[i]].t; saida.set(k.n, `light-dark(${css(t.claro)}, ${css(t.escuro)})`); });
   return saida;
 }

@@ -156,7 +156,7 @@ fn laco(op: Opcoes, dados: PathBuf, ufs: Option<Vec<String>>, ev: Vec<(i64, Chav
             }
             if let Some((gc, b)) = cache.get(&p.nome) { if *gc == g { let _ = p.resp.send(Some((b.clone(), format!("\"tse-{g}\"")))); continue; } }
             let Some((abr, cargo, _)) = nome_arquivo(&p.nome) else { let _ = p.resp.send(None); continue };
-            let mo = Momento { encerrada: false, seq, ultimo_bu: (seq > 0).then_some(g) };
+            let mo = Momento { encerrada: false, seq, ultimo_bu: (seq > 0).then_some(g), totalizado_ms: None };
             let corpo = pubr.valor(&est, Some(&ac), &abr, cargo, mo).map(|v| progressivo(&moldes[&p.nome].0, &v, &abr, g));
             match corpo {
                 Some(c) => {

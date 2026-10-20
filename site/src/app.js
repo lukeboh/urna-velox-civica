@@ -16,6 +16,9 @@ import { Nomes, itemMarco, itemEvento, primeiros, itemConfirmou, itemOrdemDifere
 import { coresDaDisputa } from './cores.js';
 import { iniciarPlayer } from './replay.js';
 import { Controle, celulasTse, desenharCelulas, gravarModo, modoInicial, segundosBr, situacaoTse, textoEstado, textoFontes } from './comparacao.js';
+import { CartaoPrevisao, juntarPrevisao } from './previsao.js';
+import { ancora, comparar, diaDe, horaDe, quando, segundosF, tseNoSistema } from './relogio.js';
+import { Identificacao } from './identificacao.js';
 import { abr, digitos, el, hora, mil, pct, segundos, movimentoReduzido } from './util.js';
 
 const $ = (s) => document.querySelector(s);
@@ -55,8 +58,15 @@ const S = {
   comparar: modoInicial(),  // 'uv' | 'ambos' | 'tse'
   tse: new Map(),           // tópico → última mensagem `tse` (PROTOCOLO_WS §4.6)
   relogio: null,            // { t: segundos do site, em: performance.now(), x: velocidade } da última mensagem `estado`
+  // M-003 (relogio.js): relógio do sistema do servidor { t, em } e a âncora com a noite do TSE { noite0, sis0, x }
+  relSis: null,
+  anc: null,
+  matSis: new Map(),        // tópico da circunscrição → horário do sistema do evento do "matematicamente" (sem candidato)
   confirmados: new Map(),   // tópico → marco "TSE confirmou" (para os ensaios)
   ordemDesde: new Map(),    // tópico → geração (s) do 1º arquivo do TSE com a ordem diferente
+  // previsão (etapa 8, previsao.js): tópico → última mensagem `previsao` (com o histórico das faixas)
+  prev: new Map(),
+  prevConfirmadas: new Map(), // tópico → confirmação (marco "previsão confirmada", para os ensaios)
 };
 window.__uv = S; // para os ensaios (Playwright)
 
@@ -90,6 +100,8 @@ function receber(m) {
       const k = `${m.seq}|${m.abrangencia}|${m.cargo}|${m.candidato}|${m.estado}`;
       if (S.eventos.has(k)) return;
       S.eventos.set(k, m);
+      // M-003: quando o Urna Velox viu o "matematicamente" da disputa, no relógio do sistema (para a comparação com o TSE)
+      if (m.classe === 'matematicamente' && m.sistema && m.topico && !String(m.estado).startsWith('revogado') && !S.matSis.has(m.topico)) S.matSis.set(m.topico, m.sistema);
       const it = itemEvento(S.N, m);
       if (it) porNoFeed(it);
       S.primeirosSujo = true;
@@ -113,8 +125,8 @@ function receber(m) {
       if (it) porNoFeed(it);
       if (m.classe === 'pct_secoes' && m.valor === 100 && m.abrangencia.length === 2 && !S.primeiraUf100) {
         S.primeiraUf100 = m;
-        porNoFeed({ id: 'c:uf100', ic: '★', t: hora(m.horario), seq: m.seq, cat: 'andamento', texto: `Primeira UF com 100% das seções apuradas: ${S.N.uf(m.abrangencia)}`,
-          detalhe: { titulo: 'Primeira UF 100% apurada', linhas: [['UF', S.N.uf(m.abrangencia)], ['Horário', hora(m.horario)], ['BUs aplicados (seq)', mil(m.seq)]] } });
+        porNoFeed({ id: 'c:uf100', ic: '★', t: hora(quando(m)), seq: m.seq, cat: 'andamento', texto: `Primeira UF com 100% das seções apuradas: ${S.N.uf(m.abrangencia)}`,
+          detalhe: { titulo: 'Primeira UF 100% apurada', linhas: [['UF', S.N.uf(m.abrangencia)], ['Horário (Urna Velox)', hora(quando(m))], ['Horário do BU no TSE', hora(m.horario)], ['BUs aplicados (seq)', mil(m.seq)]] } });
       }
       break;
     }
@@ -130,9 +142,37 @@ function receber(m) {
       pedirQuadro();
       break;
     }
+    case 'previsao': {
+      S.prev.set(m.topico, juntarPrevisao(S.prev.get(m.topico), m, S.anc?.x || 1));
+      S.prevSujo = true;
+      // marco "previsão confirmada" (uma vez por disputa): o "matematicamente" saiu e havia previsão antes
+      const c = m.confirmacao;
+      if (c && m.circunscricao && !S.prevConfirmadas.has(m.topico)) {
+        S.prevConfirmadas.set(m.topico, c);
+        const d = S.N.disputa(m.abrangencia, m.cargo);
+        // no simulado acelerado, os segundos do relógio do sistema contam (1 s = 8 min da noite a 500×)
+        const hm = (t) => hora(t).slice(0, (S.anc?.x || 1) > 1 ? 8 : 5);
+        const txt = c.dentro ? `Previsão confirmada — ${d}: saiu às ${hm(c.saiu)}, dentro da faixa prevista${c.desde ? ` desde ${hm(c.desde)}` : ''}`
+          : `Previsão fora da faixa — ${d}: saiu às ${hm(c.saiu)}, previsto entre ${hm(c.faixa.p10)} e ${hm(c.faixa.p90)}`;
+        porNoFeed({ id: `p:prev:${m.topico}`, ic: '◷', t: hora(c.saiu), seq: S.seqMax, cat: 'andamento', texto: txt,
+          detalhe: { titulo: `Previsão do matematicamente — ${d}`, linhas: [['Saiu às', hora(c.saiu)], ['Última faixa prevista', `${hora(c.faixa.p10)} a ${hora(c.faixa.p90)}`],
+            ['Dentro da faixa', c.dentro ? 'sim' : 'não'], ['Faixas certas desde', c.desde ? hora(c.desde) : '—'],
+            ['O que é', 'estimativa (P10–P90) a partir da velocidade de chegada dos BUs e da tendência dos votos; nunca um resultado']] } });
+      }
+      pedirQuadro();
+      break;
+    }
     case 'estado':
       S.estado = m;
+      // ritmo da apuração também pelo estado (≤ 10 s): a página não recebe mais os tópicos de todo o país (B-014)
+      if (m.ultimo_bu?.seq != null) S.seqMax = Math.max(S.seqMax || 0, m.ultimo_bu.seq);
       S.relogio = { t: segundosBr(m.relogio_site), em: performance.now(), x: m.replay ? (m.replay.pausado ? 0 : (m.replay.acelerar || 1)) : 1 };
+      // M-003: relógio do sistema do servidor (anda a 1×) e a âncora com a noite do TSE
+      if (m.relogio_sistema) {
+        S.relSis = { t: segundosF(m.relogio_sistema.agora), em: performance.now() };
+        const a = ancora(m.relogio_sistema);
+        if (a && (!S.anc || a.sis0 !== S.anc.sis0 || a.x !== S.anc.x)) { S.anc = a; S.ui?.prev?.definirAceleracao(a.x); S.prevSujo = true; S.fontesSujo = true; }
+      }
       S.estadoSujo = true;
       // barra do replay (uv-servico --controle-replay): sessão nova depois de voltar no tempo → recarrega
       S.player?.estadoWs(m.replay);
@@ -328,7 +368,11 @@ function montarPainel(t) {
   const controle = new Controle(S.comparar, mudarModo);
   const fa = el('span', 'f-a', ''), fb = el('span', 'f-b', ''), fe = el('span', 'f-est', '');
   const fontes = el('div', 'fontes', [controle.el, el('div', 'f-txt', [fa, fb]), fe]);
-  const colunas = el('div', 'colunas', [el('span', 'c-uv', 'Urna Velox'), el('span', 'c-tse', 'TSE'), el('span', 'c-dif', 'Diferença')]);
+  const colunas = el('div', 'colunas', [
+    el('span', 'c-uv', [el('span', 'uv-longo', 'Urna Velox'), el('span', 'uv-curto', 'UV')]),
+    el('span', 'c-tse', 'TSE'),
+    el('span', 'c-dif', 'Diferença'),
+  ]);
   colunas.setAttribute('aria-hidden', 'true');
   const corrida = cardTatil(el('section', 'vidro corrida', [el('header', 'corrida-cab', [el('div', null, [h1, sub]), selo]), fontes, colunas, lista]));
   corrida.classList.add(`m-${S.comparar}`);
@@ -348,7 +392,8 @@ function montarPainel(t) {
     el('h2', 'cartao-titulo', 'Apuração'), anel.el,
     el('div', 'numeros', [
       el('div', null, [el('div', 'rot', 'Seções apuradas'), el('div', 'val', [secAp.el, el('span', 'de', ' de '), secTot.el])]),
-      el('div', null, [el('div', 'rot', 'Horário do último BU'), el('div', 'val', ultBu.el)]),
+      // M-003: o horário do Urna Velox (relógio do sistema) em destaque; o do TSE embaixo, com rótulo próprio
+      el('div', null, [el('div', 'rot', 'Totalizado pelo Urna Velox às'), el('div', 'val', ultBu.el), el('div', 'hora-tse', '')]),
     ]),
     el('div', 'faltam', [camadaN, camadaD]),
   ]));
@@ -368,11 +413,26 @@ function montarPainel(t) {
   const comp = stat('Comparecimento', dig, true), abst = stat('Abstenção', dig, true), brancos = stat('Brancos', dig, true), nulos = stat('Nulos', dig, true);
   const cardVotos = cardTatil(el('section', 'vidro votos', [el('h2', 'cartao-titulo', 'Votos'), comp.caixa, abst.caixa, brancos.caixa, nulos.caixa]));
 
-  painel.replaceChildren(corrida, el('aside', 'lado', [apuracao, cardCurva, cardVotos]));
+  // previsão (etapa 8): estimativa do horário do matematicamente e do fim da apuração
+  const prev = new CartaoPrevisao();
+  const cardPrev = cardTatil(prev.el);
+
+  painel.replaceChildren(corrida, el('aside', 'lado', [apuracao, cardPrev, cardCurva, cardVotos]));
   S.ui = { topico: t.topico, circ, linhas, selo, anel, pctSec, secAp, secTot, ultBu, faltH, camadaN, camadaD, curva, legenda, comp, abst, brancos, nulos, altura, ultCurva: 0,
-    corrida, lista, controle, fa, fb, fe, rotBu: apuracao.querySelector('.numeros > div:nth-child(2) .rot') };
+    corrida, lista, controle, fa, fb, fe, rotBu: apuracao.querySelector('.numeros > div:nth-child(2) .rot'),
+    horaTse: apuracao.querySelector('.numeros .hora-tse'), prev, cargo: res.cargo };
+  if (S.anc) prev.definirAceleracao(S.anc.x);
   S.sujos.add(t.topico);
   S.faltamSujo = true;
+  S.prevSujo = true;
+  // a circunscrição da tela só se conhece com o primeiro resultado: agora entra nas inscrições
+  atualizarTopicos();
+  // M-001: eleição, turno, cargo e abrangência no cartão de identificação
+  if (S.ident) {
+    const ano = [res.ultimo_bu, S.estado?.relogio_site].map((x) => /(20\d\d)/.exec(x || '')?.[1]).find(Boolean);
+    S.ident.definir({ ano, geral: [...S.topicos].some((x) => x.startsWith('br-')), turno: res.turno, cargo: S.N.cargo(res.cargo),
+      local: t.abr === 'br' ? 'Brasil' : S.N.local(t.abr) });
+  }
 }
 
 function montarTela() {
@@ -388,14 +448,19 @@ function montarTela() {
 
 // ---------------------------------------------------------------- inscrições
 function atualizarTopicos() {
-  // base: tudo o que é Brasil ou UF (curiosidades por UF) e as circunscrições municipais, até 190 tópicos; e a tela
-  const todos = [...S.topicos];
-  const base = todos.filter((t) => t.split('-')[0].length <= 2);
-  const munis = todos.filter((t) => t.split('-')[0].length === 7);
-  const uf = S.tela ? abr(S.tela.abr).uf : null;
-  munis.sort((a, b) => (b.startsWith(uf || '--') - a.startsWith(uf || '--')) || a.localeCompare(b));
-  const lista = [...base, ...munis].slice(0, 190);
-  if (S.tela && !lista.includes(S.tela.topico)) lista.push(S.tela.topico);
+  // B-014: resultado inteiro só da tela e da circunscrição dela (Presidente numa UF: o do Brasil, para o
+  // "matematicamente" e a previsão); antes eram até 190 tópicos, e o celular travava no modo rápido. O letreiro vem
+  // dos eventos e marcos do servidor; o `faltam_para_mat`, só o da tela e o de Presidente.
+  const lista = [];
+  if (S.tela) {
+    lista.push(S.tela.topico);
+    const circ = S.res.get(S.tela.topico)?.circ;
+    const tc = circ ? `${circ}-c${cargo4(S.tela.cargo)}` : null;
+    if (tc && tc !== S.tela.topico && S.topicos.has(tc)) lista.push(tc);
+    const fal = [tc || S.tela.topico];
+    if (S.topicos.has('br-c0001') && !fal.includes('br-c0001')) fal.push('br-c0001');
+    S.con.definirFaltam(fal);
+  }
   // comparação com o TSE: só o tópico da tela, só com "Ambos" ou "TSE" e só com a aba visível (a inscrição é o que
   // faz o servidor buscar o arquivo do TSE: aba escondida, nenhuma requisição)
   if (S.tela && S.comparar !== 'uv' && document.visibilityState !== 'hidden') lista.push(`tse:${S.tela.topico}`);
@@ -416,6 +481,7 @@ function quadro(agora) {
   if (S.ui && !S.ui.pendente) {
     if (S.sujos.has(S.ui.topico)) desenharTopico(agora);
     if (S.faltamSujo) desenharFaltam();
+    if (S.prevSujo) { S.prevSujo = false; desenharPrevisao(); }
     mexe = S.ui.anel.quadro(dt) | S.ui.curva.quadro(dt);
   }
   S.sujos.clear();
@@ -475,7 +541,7 @@ function desenharTopico(agora) {
     let pil = '';
     if (usaTse) { if (k.st) pil = k.st; else if (k.e && sitTse) pil = sitTse === 'eleito' ? 'eleito (TSE)' : '2º turno (TSE)'; }
     else if (encerrada && k.st) pil = k.st;
-    else if (k.mat) pil = k.mat.estado === 'eleito' ? `eleito às ${hora(k.mat.em)}` : `2º turno às ${hora(k.mat.em)}`;
+    else if (k.mat) pil = k.mat.estado === 'eleito' ? `eleito às ${horaMat(res, k.mat.em)}` : `2º turno às ${horaMat(res, k.mat.em)}`;
     if (l.pilula.textContent !== pil) { l.pilula.textContent = pil; l.pilula.classList.toggle('ligado', !!pil); }
     const glow = usaTse ? (!!k.e && !!sitTse) : (!!k.mat || k.st === 'Eleito');
     if (glow !== l.glow) {
@@ -496,11 +562,11 @@ function desenharTopico(agora) {
     if (res.estado === 'matematicamente_eleito' || (res.estado === 'definido' && res.cand.some((k) => k.st === 'Eleito'))) {
       const el2 = res.cand.filter((k) => k.mat?.estado === 'eleito' || k.st === 'Eleito');
       const em = el2[0]?.mat?.em;
-      selo = `${encerrada ? 'Eleito' : 'Matematicamente eleito'}: ${el2.map(nomeL).join(' e ') || nomeL(lider)}${em ? ' às ' + hora(em) : ''}`;
+      selo = `${encerrada ? 'Eleito' : 'Matematicamente eleito'}: ${el2.map(nomeL).join(' e ') || nomeL(lider)}${em ? ' às ' + horaMat(res, em) : ''}`;
     } else if (res.estado === 'matematicamente_2t' || (res.estado === 'definido' && res.cand.some((k) => k.st === '2º turno'))) {
       const dois = res.cand.filter((k) => k.mat?.estado === '2t' || k.st === '2º turno');
       const em = dois.map((k) => k.mat?.em).filter(Boolean).sort()[0];
-      selo = `${encerrada ? '2º turno' : 'Matematicamente 2º turno'}${dois.length ? ': ' + dois.map(nomeL).join(' × ') : ''}${em ? ' às ' + hora(em) : ''}`;
+      selo = `${encerrada ? '2º turno' : 'Matematicamente 2º turno'}${dois.length ? ': ' + dois.map(nomeL).join(' × ') : ''}${em ? ' às ' + horaMat(res, em) : ''}`;
     } else if (res.estado === 'sem_eleito') selo = 'Sem eleito (art. 224)';
   }
   if (ui.selo.textContent !== selo) {
@@ -513,14 +579,27 @@ function desenharTopico(agora) {
   const fonte = usaTse
     ? { secoes: { total: d.secoes.total, apuradas: d.secoes.totalizadas }, comparecimento: d.comparecimento, apurado: d.comparecimento + d.abstencao, vb: d.vb, vn: d.vn, vnt: d.vnt, ultimo_bu: d.geracao }
     : res;
-  const rot = usaTse ? 'Horário do arquivo do TSE' : 'Horário do último BU';
+  // M-003: no modo Urna Velox, o horário grande é o do relógio do sistema (`totalizado_em`); o do TSE (horário do
+  // último BU no TSE) fica embaixo, com rótulo próprio — no simulado com a data da eleição original
+  const rot = usaTse ? 'Arquivo do TSE gerado às' : 'Totalizado pelo Urna Velox às';
   if (ui.rotBu && ui.rotBu.textContent !== rot) ui.rotBu.textContent = rot;
   const tot = fonte.secoes?.total || 0, ap = fonte.secoes?.apuradas || 0;
   ui.anel.definir(tot ? ap / tot : 0);
   ui.pctSec.definir(tot ? (100 * ap) / tot : 0);
   ui.secAp.definir(ap);
   ui.secTot.definir(tot);
-  ui.ultBu.definir(fonte.ultimo_bu ? hora(fonte.ultimo_bu) : null);
+  const grande = usaTse ? fonte.ultimo_bu : (res.totalizado_em || res.ultimo_bu);
+  ui.ultBu.definir(grande ? hora(grande) : null);
+  if (ui.horaTse) {
+    const tb = segundos(res.ultimo_bu);
+    let txt = '';
+    if (usaTse) txt = res.totalizado_em ? `Urna Velox: ${hora(res.totalizado_em)}` : '';
+    else if (tb != null && res.totalizado_em) {
+      const ts = segundosF(res.totalizado_em);
+      txt = `último BU no TSE: ${hora(res.ultimo_bu)}${Math.abs(ts - tb) > 43200 ? ` de ${diaDe(tb)}` : ''}`;
+    }
+    if (ui.horaTse.textContent !== txt) ui.horaTse.textContent = txt;
+  }
   const c = fonte.comparecimento || 0, abst = Math.max(0, (fonte.apurado || 0) - c);
   const pc = (x, b) => (b ? (100 * x) / b : null);
   ui.comp.h.definir(c); ui.comp.p.definir(pc(c, fonte.apurado));
@@ -533,7 +612,8 @@ function desenharTopico(agora) {
     ui.ultCurva = agora;
     const a = res.cand[0], b = res.cand[1];
     ui.curva.linhas([a, b].filter(Boolean).map((k) => ({ n: k.n, cor: ui.linhas.get(k.n)?.cor })));
-    ui.curva.ponto(segundos(res.ultimo_bu), totUv ? (100 * apUv) / totUv : 0, res.cand.map((k) => [k.n, k.pct]));
+    // M-003: o eixo é o relógio do sistema (o mesmo do GET /api/v1/curva desde a M-003)
+    ui.curva.ponto(res.totalizado_em ? segundosF(res.totalizado_em) : segundos(res.ultimo_bu), totUv ? (100 * apUv) / totUv : 0, res.cand.map((k) => [k.n, k.pct]));
     const leg = `${a?.n}|${b?.n}`;
     if (ui.leg !== leg) {
       ui.leg = leg;
@@ -555,21 +635,30 @@ function desenharFontes() {
   if (!ui || ui.pendente) return;
   const res = S.res.get(ui.topico);
   const tm = S.comparar !== 'uv' ? S.tse.get(ui.topico) : null;
-  const f = textoFontes(S.comparar, res, tm, agoraSite());
+  const f = textoFontes(S.comparar, res, tm, agoraSistema(), S.anc);
   if (ui.fa.textContent !== f.a) ui.fa.textContent = f.a;
   if (ui.fb.textContent !== f.b) ui.fb.textContent = f.b;
   const e = S.comparar === 'uv' ? '' : S.tseDesligada ? 'comparação desligada neste servidor' : textoEstado(tm);
   if (ui.fe.textContent !== e) { ui.fe.textContent = e; ui.fe.dataset.estado = tm?.estado || 'aguardando'; ui.fe.classList.toggle('ligado', !!e); }
 }
 
-/** Hora do site agora (s), interpolada desde a última mensagem `estado` (no replay, na velocidade dele). */
-function agoraSite() {
-  const r = S.relogio;
-  if (!r || r.t == null) return null;
-  return r.t + ((performance.now() - r.em) / 1000) * r.x;
+/** M-003: "hh:mm:ss" do "matematicamente" de `res` no relógio do sistema — o do evento da disputa (`sistema`); sem
+ * ele, o horário do BU (`mat.em`, relógio do TSE) levado ao relógio do sistema pela âncora. */
+function horaMat(res, em) {
+  const s = S.matSis.get(`${res.circ}-c${cargo4(res.cargo)}`);
+  if (s) return hora(s);
+  return S.anc ? horaDe(tseNoSistema(S.anc, segundos(em))) : hora(em);
 }
 
-/** Marco "TSE confirmou o matematicamente às hh:mm — Urna Velox às hh:mm, N min antes" (uma vez por disputa). */
+/** Relógio do sistema do servidor agora (s, escala de `segundos`), andando a 1× desde a última mensagem `estado`. */
+function agoraSistema() {
+  const r = S.relSis;
+  if (!r || r.t == null) return null;
+  return r.t + (performance.now() - r.em) / 1000;
+}
+
+/** Marco "TSE confirmou o matematicamente às hh:mm — Urna Velox às hh:mm, N min antes" (uma vez por disputa).
+ * M-003: o Urna Velox no relógio do sistema (evento `sistema`); o TSE levado ao mesmo relógio pela âncora. */
 function verificarConfirmacao(t) {
   if (S.confirmados.has(t)) return;
   const d = S.tse.get(t)?.dados;
@@ -579,10 +668,14 @@ function verificarConfirmacao(t) {
   const uv = res.estado === 'matematicamente_eleito' ? 'eleito' : res.estado === 'matematicamente_2t' ? '2t' : null;
   const ems = res.cand.map((k) => k.mat?.em).filter(Boolean).sort();
   if (uv !== sit || !ems.length) return;
-  const tUv = segundos(ems[0]), tTse = segundosBr(d.geracao);
+  // horário do sistema do evento; sem ele (servidor antigo), o do BU levado ao relógio do sistema
+  const emSis = S.matSis.get(t) || null;
+  const tUv = emSis ? segundosF(emSis) : tseNoSistema(S.anc, segundos(ems[0])), tTse = segundosBr(d.geracao);
   if (tUv == null || tTse == null) return;
-  const it = itemConfirmou(S.N, res.circ, res.cargo, sit, ems[0], d.geracao, tUv, tTse);
-  S.confirmados.set(t, { sit, uv: ems[0], tse: d.geracao, min: Math.round((tTse - tUv) / 60) });
+  const cmp = comparar(S.anc, tUv, tTse);
+  const emUv = emSis || `${horaDe(tUv)}`;
+  const it = itemConfirmou(S.N, res.circ, res.cargo, sit, emUv, d.geracao, cmp, S.anc);
+  S.confirmados.set(t, { sit, uv: emUv, tse: d.geracao, tse_sistema: horaDe(cmp.tse), s: Math.round(cmp.s), min: Math.round(cmp.s / 60) });
   it.seq = S.seqMax || res.seq;
   porNoFeed(it);
 }
@@ -619,6 +712,18 @@ function mudarModo(m) {
   pedirQuadro();
 }
 
+/** Cartão da previsão: o "matematicamente" é o da circunscrição (Presidente numa UF: o do Brasil); o fim, o da tela. */
+function desenharPrevisao() {
+  const ui = S.ui;
+  if (!ui || ui.pendente) return;
+  const pTela = S.prev.get(ui.topico) || null;
+  const tc = `${ui.circ}-c${cargo4(ui.cargo)}`;
+  const pCirc = tc === ui.topico ? pTela : S.prev.get(tc) || null;
+  if (!pCirc) { ui.prev.definir(pTela, tc === ui.topico, S.N.local(ui.circ)); return; }
+  const p = pTela === pCirc ? pTela : { ...pCirc, fim99: pTela?.fim99 ?? null, fim100: pTela?.fim100 ?? null, chegou: pTela?.chegou ?? {}, instante: `${pCirc.instante}|${pTela?.instante || ''}` };
+  ui.prev.definir(p, true, S.N.local(ui.circ));
+}
+
 function desenharFaltam() {
   const ui = S.ui, res = S.res.get(ui.topico);
   if (!res) return;
@@ -626,7 +731,9 @@ function desenharFaltam() {
   const decidido = res.estado !== 'apurando' || f?.faltam === 0;
   if (decidido) {
     const t = res.estado === 'matematicamente_2t' ? 'Matematicamente 2º turno' : res.estado === 'sem_eleito' ? 'Sem eleito' : 'Matematicamente decidido';
-    const txt = `${t}${f?.horario ? ' às ' + hora(f.horario) : ''}`;
+    // M-003: o horário do sistema em que saiu (o do evento da disputa; depois, o do marco)
+    const hs = S.matSis.get(`${res.circ}-c${cargo4(res.cargo)}`) || quando(f);
+    const txt = `${t}${hs ? ' às ' + hora(hs) : ''}`;
     if (ui.camadaD.dataset.txt !== txt) {
       ui.camadaD.dataset.txt = txt;
       ui.camadaD.replaceChildren(el('div', null, txt), el('small', null, f ? `no BU nº ${mil(f.seq)} da noite` : ''));
@@ -643,13 +750,46 @@ function desenharFaltam() {
 let faixa;
 function montarFaixa() {
   const ritmoH = new Hodometro({ inteiros: 6 });
-  const ritmo = el('span', 'chip', [ritmoH.el, el('span', null, ' BUs/min')]);
+  const ritmo = el('span', 'chip ritmo', [ritmoH.el, el('span', null, ' BUs/min')]);
   ritmo.style.width = '150px';
   const pausa = el('span', 'chip alerta oculto', '');
   pausa.style.width = '260px';
   const alerta = el('span', 'chip alerta oculto', '');
-  $('#faixa').replaceChildren(ritmo, pausa, alerta);
-  faixa = { ritmoH, ritmo, pausa, alerta };
+  // simulação com dados reais (ciclo diário, uv-servico --simulacao): some quando o serviço não manda o rótulo. É um
+  // botão: abre a explicação (dados reais, retotalização, auditoria); ao lado, o link da playlist de simulados
+  const sim = el('button', 'chip sim oculto', '');
+  sim.type = 'button';
+  sim.addEventListener('click', () => explicarSimulacao());
+  const playlist = el('a', 'chip playlist oculto', ['▶ Playlist', el('span', 'longo', '\u00a0de simulados · escolha o próximo')]);
+  playlist.href = '/playlist';
+  $('#faixa').replaceChildren(sim, playlist, ritmo, pausa, alerta);
+  faixa = { ritmoH, ritmo, pausa, alerta, sim, playlist };
+}
+
+/** Explicação da retotalização com dados reais (folha). Abre sozinha na primeira visita do dia a um simulado. */
+function explicarSimulacao() {
+  const rot = S.estado?.simulacao?.rotulo;
+  if (!rot) return;
+  const link = el('a', null, 'Playlist de simulados: agenda e votação do próximo');
+  link.href = '/playlist';
+  folha.abrir({ titulo: 'Dados reais: isto é uma retotalização', linhas: [
+    ['Os dados', 'Os boletins de urna reais, publicados pelo TSE. Nenhum voto é inventado.'],
+    ['O que se repete', 'A totalização: o Urna Velox começa do zero e soma tudo de novo, na ordem em que os boletins chegaram à Justiça Eleitoral.'],
+    ['Para quê', 'Ver a totalização e a auditoria acontecendo: no fim, o resultado é conferido com o oficial do TSE.'],
+    ['Agora', rot],
+    ['A seguir', link],
+  ] });
+}
+
+function talvezExplicarSimulacao() {
+  if (S.simExplicada || !S.estado?.simulacao?.rotulo) return;
+  S.simExplicada = true;
+  const hoje = new Date().toISOString().slice(0, 10);
+  let visto = null;
+  try { visto = localStorage.getItem('uv-sim-explicada'); } catch { /* sem armazenamento */ }
+  if (visto === hoje) return;
+  try { localStorage.setItem('uv-sim-explicada', hoje); } catch { /* sem armazenamento */ }
+  explicarSimulacao();
 }
 
 function desenharEstado() {
@@ -669,6 +809,23 @@ function desenharEstado() {
   if (c.dataset.estado !== est) c.dataset.estado = est;
   const t = c.querySelector('.txt');
   if (t.textContent !== txt) t.textContent = txt;
+  // complemento do selo: simulação com os BUs reais do TSE (rótulo do serviço: eleição e modo)
+  const rot = e?.simulacao?.rotulo || '';
+  if (c.classList.contains('sim') !== !!rot) c.classList.toggle('sim', !!rot);
+  let comp = c.querySelector('.comp');
+  if (rot && !comp) { comp = el('span', 'comp', ''); c.appendChild(comp); }
+  if (comp) { const ct = rot ? 'simulação' : ''; if (comp.textContent !== ct) comp.textContent = ct; }
+  const dica = rot ? `Simulação com dados reais: os boletins de urna são os publicados pelo TSE, totalizados de novo, do zero, na ordem em que chegaram à Justiça Eleitoral (${rot}); no fim, o resultado é conferido com o oficial. O relógio mostra o horário da noite da eleição.` : '';
+  if (c.title !== dica) c.title = dica;
+  const st = rot ? `Dados reais do TSE · retotalização · ${rot}` : '';
+  if (faixa.sim.textContent !== st) {
+    // no celular só "Dados reais" (o resto vem no toque, na explicação): sobra lugar para o ritmo (B-018)
+    faixa.sim.replaceChildren(...(rot ? [el('b', null, ['Dados reais', el('span', 'tse', ' do TSE')]), el('span', 'resto', ` · retotalização · ${rot}`)] : []));
+    faixa.sim.title = dica; faixa.sim.classList.toggle('oculto', !st);
+    faixa.sim.setAttribute('aria-label', rot ? `Por que é simulação e os dados são reais: ${rot}` : '');
+    faixa.playlist.classList.toggle('oculto', !st);
+  }
+  if (rot) talvezExplicarSimulacao();
   if (!e) return;
   const pz = e.pausa_429?.ativa ? `Pausa de rede (HTTP 429)${e.pausa_429.retomada_em ? ' até ' + hora(e.pausa_429.retomada_em) : ''}` : '';
   if (faixa.pausa.textContent !== pz) { faixa.pausa.textContent = pz; faixa.pausa.title = pz; faixa.pausa.classList.toggle('oculto', !pz); }
@@ -692,32 +849,8 @@ function curiosidades() {
     faixa.ritmoH.definir(t1 > t0 ? Math.round(((s1 - s0) * 60000) / Math.max(5000, t1 - t0)) : 0);
   } else faixa.ritmoH.definir(0);
   if (S.primeirosSujo) { S.primeirosSujo = false; for (const it of primeiros(S.N, S.eventos.values())) porNoFeed(it); }
-  // disputa mais apertada e mais folgada (circunscrições com ≥ 1% das seções), comparecimento por UF
-  let aperto = null, folga = null, maiorC = null, menorC = null;
-  for (const [t, r] of S.res) {
-    if (!r?.cand || r.cand.length < 2) continue;
-    const ap = r.secoes?.apuradas || 0, tot = r.secoes?.total || 0;
-    if (r.circ === r.abr && tot && ap * 100 >= tot && r.cand[0].pct != null && r.cand[1].pct != null && !r.encerrada) {
-      const d = r.cand[0].pct - r.cand[1].pct;
-      if (!aperto || d < aperto.d) aperto = { t, r, d };
-      if (!folga || d > folga.d) folga = { t, r, d };
-    }
-    if (r.cargo === 1 && r.abr.length === 2 && r.abr !== 'zz' && r.apurado > 0 && ap * 20 >= tot) {
-      const c = (100 * r.comparecimento) / r.apurado;
-      if (!maiorC || c > maiorC.c) maiorC = { t, r, c };
-      if (!menorC || c < menorC.c) menorC = { t, r, c };
-    }
-  }
-  const disputa = (x) => S.N.disputa(x.r.circ, x.r.cargo);
-  const lider = (x, i) => S.N.nomeCand(x.r.circ, x.r.cargo, x.r.cand[i].n);
-  const linhasD = (x) => [['Disputa', disputa(x)], ['1º', `${lider(x, 0)} — ${pct(x.r.cand[0].pct)}%`], ['2º', `${lider(x, 1)} — ${pct(x.r.cand[1].pct)}%`],
-    ['Diferença', `${pct(x.d)} ponto(s) percentual(is)`], ['Seções apuradas', `${pct((100 * x.r.secoes.apuradas) / x.r.secoes.total)}%`]];
-  if (aperto) feed.por({ id: 'c:aperto', fixo: true, ic: '≈', texto: `Disputa mais apertada agora: ${disputa(aperto)}, diferença de ${pct(aperto.d)} p.p.`, detalhe: { titulo: 'Disputa mais apertada agora', linhas: linhasD(aperto) } });
-  if (folga && folga.t !== aperto?.t) feed.por({ id: 'c:folga', fixo: true, ic: '↔', texto: `Mais folgada: ${disputa(folga)}, ${pct(folga.d)} p.p. entre 1º e 2º`, detalhe: { titulo: 'Disputa mais folgada agora', linhas: linhasD(folga) } });
-  if (maiorC && menorC && maiorC.t !== menorC.t) {
-    feed.por({ id: 'c:comp', fixo: true, ic: '◎', texto: `Comparecimento: maior em ${S.N.uf(maiorC.r.abr)} (${pct(maiorC.c, 1)}%), menor em ${S.N.uf(menorC.r.abr)} (${pct(menorC.c, 1)}%)`,
-      detalhe: { titulo: 'Comparecimento por UF (seções apuradas até agora)', linhas: [['Maior', `${S.N.uf(maiorC.r.abr)} — ${pct(maiorC.c, 1)}%`], ['Menor', `${S.N.uf(menorC.r.abr)} — ${pct(menorC.c, 1)}%`], ['Base', 'Presidente, UFs com ao menos 5% das seções']] } });
-  }
+  // B-014: "disputa mais apertada / mais folgada" e "comparecimento por UF" saíram do letreiro: precisavam do resultado
+  // de todos os tópicos do país, e a página agora só recebe o da tela (podem voltar como marcos calculados no servidor)
 }
 
 /** Itens fixos do feed com os eleitores que faltam (hodômetro): Presidente, as disputas mais perto de se decidir e a da tela. */
@@ -784,6 +917,8 @@ async function iniciar() {
   S.player = player;
   await document.fonts.ready;
   montarFaixa();
+  // M-001: eleição, turno e abrangência sempre à vista
+  S.ident = new Identificacao();
   S.N = new Nomes(nomes);
   S.topicos = new Set(topicos.map((t) => t.topico));
   S.con = new Conexao(receber, estadoConexao);

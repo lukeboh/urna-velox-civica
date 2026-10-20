@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<meta name="description" content="Playlist de Simulados das Eleições do Urna Velox: veja a agenda e escolha qual eleição real será totalizada de novo a seguir.">
+<title>Playlist de Simulados · Urna Velox</title>
+<link rel="icon" href="/static/icone.svg" type="image/svg+xml">
+<script>try { const t = localStorage.getItem('uv-tema'); if (t === 'claro' || t === 'escuro') document.documentElement.dataset.tema = t; } catch { /* sem armazenamento */ }</script>
+<style>
+@font-face { font-family: 'Archivo UV'; src: url('/static/archivo.woff2') format('woff2'); font-weight: 100 900; font-stretch: 62% 125%; font-display: swap; }
+:root {
+  --fundo: #0d1431; --vidro: rgba(255,255,255,.065); --vidro-forte: rgba(255,255,255,.11); --borda: rgba(255,255,255,.15);
+  --texto: #eef1ff; --texto-2: rgba(238,241,255,.72); --texto-3: rgba(238,241,255,.52);
+  --ok: #4fe0b0; --alerta: #ffc24b; --a1: #4fc3ff; --a2: #8c6bff; --a3: #ff5fd2; --sombra: 0 18px 40px rgba(2,5,22,.45);
+  --real: #4fe0b0; --rapido: #8c6bff;
+}
+/* tema: o mesmo da página da apuração (localStorage "uv-tema"); sem escolha, o do sistema */
+:root[data-tema="claro"] { --fundo: #e9edf8; --vidro: rgba(255,255,255,.62); --vidro-forte: rgba(255,255,255,.85); --borda: rgba(30,40,90,.12);
+  --texto: #121836; --texto-2: rgba(18,24,54,.74); --texto-3: rgba(18,24,54,.55); --ok: #0b8a64; --alerta: #9a5b00;
+  --sombra: 0 16px 36px rgba(40,50,110,.16); --real: #0b8a64; --rapido: #5b3fd6; color-scheme: light; }
+@media (prefers-color-scheme: light) {
+  :root:not([data-tema]) { --fundo: #e9edf8; --vidro: rgba(255,255,255,.62); --vidro-forte: rgba(255,255,255,.85); --borda: rgba(30,40,90,.12);
+    --texto: #121836; --texto-2: rgba(18,24,54,.74); --texto-3: rgba(18,24,54,.55); --ok: #0b8a64; --alerta: #9a5b00;
+    --sombra: 0 16px 36px rgba(40,50,110,.16); --real: #0b8a64; --rapido: #5b3fd6; }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; min-height: 100vh; background: var(--fundo); color: var(--texto);
+  font: 16px/1.5 'Archivo UV', system-ui, -apple-system, 'Segoe UI', sans-serif; overflow-x: hidden; }
+.aurora { position: fixed; inset: -20vh -20vw auto; height: 70vh; z-index: 0; pointer-events: none; opacity: .5; filter: blur(70px);
+  background: radial-gradient(40% 50% at 25% 40%, var(--a1), transparent 70%), radial-gradient(35% 45% at 60% 30%, var(--a2), transparent 70%),
+  radial-gradient(30% 40% at 85% 45%, var(--a3), transparent 70%); }
+main { position: relative; z-index: 1; max-width: 980px; margin: 0 auto; padding: 16px 16px 48px; }
+a { color: inherit; }
+.topo { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0 20px; }
+.marca { font-weight: 800; font-size: 1.15rem; text-decoration: none; letter-spacing: -.01em; }
+.marca span { background: linear-gradient(90deg, var(--a1), var(--a2), var(--a3)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.botao { display: inline-flex; align-items: center; gap: 6px; padding: 9px 16px; border-radius: 999px; border: 1px solid var(--borda);
+  background: var(--vidro-forte); color: var(--texto); font: inherit; font-weight: 600; font-size: .92rem; text-decoration: none; cursor: pointer; }
+.botao:hover:not(:disabled) { border-color: var(--a1); }
+.botao:disabled { opacity: .5; cursor: not-allowed; }
+.botao.primario { border: 0; color: #fff; background: linear-gradient(90deg, #3b8fe0, var(--a2), #d94fb4); }
+.botao.votado { border-color: var(--ok); color: var(--ok); background: transparent; }
+.botao:focus-visible { outline: 3px solid var(--a1); outline-offset: 2px; }
+.heroi h1 { font-size: clamp(1.7rem, 5.2vw, 2.7rem); line-height: 1.08; margin: 0 0 8px; font-weight: 850; letter-spacing: -.02em; }
+.heroi h1 em { font-style: normal; background: linear-gradient(90deg, var(--a1), var(--a2), var(--a3)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.heroi p { margin: 0; color: var(--texto-2); font-size: 1.08rem; max-width: 46rem; }
+.vidro { background: var(--vidro); border: 1px solid var(--borda); border-radius: 22px; box-shadow: var(--sombra);
+  -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); }
+.real { margin: 22px 0; padding: 18px 20px; display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; align-items: start; }
+.real .selo { grid-row: span 2; width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; font-size: 1.3rem;
+  background: color-mix(in srgb, var(--ok) 22%, transparent); color: var(--ok); }
+.real h2 { margin: 0; font-size: 1.08rem; }
+.real p { margin: 0; color: var(--texto-2); }
+.aviso { margin: 16px 0; padding: 16px 20px; border-color: color-mix(in srgb, var(--alerta) 55%, transparent);
+  background: color-mix(in srgb, var(--alerta) 12%, transparent); }
+.aviso h2 { margin: 0 0 4px; font-size: 1.05rem; color: var(--alerta); }
+.aviso p { margin: 0; color: var(--texto-2); }
+section > h2.sec { font-size: 1.2rem; margin: 30px 0 12px; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+section > h2.sec small { font-weight: 500; color: var(--texto-3); font-size: .88rem; }
+.noar { padding: 18px 20px; display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+.noar .vivo { width: 12px; height: 12px; border-radius: 50%; background: var(--a3); box-shadow: 0 0 0 0 var(--a3); animation: pulso 1.8s infinite; flex: none; }
+.noar.encerrada .vivo { background: var(--ok); animation: none; }
+@keyframes pulso { 70% { box-shadow: 0 0 0 12px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+@media (prefers-reduced-motion: reduce) { .noar .vivo { animation: none; } }
+.noar .txt { flex: 1 1 260px; min-width: 0; }
+.noar .t { font-size: 1.25rem; font-weight: 750; }
+.noar .s { color: var(--texto-2); font-size: .94rem; }
+.etq { display: inline-flex; align-items: center; gap: 5px; padding: 2px 10px; border-radius: 999px; font-size: .78rem; font-weight: 650;
+  border: 1px solid currentColor; white-space: nowrap; }
+.etq::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.etq.votos::before, .etq.rotacao::before { display: none; }
+.etq.cadencia { color: var(--real); }
+.etq.rapido { color: var(--rapido); }
+.etq.espera { color: var(--texto-3); }
+.etq.votos { color: var(--a3); }
+.etq.rotacao { color: var(--texto-3); }
+.fila { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.fila li { display: grid; grid-template-columns: 74px 1fr auto; gap: 4px 14px; align-items: center; padding: 12px 16px; }
+.fila .hora { font-variant-numeric: tabular-nums; font-weight: 800; font-size: 1.25rem; line-height: 1.1; }
+.fila .hora small { display: block; font-weight: 500; font-size: .75rem; color: var(--texto-3); }
+.fila .t { font-weight: 700; }
+.fila .s { color: var(--texto-2); font-size: .88rem; }
+.fila .marcas { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.fila li.vazio { display: block; }
+.fila li.prox { border-color: color-mix(in srgb, var(--a2) 60%, transparent); }
+.opcoes { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.op { padding: 16px 18px; display: flex; flex-direction: column; gap: 8px; }
+.op.meu { border-color: var(--ok); }
+.op .cab { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.op .t { font-weight: 800; font-size: 1.12rem; }
+.op .n { font-variant-numeric: tabular-nums; font-weight: 800; font-size: 1.4rem; line-height: 1; }
+.op .n small { display: block; font-size: .7rem; font-weight: 500; color: var(--texto-3); text-align: right; }
+.op .s { color: var(--texto-2); font-size: .88rem; }
+.op .d { color: var(--texto-3); font-size: .84rem; flex: 1; }
+.barra { height: 6px; border-radius: 6px; background: var(--vidro-forte); overflow: hidden; }
+.barra i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--a1), var(--a2), var(--a3)); transition: width .4s; }
+.regras { margin-top: 28px; color: var(--texto-3); font-size: .86rem; }
+.regras li { margin: 3px 0; }
+.msg { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%) translateY(120px); transition: transform .3s; z-index: 5;
+  padding: 10px 18px; border-radius: 999px; background: var(--vidro-forte); border: 1px solid var(--borda); box-shadow: var(--sombra);
+  -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); max-width: calc(100vw - 32px); }
+.msg.ver { transform: translateX(-50%) translateY(0); }
+.vazio { color: var(--texto-3); padding: 14px 4px; }
+@media (max-width: 560px) {
+  .fila li { grid-template-columns: 62px 1fr; }
+  .fila .marcas { grid-column: 2; justify-content: flex-start; }
+  .real { grid-template-columns: 1fr; } .real .selo { display: none; }
+}
+</style>
+</head>
+<body>
+<div class="aurora" aria-hidden="true"></div>
+<main>
+  <header class="topo">
+    <a class="marca" href="/">Urna <span>Velox</span></a>
+    <a class="botao" href="/">← Ver a apuração</a>
+  </header>
+
+  <section class="heroi">
+    <h1>Playlist de Simulados <em>das Eleições</em></h1>
+    <p>Escolha qual eleição você quer ver ser totalizada de novo. O simulado mais votado é sempre o próximo a entrar no ar.</p>
+  </section>
+
+  <div class="real vidro" role="note">
+    <div class="selo" aria-hidden="true">✓</div>
+    <h2>Os dados dos simulados são os dados reais</h2>
+    <p>Os boletins de urna são os mesmos que o TSE publicou em cada eleição; nenhum voto é inventado. O que se repete é a
+      <b>totalização</b>: a cada ciclo, o Urna Velox começa do zero e soma de novo todos os boletins, na ordem em que
+      chegaram à Justiça Eleitoral. Assim você vê a totalização acontecendo e a <b>auditoria</b>: no fim, cada resultado é
+      conferido com o resultado oficial do TSE.</p>
+  </div>
+
+  <div id="lugar-suspensa-alto"><div class="aviso vidro" id="suspensa" hidden role="status"></div></div>
+
+  <section aria-labelledby="t-noar">
+    <h2 class="sec" id="t-noar">No ar agora</h2>
+    <div class="noar vidro" id="noar"><div class="vazio">Carregando…</div></div>
+  </section>
+
+  <section aria-labelledby="t-fila">
+    <h2 class="sec" id="t-fila">A seguir <small>horários previstos, de Brasília</small></h2>
+    <ol class="fila" id="fila"></ol>
+  </section>
+
+  <section aria-labelledby="t-opcoes">
+    <h2 class="sec" id="t-opcoes">Escolha o próximo simulado <small id="total"></small></h2>
+    <div class="opcoes" id="opcoes"></div>
+  </section>
+
+  <div id="lugar-suspensa-baixo"></div>
+
+  <ul class="regras">
+    <li>Um voto por conexão (endereço IP). Você pode trocar ou retirar o seu voto quando quiser.</li>
+    <li>Na virada de cada hora em que um simulado termina, o mais votado entra no ar e os votos dele são usados; os
+      votos nos outros continuam valendo. Empate: vence quem chegou primeiro àquela contagem. Sem votos, segue a
+      rotação automática.</li>
+    <li><b>Tempo real</b>: os boletins chegam no mesmo ritmo e na mesma ordem da noite da eleição (leva horas).
+      <b>Mesma ordem, acelerado</b>: a mesma ordem de chegada, o mais rápido que o sistema totaliza (alguns minutos).</li>
+    <li>De um dia antes até três dias depois de uma eleição oficial, a playlist fica suspensa.</li>
+  </ul>
+</main>
+<div class="msg" id="msg" role="status" aria-live="polite"></div>
+
+<script>
+'use strict';
+const $ = (s) => document.querySelector(s);
+const TZ = 'America/Sao_Paulo';
+const fHora = new Intl.DateTimeFormat('pt-BR', { timeZone: TZ, hour: '2-digit', minute: '2-digit' });
+const fDia = new Intl.DateTimeFormat('pt-BR', { timeZone: TZ, day: '2-digit', month: '2-digit' });
+const fDiaSem = new Intl.DateTimeFormat('pt-BR', { timeZone: TZ, weekday: 'short', day: '2-digit', month: '2-digit' });
+let dados = null, ocupado = false;
+
+const el = (tag, cls, filhos) => {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  for (const f of [].concat(filhos ?? [])) if (f != null) e.append(f);
+  return e;
+};
+const data = (iso) => { const [a, m, d] = iso.split('-'); return `${d}/${m}/${a}`; };
+const hora = (iso) => (iso ? fHora.format(new Date(iso)) : '—');
+const mesmoDia = (a, b) => fDia.format(a) === fDia.format(b);
+function quando(iso) {
+  const t = new Date(iso), hoje = new Date();
+  const amanha = new Date(hoje.getTime() + 864e5);
+  if (mesmoDia(t, hoje)) return 'hoje';
+  if (mesmoDia(t, amanha)) return 'amanhã';
+  return fDiaSem.format(t).replace('.', '');
+}
+function duracao(s) {
+  if (s == null) return '';
+  const m = Math.round(s / 60);
+  if (m < 60) return `cerca de ${Math.max(1, m)}\u00a0min`;
+  const h = Math.floor(m / 60), r = m % 60;
+  return `cerca de ${h}\u00a0h${r ? `\u00a0${r}\u00a0min` : ''}`;
+}
+const etqModo = (it) => el('span', `etq ${it.modo}`, it.modo === 'cadencia' ? 'Tempo real' : it.modo === 'rapido' ? 'Mesma ordem, acelerado' : 'Vitrine');
+const linhaEleicao = (it) => `${it.eleicao} · eleição de ${data(it.data_eleicao)}`;
+
+function msg(t) {
+  const m = $('#msg');
+  m.textContent = t;
+  m.classList.add('ver');
+  clearTimeout(msg.t);
+  msg.t = setTimeout(() => m.classList.remove('ver'), 3500);
+}
+
+function desenhar() {
+  const d = dados;
+  const susp = d.suspensao;
+  // suspensa: o aviso vai no alto; só programada: embaixo, junto das regras
+  const sv = $('#suspensa');
+  sv.hidden = !susp && !d.proxima_suspensao;
+  const lugar = susp ? $('#lugar-suspensa-alto') : $('#lugar-suspensa-baixo');
+  if (sv.parentNode !== lugar) lugar.append(sv);
+  if (susp) {
+    sv.replaceChildren(el('h2', null, 'Playlist suspensa: eleição oficial'),
+      el('p', null, `Eleição oficial (${susp.nome}): de ${fDia.format(new Date(susp.de))} a ${fDia.format(new Date(new Date(susp.ate) - 1))} não há simulados nem votação. A playlist volta em ${fDiaSem.format(new Date(susp.retoma_em)).replace('.', '')}, às ${hora(susp.retoma_em)}.`));
+  } else if (d.proxima_suspensao) {
+    const p = d.proxima_suspensao;
+    sv.replaceChildren(el('h2', null, 'Pausa programada'),
+      el('p', null, `De ${fDia.format(new Date(p.de))} a ${fDia.format(new Date(new Date(p.ate) - 1))} a playlist fica suspensa: é o período da eleição oficial (${p.nome}).`));
+  }
+
+  // no ar
+  const na = d.no_ar, box = $('#noar');
+  box.classList.toggle('encerrada', !!(na && na.encerrada));
+  if (!na) box.replaceChildren(el('div', 'vazio', 'Nenhum simulado no ar neste momento.'));
+  else {
+    const fim = na.modo === 'espera'
+      ? `Em exibição até ${hora(na.proxima_troca || na.previsao_fim)}`
+      : na.encerrada
+        ? `Totalização concluída${na.concluido_em ? ` às ${hora(na.concluido_em)}` : ''} · resultado e auditoria em exibição${na.proxima_troca ? ` até ${hora(na.proxima_troca)}` : ''}`
+        : `Totalizando desde ${hora(na.inicio)} · previsão de fim às ${hora(na.previsao_fim)}`;
+    box.replaceChildren(
+      el('span', 'vivo', null),
+      el('div', 'txt', [el('div', 't', na.modo === 'espera' ? 'Vitrine do 2º turno de 2026' : na.titulo),
+        el('div', 's', linhaEleicao(na)), el('div', 's', fim)]),
+      etqModo(na),
+      Object.assign(el('a', 'botao primario', 'Ver ao vivo'), { href: '/' }));
+  }
+
+  // fila
+  const fila = $('#fila');
+  if (susp) fila.replaceChildren(el('li', 'vidro vazio', 'Sem simulados durante a suspensão.'));
+  else fila.replaceChildren(...d.fila.slice(0, 6).map((it, i) => {
+    const marcas = [etqModo(it), it.origem === 'votos'
+      ? el('span', 'etq votos', `★ ${it.votos} ${it.votos === 1 ? 'voto' : 'votos'}`)
+      : el('span', 'etq rotacao', 'rotação automática')];
+    return el('li', `vidro${i === 0 ? ' prox' : ''}`, [
+      el('div', 'hora', [hora(it.inicio_previsto), el('small', null, quando(it.inicio_previsto))]),
+      el('div', null, [el('div', 't', it.modo === 'espera' ? 'Vitrine do 2º turno de 2026' : it.titulo),
+        el('div', 's', it.modo === 'espera' ? `Candidatos do 2º turno · eleição em ${data(it.data_eleicao)}` : `${linhaEleicao(it)} · previsão de fim às ${hora(it.fim_previsto)}`)]),
+      el('div', 'marcas', marcas)]);
+  }));
+
+  // opções
+  const max = Math.max(1, ...d.opcoes.map((o) => o.votos));
+  $('#total').textContent = d.total_votos ? `${d.total_votos} ${d.total_votos === 1 ? 'voto' : 'votos'} na fila` : 'nenhum voto ainda';
+  $('#opcoes').replaceChildren(...d.opcoes.map((o) => {
+    const meu = d.meu_voto === o.item;
+    const b = el('button', `botao ${meu ? 'votado' : 'primario'}`, meu ? '✓ Seu voto · retirar' : o.no_ar ? 'No ar agora' : 'Quero este a seguir');
+    b.type = 'button';
+    b.disabled = !!susp || (o.no_ar && !meu) || ocupado;
+    b.setAttribute('aria-pressed', meu ? 'true' : 'false');
+    b.addEventListener('click', () => votar(meu ? null : o.item));
+    const barra = el('div', 'barra', el('i'));
+    barra.firstChild.style.width = `${(100 * o.votos) / max}%`;
+    return el('article', `op vidro${meu ? ' meu' : ''}`, [
+      el('div', 'cab', [el('div', null, [el('div', 't', o.titulo), el('div', 's', `${o.eleicao} · ${data(o.data_eleicao)}`)]),
+        el('div', 'n', [String(o.votos), el('small', null, o.votos === 1 ? 'voto' : 'votos')])]),
+      el('div', null, etqModo(o)),
+      el('div', 'd', `${o.modo_descricao} Duração: ${duracao(o.duracao_estimada_s)}.`),
+      barra, b]);
+  }));
+}
+
+async function carregar() {
+  try {
+    const r = await fetch('/api/v1/playlist', { cache: 'no-store' });
+    if (!r.ok) throw new Error(r.status);
+    dados = await r.json();
+    desenhar();
+  } catch {
+    if (!dados) $('#noar').replaceChildren(el('div', 'vazio', 'A playlist está fora do ar no momento. Tente de novo em instantes.'));
+  }
+}
+
+async function votar(item) {
+  if (ocupado) return;
+  ocupado = true;
+  try {
+    const r = await fetch('/api/v1/playlist/voto', item
+      ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ item }) }
+      : { method: 'DELETE' });
+    const j = await r.json().catch(() => null);
+    if (j && j.opcoes) dados = j;
+    msg((j && (j.mensagem || j.erro)) || (r.ok ? 'Pronto.' : 'Não foi possível registrar agora.'));
+  } catch {
+    msg('Sem conexão com a playlist. Tente de novo.');
+  } finally {
+    ocupado = false;
+    if (dados) desenhar();
+  }
+}
+
+carregar();
+setInterval(() => { if (!document.hidden) carregar(); }, 20000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) carregar(); });
+</script>
+</body>
+</html>

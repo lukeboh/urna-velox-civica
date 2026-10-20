@@ -14,7 +14,12 @@ uv-motor conferir  --dados ~/uvreal/dados --oficial ~/uvreal/oficial --metricas 
 uv-motor conferir-publicacao --publicacao <replay>/publicacao --oficial ~/uvreal/oficial
 uv-motor noite --dados ~/uvreal/2024-2t/dados --oficial ~/uvreal/2024-2t/oficial --chegadas <csv> --saida noite/
 uv-motor inspecionar o03220df9701200010003-bu.dat
+# previsão (etapa 8): backtest na noite reproduzida, uma previsão a cada 30 s do relógio da noite, e gabaritos da noite
+uv-motor previsao --dados … --oficial … --chegadas <csv> --nome 2024-2t --cargos 11 --threads 16 --saida prev/
 ```
+
+* `previsao` (módulo `previsao`): estimativa, com faixa P10–P90, do horário do "matematicamente" e do fim da apuração;
+  as três noites de uma vez: `scripts/backtest_previsao.sh` (relatório em `docs/RELATORIO_0.8.0.md`).
 
 * `--oficial`: arquivos de divulgação (`-u.json`), de onde vêm os **candidatos** nesta etapa (destinação, nascimento,
   eleitorado, turno, vagas); na etapa 2 virá dos dados publicados antes da apuração.

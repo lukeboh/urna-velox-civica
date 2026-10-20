@@ -1,0 +1,106 @@
+# Configuração do Caddy para o Urna Velox
+# Este arquivo roda em cada nó da OCI (/etc/caddy/Caddyfile).
+# Faz a terminação TLS/HTTPS para o domínio, suporte a WebSocket (/ws) e
+# balanceia a carga entre o nó local (127.0.0.1:8080) e o nó parceiro ({$PAR_IP}:8080).
+
+{
+    admin off
+}
+
+{$DOMINIO:localhost}, www.{$DOMINIO:localhost} {
+    log {
+        output file /var/log/caddy/urna-velox-acesso.log {
+            roll_size 20mb
+            roll_keep 5
+        }
+    }
+
+    header {
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+
+    # 1. Rota WebSocket (/ws) — apuração em tempo real
+    # Balanceia por menor número de conexões (least_conn) e testa a saúde (/api/v1/estado)
+    @websocket {
+        header Connection *Upgrade*
+        header Upgrade websocket
+        path /ws
+    }
+    handle @websocket {
+        reverse_proxy 127.0.0.1:8080 {$PAR_IP:127.0.0.1}:8080 {
+            lb_policy least_conn
+            health_uri /api/v1/estado
+            health_interval 5s
+            flush_interval -1
+        }
+    }
+
+    # 1b. Playlist de simulados (uv-playlist.py, só no nó A, 127.0.0.1:8090): página /playlist e API /api/v1/playlist.
+    # O IP do visitante (um voto por IP) segue no X-Real-IP. No nó B não há playlist: a rota responde o 503 abaixo
+    # (o DNS aponta para o A, então o público só passa pelo Caddy do A).
+    @playlist path /playlist /playlist/* /api/v1/playlist /api/v1/playlist/*
+    handle @playlist {
+        reverse_proxy 127.0.0.1:8090 {
+            header_up X-Real-IP {remote_host}
+        }
+    }
+
+    # 2. Painel dos nós (uv-painel, docs/PAINEL.md): sempre o deste nó (o painel mostra os dois e fala com o do par
+    # pela rede privada). Login com o Google; sem sessão, só a página de entrada.
+    handle /painel* {
+        reverse_proxy 127.0.0.1:8095
+    }
+
+    # 3. Comandos que mudam o serviço (POST/PUT/PATCH/DELETE em /api/*, hoje os controles do replay): só com o login do
+    # painel (Google). O Caddy pergunta ao uv-painel deste nó; sem sessão válida, 401 e nada chega ao serviço.
+    @controle {
+        method POST PUT PATCH DELETE
+        path /api/*
+        # o voto da playlist é público de propósito (uv-playlist.py tem o próprio limite por IP)
+        not path /api/v1/playlist /api/v1/playlist/*
+    }
+    handle @controle {
+        forward_auth 127.0.0.1:8095 {
+            uri /painel/auth/verificar
+            copy_headers X-Uv-Operador
+        }
+        reverse_proxy 127.0.0.1:8080 {$PAR_IP:127.0.0.1}:8080 {
+            lb_policy round_robin
+            health_uri /api/v1/estado
+            health_interval 5s
+        }
+    }
+
+    # 4. Rota REST (/api/v1/*) e SPA (/) — balanceamento Round Robin
+    handle {
+        reverse_proxy 127.0.0.1:8080 {$PAR_IP:127.0.0.1}:8080 {
+            lb_policy round_robin
+            health_uri /api/v1/estado
+            health_interval 5s
+        }
+    }
+
+    # 5. Serviço fora do ar nos dois nós (troca de eleição do ciclo, partida da noite) — B-008, 0.8.9.
+    # Sem isto o Caddy devolve 502/503 vazio e sem Content-Type; com o "nosniff" acima, o navegador do visitante
+    # oferecia salvar um arquivo. A página avisa e se recarrega sozinha; a API responde JSON.
+    handle_errors 502 503 504 {
+        header Cache-Control "no-store"
+        header Retry-After "10"
+        @api path /api/* /ws
+        handle @api {
+            header Content-Type "application/json; charset=utf-8"
+            respond `{"erro":"servico_indisponivel","tentar_em_s":10}` 503
+        }
+        handle {
+            header Content-Type "text/html; charset=utf-8"
+            respond `<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="refresh" content="10"><title>Urna Velox · atualizando</title>
+<style>:root{color-scheme:light dark}body{margin:0;min-height:100vh;display:grid;place-items:center;font:16px/1.5 system-ui,sans-serif;background:light-dark(#f4f5f7,#101216);color:light-dark(#1b1e24,#e8eaee)}main{max-width:28rem;padding:1.5rem;text-align:center}h1{font-size:1.4rem;margin:0 0 .5rem}p{margin:.25rem 0;opacity:.8}</style>
+</head><body><main><h1>Urna Velox</h1><p>O serviço está sendo atualizado e volta em instantes.</p>
+<p>Esta página se recarrega sozinha.</p></main></body></html>` 503
+        }
+    }
+}

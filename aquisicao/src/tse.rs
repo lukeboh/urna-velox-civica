@@ -26,31 +26,225 @@ pub struct Alvo {
     pub ambiente: String,
     pub ciclo: String,
     pub pleito: u32,
+    /// modelos de caminho (padrão: os de hoje; `--rotas` troca, ver [`Rotas`])
+    pub rotas: std::sync::Arc<Rotas>,
 }
 
 impl Alvo {
-    pub fn url_ele_c(&self) -> String { format!("{}/{}/comum/config/ele-c.json", self.base, self.ambiente) }
-    fn raiz(&self) -> String { format!("{}/{}/{}/arquivo-urna/{}", self.base, self.ambiente, self.ciclo, self.pleito) }
-    pub fn url_cs(&self, uf: &str) -> String { format!("{}/config/{uf}/{uf}-p{:06}-cs.json", self.raiz(), self.pleito) }
-    pub fn dir_secao(&self, uf: &str, mu: u32, zn: u16, se: u16) -> String {
-        format!("{}/dados/{uf}/{mu:05}/{zn:04}/{se:04}", self.raiz())
+    /// Alvo com os caminhos padrão do site do TSE.
+    pub fn novo(base: &str, ambiente: &str, ciclo: &str, pleito: u32) -> Alvo {
+        Alvo { base: base.trim_end_matches('/').to_string(), ambiente: ambiente.into(), ciclo: ciclo.into(), pleito, rotas: Default::default() }
     }
-    pub fn url_aux(&self, uf: &str, mu: u32, zn: u16, se: u16) -> String {
-        format!("{}/p{:06}-{uf}-m{mu:05}-z{zn:04}-s{se:04}-aux.json", self.dir_secao(uf, mu, zn, se), self.pleito)
+
+    /// Variáveis comuns a todos os modelos; `extra` resolve as do arquivo (seção, hash, eleição...).
+    fn montar(&self, modelo: &str, extra: &dyn Fn(&str, &mut String) -> bool) -> String {
+        use std::fmt::Write;
+        montar_modelo(modelo, &|nome: &str, o: &mut String| {
+            match nome {
+                "base" => o.push_str(&self.base),
+                "base_arquivos" => o.push_str(self.rotas.base_arquivos.as_deref().map(|b| b.trim_end_matches('/')).unwrap_or(&self.base)),
+                "amb" => o.push_str(&self.ambiente),
+                "ciclo" => o.push_str(&self.ciclo),
+                "pleito" => { let _ = write!(o, "{}", self.pleito); }
+                "pleito06" => { let _ = write!(o, "{:06}", self.pleito); }
+                _ => return extra(nome, o),
+            }
+            true
+        })
     }
+
+    fn secao(&self, modelo: &str, uf: &str, mu: u32, zn: u16, se: u16, extra: &dyn Fn(&str, &mut String) -> bool) -> String {
+        use std::fmt::Write;
+        self.montar(modelo, &|nome: &str, o: &mut String| {
+            match nome {
+                "uf" => o.push_str(uf),
+                "mun05" => { let _ = write!(o, "{mu:05}"); }
+                "zona04" => { let _ = write!(o, "{zn:04}"); }
+                "secao04" => { let _ = write!(o, "{se:04}"); }
+                _ => return extra(nome, o),
+            }
+            true
+        })
+    }
+
+    pub fn url_ele_c(&self) -> String { self.montar(&self.rotas.ele_c, &|_, _| false) }
+    pub fn url_cs(&self, uf: &str) -> String {
+        self.montar(&self.rotas.cs, &|n: &str, o: &mut String| { if n == "uf" { o.push_str(uf); true } else { false } })
+    }
+    pub fn url_aux(&self, uf: &str, mu: u32, zn: u16, se: u16) -> String { self.secao(&self.rotas.aux, uf, mu, zn, se, &|_, _| false) }
     pub fn url_arquivo(&self, uf: &str, mu: u32, zn: u16, se: u16, hash: &str, nome: &str) -> String {
-        format!("{}/{hash}/{nome}", self.dir_secao(uf, mu, zn, se))
+        self.secao(&self.rotas.arquivo, uf, mu, zn, se, &|n: &str, o: &mut String| {
+            match n { "hash" => o.push_str(hash), "nome" => o.push_str(nome), _ => return false }
+            true
+        })
     }
     pub fn url_mun_cm(&self, eleicao: u32) -> String {
-        format!("{}/{}/{}/{eleicao}/config/mun-e{:06}-cm.json", self.base, self.ambiente, self.ciclo, eleicao)
+        use std::fmt::Write;
+        self.montar(&self.rotas.mun_cm, &|n: &str, o: &mut String| {
+            match n { "eleicao" => { let _ = write!(o, "{eleicao}"); } "eleicao06" => { let _ = write!(o, "{eleicao:06}"); } _ => return false }
+            true
+        })
     }
     pub fn url_u_json(&self, eleicao: u32, abr: &str, cargo: u8, subpasta: &str) -> String {
-        format!("{}/{}/{}/{eleicao}/dados/{subpasta}/{}-c{:04}-e{:06}-u.json", self.base, self.ambiente, self.ciclo, abr, cargo, eleicao)
+        use std::fmt::Write;
+        self.montar(&self.rotas.u_json, &|n: &str, o: &mut String| {
+            match n {
+                "eleicao" => { let _ = write!(o, "{eleicao}"); }
+                "eleicao06" => { let _ = write!(o, "{eleicao:06}"); }
+                "abr" => o.push_str(abr),
+                "cargo04" => { let _ = write!(o, "{cargo:04}"); }
+                "subpasta" => o.push_str(subpasta),
+                _ => return false,
+            }
+            true
+        })
     }
     /// Pacote de dados abertos da UF (todos os arquivos de urna em um zip), publicado após a eleição.
     pub fn url_zip_dados_abertos(&self, uf: &str, turno: u8) -> String {
         let ano = &self.ciclo[3..];
         format!("https://cdn.tse.jus.br/estatistica/sead/eleicoes/eleicoes{ano}/arqurnatot/bu_imgbu_logjez_rdv_vscmr_{ano}_{turno}t_{}.zip", uf.to_uppercase())
+    }
+}
+
+/// Troca cada `{nome}` do modelo pelo que `f` escreve; um nome que `f` não conhece fica como está (a validação de
+/// [`Rotas::validar`] recusa esses modelos antes de chegarem aqui).
+pub fn montar_modelo(modelo: &str, f: &dyn Fn(&str, &mut String) -> bool) -> String {
+    let mut o = String::with_capacity(modelo.len() + 64);
+    let mut r = modelo;
+    while let Some(i) = r.find('{') {
+        o.push_str(&r[..i]);
+        let resto = &r[i + 1..];
+        match resto.find('}') {
+            Some(j) => {
+                let nome = &resto[..j];
+                if !f(nome, &mut o) { o.push('{'); o.push_str(nome); o.push('}'); }
+                r = &resto[j + 1..];
+            }
+            None => { o.push_str(&r[i..]); r = ""; }
+        }
+    }
+    o.push_str(r);
+    o
+}
+
+// ------------------------------------------------------------------ rotas_tse.json
+
+pub const ROTA_ELE_C: &str = "{base}/{amb}/comum/config/ele-c.json";
+pub const ROTA_CS: &str = "{base}/{amb}/{ciclo}/arquivo-urna/{pleito}/config/{uf}/{uf}-p{pleito06}-cs.json";
+pub const ROTA_AUX: &str = "{base}/{amb}/{ciclo}/arquivo-urna/{pleito}/dados/{uf}/{mun05}/{zona04}/{secao04}/p{pleito06}-{uf}-m{mun05}-z{zona04}-s{secao04}-aux.json";
+pub const ROTA_ARQUIVO: &str = "{base_arquivos}/{amb}/{ciclo}/arquivo-urna/{pleito}/dados/{uf}/{mun05}/{zona04}/{secao04}/{hash}/{nome}";
+pub const ROTA_MUN_CM: &str = "{base}/{amb}/{ciclo}/{eleicao}/config/mun-e{eleicao06}-cm.json";
+pub const ROTA_U_JSON: &str = "{base}/{amb}/{ciclo}/{eleicao}/dados/{subpasta}/{abr}-c{cargo04}-e{eleicao06}-u.json";
+
+fn r_ele_c() -> String { ROTA_ELE_C.into() }
+fn r_cs() -> String { ROTA_CS.into() }
+fn r_aux() -> String { ROTA_AUX.into() }
+fn r_arquivo() -> String { ROTA_ARQUIVO.into() }
+fn r_mun_cm() -> String { ROTA_MUN_CM.into() }
+fn r_u_json() -> String { ROTA_U_JSON.into() }
+
+/// Modelos de caminho do site de resultados (`/etc/urna-velox/rotas_tse.json`, `uv-servico --rotas`, painel dos
+/// nós). Servem para seguir o TSE se ele mudar a organização dos arquivos, e para buscar os arquivos de urna (BUs) de
+/// outro endereço (`base_arquivos`) sem mudar de onde vêm as listas de seções.
+///
+/// Variáveis: `{base}` e `{base_arquivos}` (padrão: a própria base), `{amb}`, `{ciclo}`, `{pleito}`, `{pleito06}`;
+/// por seção `{uf}`, `{mun05}`, `{zona04}`, `{secao04}`; no arquivo `{hash}` e `{nome}`; nos resultados `{eleicao}`,
+/// `{eleicao06}`, `{abr}`, `{cargo04}`, `{subpasta}`.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, Deserialize)]
+pub struct Rotas {
+    /// Outro servidor para os arquivos de urna (`{base_arquivos}`); vazio = o mesmo da base.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_arquivos: Option<String>,
+    #[serde(default = "r_ele_c")]
+    pub ele_c: String,
+    #[serde(default = "r_cs")]
+    pub cs: String,
+    #[serde(default = "r_aux")]
+    pub aux: String,
+    #[serde(default = "r_arquivo")]
+    pub arquivo: String,
+    #[serde(default = "r_mun_cm")]
+    pub mun_cm: String,
+    #[serde(default = "r_u_json")]
+    pub u_json: String,
+}
+
+impl Default for Rotas {
+    fn default() -> Rotas {
+        Rotas { base_arquivos: None, ele_c: r_ele_c(), cs: r_cs(), aux: r_aux(), arquivo: r_arquivo(), mun_cm: r_mun_cm(), u_json: r_u_json() }
+    }
+}
+
+const VARS_COMUNS: &[&str] = &["base", "base_arquivos", "amb", "ciclo", "pleito", "pleito06"];
+const VARS_SECAO: &[&str] = &["uf", "mun05", "zona04", "secao04"];
+const NADA: &[&str] = &[];
+const SO_UF: &[&str] = &["uf"];
+const VARS_ARQUIVO: &[&str] = &["uf", "mun05", "zona04", "secao04", "hash", "nome"];
+const SO_NOME: &[&str] = &["nome"];
+const VARS_ELEICAO: &[&str] = &["eleicao", "eleicao06"];
+const VARS_U_JSON: &[&str] = &["eleicao", "eleicao06", "abr", "cargo04", "subpasta"];
+const OBRIG_U_JSON: &[&str] = &["abr", "cargo04"];
+
+impl Rotas {
+    pub fn de_json(t: &str) -> anyhow::Result<Rotas> {
+        let r: Rotas = serde_json::from_str(t).map_err(|e| anyhow::anyhow!("rotas_tse.json inválido: {e}"))?;
+        Ok(r)
+    }
+
+    pub fn ler(p: &std::path::Path) -> anyhow::Result<Rotas> {
+        Rotas::de_json(&std::fs::read_to_string(p).map_err(|e| anyhow::anyhow!("lendo {}: {e}", p.display()))?)
+    }
+
+    pub fn padrao(&self) -> bool { *self == Rotas::default() }
+
+    /// (nome, modelo, variáveis permitidas além das comuns, obrigatórias)
+    fn modelos(&self) -> [(&'static str, &str, &'static [&'static str], &'static [&'static str]); 6] {
+        [
+            ("ele_c", self.ele_c.as_str(), NADA, NADA),
+            ("cs", self.cs.as_str(), SO_UF, SO_UF),
+            ("aux", self.aux.as_str(), VARS_SECAO, VARS_SECAO),
+            ("arquivo", self.arquivo.as_str(), VARS_ARQUIVO, SO_NOME),
+            ("mun_cm", self.mun_cm.as_str(), VARS_ELEICAO, NADA),
+            ("u_json", self.u_json.as_str(), VARS_U_JSON, OBRIG_U_JSON),
+        ]
+    }
+
+    /// Recusa modelos que levariam a coleta para fora do controle:
+    /// * todo modelo começa por `{base}` (o arquivo de urna também pode começar por `{base_arquivos}`): o servidor
+    ///   vem sempre da base configurada, nunca de um endereço escrito no modelo;
+    /// * só variáveis conhecidas, as obrigatórias de cada modelo e caracteres de caminho (sem `?`, `#`, `..`, espaço);
+    /// * `base_arquivos` é local (127.0.0.1/localhost) **se e só se** a base for: a aceleração e o ritmo de um servidor
+    ///   local nunca valem contra o TSE.
+    pub fn validar(&self, base: &str) -> anyhow::Result<()> {
+        use anyhow::bail;
+        for (nome, m, extras, obrig) in self.modelos() {
+            let inicio_ok = m.starts_with("{base}/") || (nome == "arquivo" && m.starts_with("{base_arquivos}/"));
+            if !inicio_ok { bail!("modelo {nome}: tem de começar por {{base}}/{}", if nome == "arquivo" { " (ou {base_arquivos}/)" } else { "" }); }
+            if m.len() > 400 || m.contains("..") || !m.bytes().all(|b| b.is_ascii_alphanumeric() || b"-._~/{}".contains(&b)) {
+                bail!("modelo {nome}: só letras, dígitos, - . _ ~ / e variáveis entre chaves");
+            }
+            let mut achadas = vec![];
+            let mut r: &str = m;
+            while let Some(i) = r.find('{') {
+                let Some(j) = r[i..].find('}') else { bail!("modelo {nome}: chave aberta sem fechar") };
+                let v = &r[i + 1..i + j];
+                if !VARS_COMUNS.contains(&v) && !extras.contains(&v) { bail!("modelo {nome}: variável {{{v}}} não vale aqui"); }
+                achadas.push(v);
+                r = &r[i + j + 1..];
+            }
+            if r.contains('}') { bail!("modelo {nome}: chave fechada sem abrir"); }
+            for o in obrig { if !achadas.contains(o) { bail!("modelo {nome}: falta {{{o}}}"); } }
+        }
+        if let Some(b) = &self.base_arquivos {
+            if !(b.starts_with("https://") || b.starts_with("http://")) || b.len() > 200
+                || !b.bytes().all(|c| c.is_ascii_alphanumeric() || b"-._~:/".contains(&c)) {
+                bail!("base_arquivos: URL http(s):// só com letras, dígitos e - . _ ~ : /");
+            }
+            if crate::coletor::base_local(b) != crate::coletor::base_local(base) {
+                bail!("base_arquivos ({b}) e a base ({base}) têm de ser os dois locais (simulador) ou os dois remotos");
+            }
+        }
+        Ok(())
     }
 }
 
@@ -205,7 +399,7 @@ mod testes {
         let s = sha256_do_hash_dir(h);
         assert_eq!(s[0], 0xe7);
         assert_eq!(hash_dir_do_sha256(&s), h);
-        let a = Alvo { base: "https://resultados.tse.jus.br".into(), ambiente: "oficial".into(), ciclo: "ele2026".into(), pleito: 3220 };
+        let a = Alvo::novo("https://resultados.tse.jus.br", "oficial", "ele2026", 3220);
         assert_eq!(a.url_aux("df", 97012, 15, 300), "https://resultados.tse.jus.br/oficial/ele2026/arquivo-urna/3220/dados/df/97012/0015/0300/p003220-df-m97012-z0015-s0300-aux.json");
     }
 
@@ -219,5 +413,67 @@ mod testes {
         assert_eq!(a.escolher_bu().map(|x| x.1), Some("o03220mg5007500470041-busa.dat"));
         assert_eq!(chave_do_nome("o03220mg5007500470041-busa.dat"), Some((3220, *b"mg", 50075, 47, 41)));
         assert!(crate::zip::e_bu("o03220mg5007500470041-busa.dat") && !crate::zip::e_bu("o03220mg5007500470041-sa.vsc"));
+    }
+
+    /// Os modelos padrão reproduzem, caractere a caractere, os endereços de antes (fórmulas da 0.8.32).
+    #[test]
+    fn rotas_padrao_iguais_as_de_antes() {
+        let a = Alvo::novo("https://resultados.tse.jus.br/", "oficial", "ele2026", 3221);
+        let (b, amb, c, p) = ("https://resultados.tse.jus.br", "oficial", "ele2026", 3221u32);
+        let raiz = format!("{b}/{amb}/{c}/arquivo-urna/{p}");
+        assert_eq!(a.url_ele_c(), format!("{b}/{amb}/comum/config/ele-c.json"));
+        for uf in ["sp", "zz", "df"] {
+            assert_eq!(a.url_cs(uf), format!("{raiz}/config/{uf}/{uf}-p{p:06}-cs.json"));
+            for (mu, zn, se) in [(71072u32, 1u16, 9u16), (1031, 250, 1234), (99999, 9999, 9999)] {
+                let dir = format!("{raiz}/dados/{uf}/{mu:05}/{zn:04}/{se:04}");
+                assert_eq!(a.url_aux(uf, mu, zn, se), format!("{dir}/p{p:06}-{uf}-m{mu:05}-z{zn:04}-s{se:04}-aux.json"));
+                assert_eq!(a.url_arquivo(uf, mu, zn, se, "6162", "o03221sp7107200010009-bu.dat"), format!("{dir}/6162/o03221sp7107200010009-bu.dat"));
+            }
+        }
+        assert_eq!(a.url_mun_cm(620), format!("{b}/{amb}/{c}/620/config/mun-e{:06}-cm.json", 620));
+        assert_eq!(a.url_u_json(620, "br", 1, "br"), format!("{b}/{amb}/{c}/620/dados/br/br-c{:04}-e{:06}-u.json", 1, 620));
+        assert!(Rotas::default().padrao());
+        assert!(Rotas::default().validar(b).is_ok());
+        assert_eq!(Rotas::de_json("{}").unwrap(), Rotas::default(), "arquivo vazio = padrão");
+    }
+
+    #[test]
+    fn rotas_trocadas_e_base_dos_arquivos() {
+        let mut r = Rotas::de_json(r#"{"base_arquivos": "https://cdn.tse.jus.br/espelho/",
+            "arquivo": "{base_arquivos}/{amb}/{ciclo}/bu/{pleito}/{uf}/{mun05}-{zona04}-{secao04}/{nome}"}"#).unwrap();
+        assert!(r.validar("https://resultados.tse.jus.br").is_ok());
+        let a = Alvo { rotas: std::sync::Arc::new(r.clone()), ..Alvo::novo("https://resultados.tse.jus.br", "oficial", "ele2026", 3221) };
+        assert_eq!(a.url_arquivo("sp", 71072, 1, 9, "6162", "o-bu.dat"), "https://cdn.tse.jus.br/espelho/oficial/ele2026/bu/3221/sp/71072-0001-0009/o-bu.dat");
+        assert!(a.url_aux("sp", 71072, 1, 9).starts_with("https://resultados.tse.jus.br/oficial/ele2026/arquivo-urna/3221/dados/sp/"), "aux continua na base");
+        // base local + arquivos remotos (ou o contrário): recusado
+        assert!(r.validar("http://127.0.0.1:18080").is_err());
+        r.base_arquivos = Some("http://127.0.0.1:9000".into());
+        assert!(r.validar("http://127.0.0.1:18080").is_ok());
+        assert!(r.validar("https://resultados.tse.jus.br").is_err());
+    }
+
+    #[test]
+    fn rotas_recusadas() {
+        let ruim = |campo: &str, v: &str| {
+            let mut j = serde_json::json!({});
+            j[campo] = v.into();
+            Rotas::de_json(&j.to_string()).unwrap().validar("https://resultados.tse.jus.br").is_err()
+        };
+        assert!(ruim("arquivo", "https://evil.example/{nome}"), "servidor escrito no modelo");
+        assert!(ruim("aux", "{base}/x/{uf}/{mun05}/{zona04}"), "falta {{secao04}}");
+        assert!(ruim("cs", "{base}/{uf}/{secao04}.json"), "variável de seção no cs");
+        assert!(ruim("cs", "{base}/{uf}/../../etc"), "..");
+        assert!(ruim("cs", "{base}/{uf}?x=1"), "query");
+        assert!(ruim("cs", "{base}/{uf}/{desconhecida}"));
+        assert!(ruim("cs", "{base}/{uf"));
+        assert!(ruim("arquivo", "{base}/{hash}"), "sem {{nome}}");
+        assert!(ruim("base_arquivos", "ftp://x"));
+        assert!(ruim("base_arquivos", "https://x/$(id)"));
+        assert!(!ruim("cs", "{base}/{amb}/novo/{pleito}/{uf}/secoes-{uf}.json"));
+    }
+
+    #[test]
+    fn modelo_com_nome_desconhecido_fica_intacto() {
+        assert_eq!(montar_modelo("a/{x}/{y}/b{", &|n: &str, o: &mut String| { if n == "x" { o.push('1'); true } else { false } }), "a/1/{y}/b{");
     }
 }

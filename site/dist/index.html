@@ -9,19 +9,48 @@
 <link rel="icon" href="/static/icone.svg?v={{versao}}" type="image/svg+xml">
 <link rel="preload" href="/static/archivo.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/static/estilo.css?v={{versao}}">
+<link rel="license" href="https://github.com/lukeboh/urna-velox-civica/blob/main/LICENSE">
 <script type="module" src="/static/app.js?v={{versao}}"></script>
 </head>
 <body>
 <div class="aurora" aria-hidden="true"></div>
 <header class="topo">
-  <a class="marca" href="#/br/c0001">Urna <span>Velox</span></a>
+  <a class="marca" href="#/br/c0001" aria-label="Urna Velox, versão {{versao}}">Urna <span>Velox</span><small class="marca-versao" aria-hidden="true">v{{versao}}</small></a>
   <nav class="rota" id="rota" aria-label="Onde ver o resultado"></nav>
   <div class="conexao" id="conexao" role="status" data-estado="conectando"><span class="ponto"></span><span class="txt">conectando…</span></div>
   <button class="icone-btn" id="tema" type="button" aria-label="Trocar tema claro/escuro">◐</button>
 </header>
 <div class="faixa" id="faixa" aria-live="off"></div>
+<!-- M-001: eleição, turno e abrangência sempre à vista (lugar reservado: nada pula; ao rolar, o cartão fica preso no
+     alto, numa linha só; o botão recolhe) -->
+<section class="ident" id="ident" aria-label="Eleição que está na tela">
+  <div class="ident-cartao" id="ident-cartao">
+    <div class="id-l1">
+      <div class="id-txt"><b class="id-eleicao">Eleições</b><span class="id-tipo">&nbsp;</span></div>
+      <div class="id-turnos"><small>Turno</small><span class="id-seg"><i>1º</i><i>2º</i></span></div>
+    </div>
+    <div class="id-l2">
+      <svg class="id-pino" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></svg>
+      <span class="id-onde"><span class="id-local"></span><span class="id-sep">·</span><span class="id-cargo"></span></span>
+    </div>
+    <button class="icone-btn id-recolher" type="button" aria-label="Recolher a identificação da eleição" aria-expanded="true">⌃</button>
+  </div>
+  <!-- a mesma identificação numa linha, presa no alto da tela quando o cartão sai dela (aparece por opacidade/deslocamento: nada pula) -->
+  <div class="ident-barra" id="ident-barra" aria-hidden="true">
+    <b class="id-eleicao">Eleições</b>
+    <span class="id-seg"><i>1º</i><i>2º</i></span>
+    <span class="id-l2">
+      <svg class="id-pino" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></svg>
+      <span class="id-onde"><span class="id-local"></span><span class="id-sep">·</span><span class="id-cargo"></span></span>
+    </span>
+    <button class="icone-btn id-recolher" type="button" tabindex="-1" aria-label="Recolher a identificação da eleição" aria-expanded="true">⌃</button>
+  </div>
+</section>
 <nav class="cargos" id="cargos" role="tablist" aria-label="Cargo"></nav>
 <main class="painel" id="painel"><div class="carregando" id="carregando">Carregando a apuração…</div></main>
+<!-- termos de uso: discretos, mas sempre à vista (também numa captura de tela), logo acima do letreiro -->
+<p class="termos" id="termos"><a href="https://github.com/lukeboh/urna-velox-civica/blob/main/docs/LICENCIAMENTO.md" target="_blank" rel="license noopener noreferrer"
+  title="Licença PolyForm Noncommercial 1.0.0: uso livre sem fins comerciais; uso comercial só com licença do autor">© Urna Velox<span class="termos-longo"> · uso livre sem fins comerciais; uso comercial (TV, portais, campanhas) exige licença</span> · Termos de uso</a></p>
 <footer class="feed vidro" id="feed" aria-label="Marcos e curiosidades da noite">
   <div class="trilho" id="trilho"></div>
   <div class="vazio-feed" id="feed-vazio">Os marcos da noite aparecem aqui assim que a apuração começa.</div>

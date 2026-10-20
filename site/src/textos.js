@@ -2,6 +2,7 @@
 // item curto (com o detalhe que abre ao tocar). Só seção, zona e município: nada que exponha pessoa.
 
 import { NOME_CARGO, NOME_CARGO_PLURAL, abr, hora, mil, pct, titulo } from './util.js';
+import { distancia, horaDe, quando } from './relogio.js';
 
 export class Nomes {
   constructor(n) {
@@ -51,7 +52,7 @@ function lugar(N, m) {
 }
 
 function linhasSecao(N, m) {
-  return [['Seção', String(m.secao)], ['Zona', String(m.zona)], ['Município', lugar(N, m)], ['Horário do BU', hora(m.horario)], ['BUs aplicados (seq)', mil(m.seq)]];
+  return [['Seção', String(m.secao)], ['Zona', String(m.zona)], ['Município', lugar(N, m)], ['Urna Velox (relógio do sistema)', hora(quando(m))], ['Horário do BU no TSE', hora(m.horario)], ['BUs aplicados (seq)', mil(m.seq)]];
 }
 
 /** Categoria de um item no histórico do feed: decisões (eleitos, 2º turno, seção decisiva, primeiros eleitos),
@@ -66,7 +67,7 @@ export function itemMarco(N, m) {
 }
 function corpoMarco(N, m) {
   const id = `m:${m.classe}:${m.abrangencia}:${m.cargo ?? ''}:${m.seq}:${m.secao ?? ''}:${m.valor ?? ''}`;
-  const t = hora(m.horario);
+  const t = hora(quando(m));
   switch (m.classe) {
     case 'primeira_secao': {
       const onde = m.abrangencia === 'br' ? 'do Brasil' : `em ${N.local(m.abrangencia)}`;
@@ -91,13 +92,13 @@ function corpoMarco(N, m) {
     case 'pct_secoes': {
       const onde = N.local(m.abrangencia);
       return { id, ic: '%', t, texto: `${onde}: ${m.valor}% das seções apuradas`,
-        detalhe: { titulo: `${onde}: ${m.valor}% das seções apuradas`, linhas: [['Horário', t], ['Seções', m.secoes != null ? `${mil(m.secoes)} de ${mil(m.total)}` : '—'], ['BUs aplicados (seq)', mil(m.seq)]] } };
+        detalhe: { titulo: `${onde}: ${m.valor}% das seções apuradas`, linhas: [['Horário (Urna Velox)', t], ['Seções', m.secoes != null ? `${mil(m.secoes)} de ${mil(m.total)}` : '—'], ['BUs aplicados (seq)', mil(m.seq)]] } };
     }
     case 'virada': {
       const d = N.disputa(m.abrangencia, m.cargo);
       const novo = N.nomeCand(m.abrangencia, m.cargo, m.candidato), ant = N.nomeCand(m.abrangencia, m.cargo, m.anterior);
       return { id, ic: '⇅', t, texto: `Virada — ${d}: ${novo} passa ${ant} (${m.valor}ª da noite)`,
-        detalhe: { titulo: `Virada de liderança — ${d}`, linhas: [['Novo líder', novo], ['Antes', ant], ['Viradas nesta disputa', String(m.valor)], ['Horário', t], ['BUs aplicados (seq)', mil(m.seq)]] } };
+        detalhe: { titulo: `Virada de liderança — ${d}`, linhas: [['Novo líder', novo], ['Antes', ant], ['Viradas nesta disputa', String(m.valor)], ['Horário (Urna Velox)', t], ['BUs aplicados (seq)', mil(m.seq)]] } };
     }
     default:
       return null;
@@ -106,19 +107,19 @@ function corpoMarco(N, m) {
 
 /** Item do feed para um evento do "matematicamente" (só os de candidato e a apuração encerrada). */
 export function itemEvento(N, e) {
-  const t = hora(e.horario);
+  const t = hora(quando(e));
   const id = `e:${e.seq}:${e.abrangencia}:${e.cargo}:${e.candidato}:${e.estado}`;
   if (e.classe === 'apuracao') {
     if (e.estado !== 'apuracao_encerrada') return null;
     return { id, ic: '✓', t, seq: e.seq, cat: 'andamento', texto: 'Apuração encerrada: todas as seções totalizadas', anunciar: 'Apuração encerrada.',
-      detalhe: { titulo: 'Apuração encerrada', linhas: [['Horário', t], ['BUs aplicados', mil(e.seq)]] } };
+      detalhe: { titulo: 'Apuração encerrada', linhas: [['Horário (Urna Velox)', t], ['BUs aplicados', mil(e.seq)]] } };
   }
   if (String(e.estado).startsWith('revogado:') || e.candidato == null) return null;
   const d = N.disputa(e.abrangencia, e.cargo);
   const quem = N.nomeCand(e.abrangencia, e.cargo, e.candidato);
   const o = e.estado === 'eleito' ? 'matematicamente eleito' : 'matematicamente no 2º turno';
   return { id, ic: '★', t, seq: e.seq, cat: 'decisao', destaque: true, texto: `${quem}: ${o} — ${d}`, anunciar: `${d}: ${quem} ${o}.`,
-    detalhe: { titulo: `${quem} — ${o}`, linhas: [['Disputa', d], ['Horário do BU que decidiu', t], ['BUs aplicados (seq)', mil(e.seq)]] } };
+    detalhe: { titulo: `${quem} — ${o}`, linhas: [['Disputa', d], ['Urna Velox (relógio do sistema)', t], ['Horário do BU que decidiu (TSE)', hora(e.horario)], ['BUs aplicados (seq)', mil(e.seq)]] } };
 }
 
 /** Primeiros eleitos por cargo (país e cada UF), dos eventos em ordem de `seq`. */
@@ -131,12 +132,12 @@ export function primeiros(N, eventos) {
     const nome = NOME_CARGO_PLURAL[e.cargo];
     if (!nome) continue;
     const quem = N.nomeCand(e.abrangencia, e.cargo, e.candidato);
-    const t = hora(e.horario);
+    const t = hora(quando(e));
     const pais = `pais:${e.cargo}`;
     if (!vistos.has(pais) && e.cargo !== 1) {
       vistos.set(pais, 1);
       out.push({ id: `p:${pais}`, ic: '①', t, seq: e.seq, cat: 'decisao', destaque: true, texto: `Primeiro ${nome} matematicamente eleito do país: ${quem}, ${N.local(e.abrangencia)}`,
-        detalhe: { titulo: `Primeiro ${nome} matematicamente eleito do país`, linhas: [['Eleito', quem], ['Onde', N.local(e.abrangencia)], ['Horário', t], ['BUs aplicados (seq)', mil(e.seq)]] } });
+        detalhe: { titulo: `Primeiro ${nome} matematicamente eleito do país`, linhas: [['Eleito', quem], ['Onde', N.local(e.abrangencia)], ['Horário (Urna Velox)', t], ['BUs aplicados (seq)', mil(e.seq)]] } });
     }
     // por UF só faz sentido onde a UF tem várias circunscrições do cargo (Prefeito)
     if (a.tipo === 'mun') {
@@ -144,7 +145,7 @@ export function primeiros(N, eventos) {
       if (!vistos.has(k)) {
         vistos.set(k, 1);
         out.push({ id: `p:${k}`, ic: '①', t, seq: e.seq, cat: 'decisao', texto: `Primeiro ${nome} eleito em ${N.uf(a.uf)}: ${quem}, ${N.local(e.abrangencia)}`,
-          detalhe: { titulo: `Primeiro ${nome} matematicamente eleito em ${N.uf(a.uf)}`, linhas: [['Eleito', quem], ['Onde', N.local(e.abrangencia)], ['Horário', t]] } });
+          detalhe: { titulo: `Primeiro ${nome} matematicamente eleito em ${N.uf(a.uf)}`, linhas: [['Eleito', quem], ['Onde', N.local(e.abrangencia)], ['Horário (Urna Velox)', t]] } });
       }
     }
   }
@@ -156,16 +157,27 @@ function hhmm(t) { const m = /(\d{2}):(\d{2}):\d{2}/.exec(t || ''); return m ? `
 
 /** Comparação com o TSE (etapa 7): o arquivo do TSE mostrou a mesma situação ("matematicamente") que o Urna Velox.
  * `tUv`/`tTse` em segundos (mesma escala); `emUv` = horário do evento no Urna Velox, `geracao` = do arquivo do TSE. */
-export function itemConfirmou(N, circ, cargo, sit, emUv, geracao, tUv, tTse) {
+export function itemConfirmou(N, circ, cargo, sit, emUv, geracao, cmp, anc) {
   const d = N.disputa(circ, cargo);
-  const min = Math.round((tTse - tUv) / 60);
-  const quando = min > 0 ? `${min} min antes` : min < 0 ? `${-min} min depois` : 'no mesmo minuto';
+  // M-003: `emUv` no relógio do sistema; `cmp` = relogio.comparar (o TSE levado ao relógio do sistema pela âncora)
+  const ante = cmp?.texto || '';
+  const sim = anc && (anc.x !== 1 || Math.abs(cmp.tse - (segundosHora(geracao) ?? cmp.tse)) > 3600);
   const o = sit === '2t' ? 'o 2º turno' : 'o matematicamente';
-  return { id: `c:tse-conf:${circ}:${cargo}`, ic: '⇄', t: hora(geracao), cat: 'decisao', destaque: true,
-    texto: `TSE confirmou ${o} às ${hhmm(geracao)} — Urna Velox às ${hhmm(emUv)}, ${quando} · ${d}`,
-    anunciar: `${d}: o TSE confirmou ${o} às ${hhmm(geracao)}; o Urna Velox às ${hhmm(emUv)}, ${quando}.`,
-    detalhe: { titulo: `TSE confirmou ${o} — ${d}`, linhas: [['Urna Velox', hora(emUv)], ['TSE (arquivo gerado às)', hora(geracao)],
-      ['Antecedência do Urna Velox', quando], ['Como se compara', 'o arquivo de resultado do TSE desta disputa (buscado a cada 30–60 s) passou a mostrar a mesma situação']] } };
+  const tseTxt = sim ? `${hhmm(geracao)} do TSE (≙ ${horaDe(cmp.tse).slice(0, 5)} aqui)` : hhmm(geracao);
+  const linhas = [['Urna Velox (relógio do sistema)', hora(emUv)], ['TSE (arquivo gerado às, relógio do TSE)', hora(geracao)]];
+  if (sim) linhas.push(['TSE no relógio do sistema', `${horaDe(cmp.tse)} — a noite do TSE ${anc.x !== 1 ? `a ${String(anc.x).replace('.', ',')}× ` : ''}a partir do início deste simulado`]);
+  linhas.push(['Antecedência do Urna Velox', `${ante}${sim && anc.x !== 1 ? ` (${distancia(cmp.noite)} no tempo da noite)` : ''}`],
+    ['Como se compara', 'o arquivo de resultado do TSE desta disputa (buscado a cada 30–60 s) passou a mostrar a mesma situação']);
+  return { id: `c:tse-conf:${circ}:${cargo}`, ic: '⇄', t: hora(emUv), cat: 'decisao', destaque: true,
+    texto: `TSE confirmou ${o} às ${tseTxt} — Urna Velox às ${hhmm(emUv)}, ${ante} · ${d}`,
+    anunciar: `${d}: o TSE confirmou ${o} às ${tseTxt}; o Urna Velox às ${hhmm(emUv)}, ${ante}.`,
+    detalhe: { titulo: `TSE confirmou ${o} — ${d}`, linhas } };
+}
+
+/** "dd/mm/aaaa hh:mm:ss" → segundos (como `comparacao.segundosBr`; aqui para não importar a comparação). */
+function segundosHora(s) {
+  const m = /(\d{2})\/(\d{2})\/(\d{4}) (\d{2}):(\d{2}):(\d{2})/.exec(s || '');
+  return m ? Date.UTC(+m[3], +m[2] - 1, +m[1], +m[4], +m[5], +m[6]) / 1000 : null;
 }
 
 /** Comparação com o TSE: a ordem dos candidatos difere entre as fontes há mais de dois arquivos do TSE. */

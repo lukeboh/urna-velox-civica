@@ -43,7 +43,7 @@ fn publicacao_json_campos() {
     let c = conjunto("2024-1t", 1);
     let cad = Candidatos::dos_arquivos_oficiais(&fixtures().join("2024-1t").join("oficial")).unwrap();
     let p = Publicador::novo(&c.cat, Some(&cad), Some(&c.met));
-    let fim = Momento { encerrada: true, seq: 333, ultimo_bu: urna_velox::metricas::segundos("06/10/2024 20:00:00") };
+    let fim = Momento { encerrada: true, seq: 333, ultimo_bu: urna_velox::metricas::segundos("06/10/2024 20:00:00"), totalizado_ms: None };
     let v = p.valor(&c.est, None, &Abrangencia::Municipio(*b"ac", 1031), 11, fim).unwrap();
     assert_eq!((v["v"].as_u64(), v["eleicao"].as_u64(), v["turno"].as_u64(), v["abr"].as_str(), v["circ"].as_str(), v["estado"].as_str()),
         (Some(1), Some(619), Some(1), Some("ac01031"), Some("ac01031"), Some("definido")));
@@ -56,7 +56,7 @@ fn publicacao_json_campos() {
     assert_eq!(p.valor(&c.est, None, &Abrangencia::Municipio(*b"sp", 62081), 11, fim).unwrap()["estado"].as_str(), Some("sem_eleito"));
     assert_eq!(p.valor(&c.est, None, &Abrangencia::Municipio(*b"se", 31313), 11, fim).unwrap()["estado"].as_str(), Some("apurando"));
     // durante a apuração (não encerrada) a situação fica vazia
-    let v = p.valor(&c.est, None, &Abrangencia::Municipio(*b"ac", 1031), 11, Momento { encerrada: false, seq: 1, ultimo_bu: None }).unwrap();
+    let v = p.valor(&c.est, None, &Abrangencia::Municipio(*b"ac", 1031), 11, Momento { encerrada: false, seq: 1, ultimo_bu: None, totalizado_ms: None }).unwrap();
     assert_eq!((v["estado"].as_str(), v["cand"][0]["st"].as_str(), v["ultimo_bu"].is_null()), (Some("apurando"), Some(""), true));
     assert_eq!(p.nome_arquivo(&Abrangencia::Municipio(*b"ac", 1031), 11), "ac01031-c0011-e000619.json");
 }

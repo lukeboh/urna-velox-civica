@@ -115,6 +115,29 @@ fn primeiro_turno_2024_pre_eleicao() {
     assert_eq!(r.situacoes.values().map(|x| x.0 + x.1).sum::<usize>(), 15042);
 }
 
+/// B-005: 1º turno de 2024 com o `candidatos.json` das simulações do ciclo diário (`preparo-simulacao/`), que leva a
+/// destinação final (`dvt`) dos `-u.json` oficiais — a eleição já acabou, não há o que presumir. Exige a conferência
+/// idêntica nos 5.574 arquivos, sem nenhuma situação divergente (com a destinação presumida "Válido" eram 33).
+#[test]
+#[ignore]
+fn primeiro_turno_2024_simulacao_destinacao_final() {
+    let u = uv_dados().join("2024-1t");
+    let cand_json = u.join("preparo-simulacao").join("candidatos.json");
+    assert!(cand_json.exists(), "{} não existe: gere com deploy/oci/candidatos_simulacao.sh", cand_json.display());
+    let (c, cad) = totalizar_com_candidatos(&u.join("dados"), &[u.join("metricas_aux.csv")], &cand_json, 28);
+    let r = conferir_pasta_com_candidatos(&c, &u.join("oficial"), &cad);
+    eprintln!("2024 1º turno, simulação: {}", r.resumo());
+    eprintln!("{}", r.detalhes(10));
+    let div: usize = r.situacoes.values().map(|x| x.1).sum();
+    assert_eq!((r.arquivos, div), (5574, 0), "situações divergentes: {div}");
+    assert!(r.ok(), "{}\n{}", r.resumo(), r.detalhes(20));
+    assert_eq!(r.situacoes.values().map(|x| x.0).sum::<usize>(), 15042);
+    let r = conferir_publicacoes_com_candidatos(&c, &u.join("oficial"), &cad);
+    eprintln!("2024 1º turno, simulação, publicações JSON: {}", r.resumo());
+    assert!(r.ok(), "{}\n{}", r.resumo(), r.detalhes(20));
+    assert_eq!(r.situacoes.values().map(|x| x.0).sum::<usize>(), 15042);
+}
+
 /// Arquivos e situações de 2024 (1º turno) que divergem com a destinação presumida "Válido": municípios com
 /// candidato cassado ou indeferido depois de preparados os candidatos (lista impressa pelo teste).
 const ARQ_DESTINACAO_2024: usize = 32;
@@ -178,7 +201,7 @@ fn segundo_turno_2026_candidatos_pre_apuracao() {
     assert!(!esperado.is_empty(), "nenhum -u.json pré-apuração em {}", u.join("fontes").display());
     let est = urna_velox::estado::Estado::novo(&cat);
     let pubr = urna_velox::resultado::Publicador::novo(&cat, Some(&cad), None);
-    let mo = urna_velox::resultado::Momento { encerrada: true, seq: 0, ultimo_bu: None };
+    let mo = urna_velox::resultado::Momento { encerrada: true, seq: 0, ultimo_bu: None, totalizado_ms: None };
     let mut nomes = vec![];
     for cargo in pubr.cargos() {
         for abr in pubr.abrangencias(cargo, false) {

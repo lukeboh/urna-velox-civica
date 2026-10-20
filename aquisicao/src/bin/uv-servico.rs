@@ -125,12 +125,44 @@ struct Cli {
     /// comparação com o TSE (ensaio da comparação contra o site real sem coletar uma eleição inteira). Sem sondagem
     #[arg(long)]
     sem_coleta: bool,
+    /// Previsão do "matematicamente" e do fim da apuração (etapa 8): segundos do relógio do serviço (o do site; no
+    /// replay, o simulado) entre duas rodadas; 0 desliga
+    #[arg(long, default_value_t = 30)]
+    previsao_intervalo: i64,
+    /// Threads da rodada de previsão (fora da thread do motor)
+    #[arg(long, default_value_t = 4)]
+    previsao_threads: usize,
+    /// Simulação com dados reais (ciclo diário): rótulo mostrado no selo do topo da página e na saude.json, ex.:
+    /// "1º turno de 2024 · cadência real"
+    #[arg(long)]
+    simulacao: Option<String>,
+    /// Caminhos do site de resultados (rotas_tse.json: modelos com {base}, {uf}, {hash}... e, opcional,
+    /// base_arquivos para buscar os BUs de outro endereço). Sem ele, os caminhos de sempre. Ver docs/PAINEL.md
+    #[arg(long)]
+    rotas: Option<PathBuf>,
+    /// Como o nó chega ao servidor: borda (a borda pública do TSE: teto de 100 req/s por órgão, sempre) ou interno
+    /// (servidor espelho dos arquivos, fora da borda pública: teto de --teto-interno, ou nenhum). Interno é recusado para resultados/cdn.tse.jus.br
+    #[arg(long, default_value = "borda")]
+    acesso: String,
+    /// Teto de req/s no modo espelho, `--acesso interno` (0 ou ausente = sem limite)
+    #[arg(long)]
+    teto_interno: Option<f64>,
 }
 
 fn main() -> anyhow::Result<()> {
     let a = Cli::parse();
     let mut cfg = Config {
-        alvo: Alvo { base: a.base.trim_end_matches('/').to_string(), ambiente: a.ambiente, ciclo: a.ciclo, pleito: a.pleito },
+        alvo: {
+            let mut alvo = Alvo::novo(&a.base, &a.ambiente, &a.ciclo, a.pleito);
+            if let Some(r) = &a.rotas {
+                let rotas = uv_aquisicao::tse::Rotas::ler(r)?;
+                rotas.validar(&alvo.base)?;
+                if !rotas.padrao() { eprintln!("uv-servico: caminhos do site de {} (base dos arquivos: {})", r.display(), rotas.base_arquivos.as_deref().unwrap_or("a mesma")); }
+                alvo.rotas = std::sync::Arc::new(rotas);
+            }
+            alvo
+        },
+        acesso: uv_aquisicao::coletor::Acesso::de_args(&a.acesso, a.teto_interno)?,
         candidatos: a.candidatos,
         dados: a.dados,
         saida: a.saida,
@@ -162,6 +194,8 @@ fn main() -> anyhow::Result<()> {
         ordem: a.ordem,
         tse: (!a.sem_tse).then_some(uv_aquisicao::tse_resultados::Opcoes { intervalo_s: a.tse_intervalo, max_topicos: a.tse_max_topicos }),
         sem_coleta: a.sem_coleta,
+        previsao: uv_aquisicao::previsao::Opcoes { intervalo_s: a.previsao_intervalo.max(0), threads: a.previsao_threads.max(1) },
+        simulacao: a.simulacao.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
     };
     if let Some(t) = &cfg.tse { t.validar()?; }
     // com --controle-replay, ir a um instante já visto para o serviço e pede um reinício: o diário da sessão vai para o
