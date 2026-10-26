@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""uv-playlist — Playlist de Simulados das Eleições (docs/CICLO_DIARIO.md, seção "Playlist de simulados").
+"""uv-playlist — Playlist de Replays das Eleições (antes "de Simulados"; M-004) (docs/CICLO_DIARIO.md, seção "Playlist de simulados").
 
 Roda só no nó A (o do uv-simulador), em 127.0.0.1:8090, atrás do Caddy (rotas /playlist e /api/v1/playlist).
 
@@ -101,6 +101,29 @@ def fora_da_suspensao(t, eleicoes):
     """O instante, ou o fim da suspensão em que ele cai (a playlist retoma na virada desse dia)."""
     s = suspensao_em(t, eleicoes)
     return s[1] if s else t
+
+
+def inicio_apuracao(texto=None):
+    """Hora do início da totalização ao vivo no dia de cada eleição oficial (Brasília). Padrão 17:00."""
+    texto = texto if texto is not None else os.environ.get('UV_INICIO_APURACAO', '17:00')
+    h, m = (texto.strip() or '17:00').split(':')[:2]
+    return int(h), int(m)
+
+
+DURACAO_AO_VIVO = timedelta(hours=15)   # a noite da apuração ao vivo: das 17h às 8h do dia seguinte
+
+
+def proxima_ao_vivo(agora, eleicoes, hora=None):
+    """A próxima eleição oficial com totalização ao vivo (ou a que está acontecendo agora): M-004, a contagem
+    regressiva da página. `ao_vivo` = a noite da apuração já começou e ainda não acabou."""
+    h, m = hora or inicio_apuracao()
+    for d in eleicoes:
+        ini = datetime(d.year, d.month, d.day, h, m, tzinfo=BR)
+        fim = ini + DURACAO_AO_VIVO
+        if agora < fim:
+            return {'eleicao': d.isoformat(), 'nome': nome_eleicao_oficial(d), 'inicio': iso(ini), 'fim': iso(fim),
+                    'ao_vivo': ini <= agora}
+    return None
 
 
 def nome_eleicao_oficial(d):
@@ -337,6 +360,7 @@ class Playlist:
             meu = self.e['votos'].get(chave, {}).get('item') if chave else None
             return {
                 'agora': iso(agora), 'suspensao': susp, 'proxima_suspensao': prox_susp,
+                'proxima_ao_vivo': proxima_ao_vivo(agora, self.eleicoes),
                 'no_ar': no_ar, 'fila': [] if susp else self.fila(agora, no_ar), 'opcoes': opcoes,
                 'meu_voto': meu, 'total_votos': sum(n for n, _ in cont.values()),
                 'tocados': self.e['tocados'][-6:][::-1],
@@ -367,13 +391,13 @@ class Playlist:
                 self._gravar()
                 return 200, 'Voto retirado.'
             if item not in VOTAVEIS:
-                return 400, 'Simulado desconhecido.'
+                return 400, 'Replay desconhecido.'
             na = self.no_ar()
             if na and na['item'] == item:
-                return 409, 'Este simulado está no ar agora: escolha outro para o próximo.'
+                return 409, 'Este replay está no ar agora: escolha outro para o próximo.'
             ant = self.e['votos'].get(chave)
             if ant and ant.get('item') == item:
-                return 200, 'Você já votou neste simulado.'
+                return 200, 'Você já votou neste replay.'
             self.e['votos'][chave] = {'item': item, 'em': iso(agora)}
             self._gravar()
             return 200, 'Voto registrado.' if not ant else 'Voto trocado.'
@@ -535,7 +559,7 @@ def criar_tratador(pl, html_path, segredo):
 
 def main():
     import argparse
-    ap = argparse.ArgumentParser(description='Playlist de Simulados das Eleições (Urna Velox)')
+    ap = argparse.ArgumentParser(description='Playlist de Replays das Eleições (Urna Velox)')
     ap.add_argument('--ciclo', default='/srv/urna-velox/ciclo')
     ap.add_argument('--escuta', default='127.0.0.1:8090')
     ap.add_argument('--html', default=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uv-playlist.html'))

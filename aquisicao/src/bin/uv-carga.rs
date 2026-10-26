@@ -136,8 +136,30 @@ async fn endereco(a: &Cli) -> String {
     }
 }
 
+fn urls(end: &str) -> (String, String) {
+    let limpo = end.trim();
+    if limpo.starts_with("wss://") {
+        let host = &limpo[6..];
+        (format!("https://{host}"), format!("wss://{host}/ws"))
+    } else if limpo.starts_with("ws://") {
+        let host = &limpo[5..];
+        (format!("http://{host}"), format!("ws://{host}/ws"))
+    } else if limpo.starts_with("https://") {
+        let host = &limpo[8..];
+        (format!("https://{host}"), format!("wss://{host}/ws"))
+    } else if limpo.starts_with("http://") {
+        let host = &limpo[7..];
+        (format!("http://{host}"), format!("ws://{host}/ws"))
+    } else if limpo.contains(":443") || (!limpo.contains(":") && !limpo.starts_with("127.0.0.1") && !limpo.starts_with("localhost")) {
+        (format!("https://{limpo}"), format!("wss://{limpo}/ws"))
+    } else {
+        (format!("http://{limpo}"), format!("ws://{limpo}/ws"))
+    }
+}
+
 async fn topicos(end: &str) -> anyhow::Result<Vec<String>> {
-    let r = reqwest::get(format!("http://{end}/api/v1/topicos")).await?.text().await?;
+    let (http_base, _) = urls(end);
+    let r = reqwest::get(format!("{http_base}/api/v1/topicos")).await?.text().await?;
     let v: Value = serde_json::from_str(&r)?;
     Ok(v.as_array().map(|a| a.iter().filter_map(|x| x["topico"].as_str().map(String::from)).collect()).unwrap_or_default())
 }
@@ -148,10 +170,21 @@ fn escolher(perfil: &str, todos: &[String], i: usize, rng: &mut Rng) -> Vec<Stri
         "br" => vec!["br-c0001".into()],
         "todos" => todos.to_vec(),
         "misto" => {
-            let mut v = vec!["br-c0001".to_string()];
-            if i % 2 == 1 {
+            let principal = if todos.iter().any(|t| t == "br-c0001") {
+                "br-c0001".to_string()
+            } else if !todos.is_empty() {
+                todos[0].clone()
+            } else {
+                "br-c0001".to_string()
+            };
+            let mut v = vec![principal];
+            if i % 2 == 1 && todos.len() > 1 {
                 let ufs: Vec<&String> = todos.iter().filter(|t| t.len() == 8 && !t.starts_with("br") && (t.ends_with("c0001") || t.ends_with("c0003"))).collect();
-                if !ufs.is_empty() { v.push(ufs[rng.ate(ufs.len())].clone()); }
+                if !ufs.is_empty() {
+                    v.push(ufs[rng.ate(ufs.len())].clone());
+                } else {
+                    v.push(todos[rng.ate(todos.len())].clone());
+                }
             }
             v
         }
@@ -167,7 +200,8 @@ async fn cliente(g: Arc<Global>, a: Arc<Cli>, end: String, i: usize, tops: Vec<S
     let mut primeira = true;
     'conexoes: loop {
         if Instant::now() >= fim_em { break; }
-        let ws = match tokio_tungstenite::connect_async(format!("ws://{end}/ws")).await {
+        let (_, ws_url) = urls(&end);
+        let ws = match tokio_tungstenite::connect_async(&ws_url).await {
             Ok((ws, _)) => ws,
             Err(e) => {
                 g.falhas_conexao.fetch_add(1, Relaxed);
@@ -272,7 +306,8 @@ async fn cliente(g: Arc<Global>, a: Arc<Cli>, end: String, i: usize, tops: Vec<S
 
 /// Conexão lenta: inscreve e não lê nada até o fim; depois vê se o servidor a derrubou.
 async fn lento(g: Arc<Global>, end: String, tops: Vec<String>, fim: Arc<tokio::sync::Notify>) {
-    let Ok((mut ws, _)) = tokio_tungstenite::connect_async(format!("ws://{end}/ws")).await else { conta(&g.lentos_fim, "falha_conexao"); return };
+    let (_, ws_url) = urls(&end);
+    let Ok((mut ws, _)) = tokio_tungstenite::connect_async(&ws_url).await else { conta(&g.lentos_fim, "falha_conexao"); return };
     if ws.send(Message::text(json!({"op": "inscrever", "topicos": tops}).to_string())).await.is_err() { conta(&g.lentos_fim, "erro_envio"); return; }
     fim.notified().await;
     // drena o que ficou no buffer até o fechamento: se o servidor cortou, vem um erro ou um close antes do desligamento
@@ -357,7 +392,8 @@ fn conferir(a: &Cli, g: &Global) -> Value {
 // ------------------------------------------------------------------ teste dos limites (--limites)
 
 async fn ws_abrir(end: &str) -> anyhow::Result<tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>> {
-    Ok(tokio_tungstenite::connect_async(format!("ws://{end}/ws")).await?.0)
+    let (_, ws_url) = urls(end);
+    Ok(tokio_tungstenite::connect_async(ws_url).await?.0)
 }
 
 /// Lê até fechar (ou 10 s): devolve os tipos/motivos vistos e como terminou.
@@ -428,21 +464,22 @@ async fn limites(end: &str) -> anyhow::Result<Value> {
     let fechou = match tokio::time::timeout(Duration::from_secs(20), s.read(&mut buf)).await { Ok(Ok(0)) => "fechada".to_string(), Ok(Ok(n)) => format!("resposta: {}", String::from_utf8_lossy(&buf[..n]).lines().next().unwrap_or("")), Ok(Err(e)) => format!("erro: {e}"), Err(_) => "aberta após 20 s".into() };
     r.insert("handshake_incompleto".into(), json!({"resultado": fechou, "segundos": (t.elapsed().as_secs_f64() * 10.0).round() / 10.0}));
     // 5. REST: caminho vindo do cliente, ETag/304, rota de escrita
+    let (http_base, _) = urls(end);
     let c = reqwest::Client::new();
     let mut rest = serde_json::Map::new();
     for p in ["/api/v1/resultado/..%2F..%2Fetc%2Fpasswd", "/api/v1/resultado/../../saude.json", "/api/v1/resultado/br-c0001-e006257.json", "/api/v1/../../saude.json", "/publicacao/br-c0001-e006257.json"] {
-        let s = c.get(format!("http://{end}{p}")).send().await.map(|r| r.status().as_u16()).unwrap_or(0);
+        let s = c.get(format!("{http_base}{p}")).send().await.map(|r| r.status().as_u16()).unwrap_or(0);
         rest.insert(p.into(), json!(s));
     }
-    let s = c.post(format!("http://{end}/api/v1/resultado/br-c0001")).body("x").send().await.map(|r| r.status().as_u16()).unwrap_or(0);
+    let s = c.post(format!("{http_base}/api/v1/resultado/br-c0001")).body("x").send().await.map(|r| r.status().as_u16()).unwrap_or(0);
     rest.insert("POST /api/v1/resultado/br-c0001".into(), json!(s));
     let t0 = todos.first().cloned().unwrap_or_else(|| "br-c0001".into());
-    let r1 = c.get(format!("http://{end}/api/v1/resultado/{t0}")).send().await?;
+    let r1 = c.get(format!("{http_base}/api/v1/resultado/{t0}")).send().await?;
     let st1 = r1.status().as_u16();
     let etag = r1.headers().get("etag").and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
     let cors = r1.headers().get("access-control-allow-origin").and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
     let cache = r1.headers().get("cache-control").and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
-    let s2 = c.get(format!("http://{end}/api/v1/resultado/{t0}")).header("If-None-Match", &etag).send().await?.status().as_u16();
+    let s2 = c.get(format!("{http_base}/api/v1/resultado/{t0}")).header("If-None-Match", &etag).send().await?.status().as_u16();
     rest.insert("etag".into(), json!({"topico": t0, "status": st1, "etag": etag, "cors": cors, "cache_control": cache, "com_if_none_match": s2}));
     r.insert("rest".into(), Value::Object(rest));
     Ok(Value::Object(r))
@@ -462,12 +499,13 @@ fn main() -> anyhow::Result<()> {
         let g = Arc::new(Global::default());
         let t0 = Instant::now();
         *g.t0.lock().unwrap() = Some(t0);
-        let fim_em = t0 + Duration::from_secs_f64(a.duracao);
+        let n = a.clientes + a.lentos;
+        let tempo_rampa = if a.rampa > 0.0 { n as f64 / a.rampa } else { 0.0 };
+        let fim_em = t0 + Duration::from_secs_f64(a.duracao + tempo_rampa);
         let mut rng = Rng(a.semente.max(1));
         let mut hs = vec![];
         let fim_lentos = Arc::new(tokio::sync::Notify::new());
         let mut hl = vec![];
-        let n = a.clientes + a.lentos;
         for i in 0..n {
             let tops = escolher(&a.perfil, &todos, i, &mut rng);
             if i >= a.clientes { hl.push(tokio::spawn(lento(g.clone(), end.clone(), tops, fim_lentos.clone()))); }

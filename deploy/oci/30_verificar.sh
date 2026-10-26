@@ -9,6 +9,7 @@ for N in A B; do
   msg "nó $N — $(no_var $N ID) — $(host_de $N)"
   em "$N" "bash -s" <<EOF
 echo "serviço: \$(systemctl is-active urna-velox) · versão: \$(cat /opt/urna-velox/VERSION 2>/dev/null) · disco livre: \$(df -h /srv | awk 'NR==2{print \$4}')"
+echo "linha de comando: \$(ps -o args= -C uv-servico | grep -oE -- '--(intervalo-cs|intervalo-cs-ocioso|rps|tse-intervalo) [^ ]+' | tr '\n' ' ' || true)"
 S=$SAIDA/saude.json
 if [ -f \$S ]; then
 python3 - \$S <<'PY'

@@ -1,0 +1,33 @@
+name: b056
+# Compila e testa o commit e gera os binários aarch64 da OCI (sem estação de desenvolvimento).
+on:
+  workflow_dispatch:
+  push:
+    branches: [b056-ci]
+defaults:
+  run:
+    shell: bash
+jobs:
+  testar:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - name: Teste do B-057
+        run: cargo test --release -p uv-aquisicao --lib exterior_sondado_pelo_calendario 2>&1 | tee b057.txt
+      - name: Suíte
+        run: |
+          cargo test --release -p urna-velox 2>&1 | tee suite.txt
+          cargo test --release -p uv-aquisicao 2>&1 | tee -a suite.txt
+          grep -E "^test result" suite.txt
+      - name: Binários aarch64 (OCI)
+        run: |
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+          rustup target add aarch64-unknown-linux-gnu
+          bash deploy/oci/compilar_local_arm64.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: b056
+          path: |
+            suite.txt
+            deploy/oci/gerado/uv-binarios-aarch64.tar.gz

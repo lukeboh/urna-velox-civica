@@ -18,6 +18,7 @@ Termos técnicos usados na documentação e no código do Urna Velox, explicados
 | **Plano A / B / C** | As três opções de linguagem comparadas: A = Rust (escolhida), B = JavaScript/TypeScript (Node.js ou Bun), C = Java. |
 | **Requisito não funcional** | Exigência sobre *como* o sistema funciona (velocidade, memória, portabilidade), e não sobre *o que* ele faz. |
 | **Roadmap** | Plano de desenvolvimento em fases. |
+| **Replay** | Uma eleição que já aconteceu, apurada de novo no site com os dados reais (os BUs publicados pelo TSE), como a reprise de um jogo: a totalização recomeça do zero, na ordem de chegada dos boletins, e no fim é conferida com o oficial. Até a 0.8.37 o site dizia "simulado"/"simulação"; nos nomes internos (`uv-simulador`, `--simulacao`, campo `simulacao` do protocolo) o termo antigo continua. A **Playlist de Replays** (`/playlist`) mostra a agenda e deixa o público votar no próximo. Ver [CICLO_DIARIO.md](CICLO_DIARIO.md). |
 
 ## 2. Domínio eleitoral
 

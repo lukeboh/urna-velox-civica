@@ -10,7 +10,11 @@ import { el, svg, segundos } from './util.js';
 let comSegundos = false;
 /** "aaaa-mm-dd hh:mm:ss" → "hh:mm" (ou "hh:mm:ss" no simulado acelerado) */
 const hm = (t) => { const m = /(\d{2}):(\d{2}):(\d{2})/.exec(t || ''); return m ? (comSegundos ? `${m[1]}:${m[2]}:${m[3]}` : `${m[1]}:${m[2]}`) : '—'; };
-const faixaTxt = (f) => (f ? (f.incerta ? 'em horário ainda incerto' : `entre ${hm(f.p10)} e ${hm(f.p90)}`) : '');
+// B-052: com a faixa larga demais, o horário pelo ritmo atual (`eta`, como o ETA de um navegador de trânsito); "ainda
+// incerto" só quando nem ele existe (nada entrando)
+const faixaTxt = (f) => (f ? (!f.incerta ? `entre ${hm(f.p10)} e ${hm(f.p90)}` : f.eta ? `por volta de ${hm(f.eta)}` : 'em horário ainda incerto') : '');
+/** Horário "mais provável" de uma faixa: o P50, ou o do ritmo atual quando ela é larga demais; null se nenhum. */
+const provavel = (f) => (!f ? null : !f.incerta ? f.p50 : f.eta || null);
 
 /**
  * Junta uma mensagem `previsao` à anterior do tópico: a da inscrição traz o histórico inteiro; as outras acrescentam a
@@ -41,9 +45,10 @@ export class CartaoPrevisao {
     this.real.style.opacity = '0';
     this.g.append(this.banda, this.med, this.real);
     this.fim = el('div', 'pv-fim', '');
+    this.hodCaixa = el('div', 'pv-hod', [this.hod.el, el('small', null, 'mais provável')]);
     this.el = el('section', 'vidro previsao', [
       el('h2', 'cartao-titulo', ['Previsão ', el('small', null, '(estimativa de horário)')]),
-      el('div', 'pv-topo', [el('div', 'pv-txt', [this.rot, this.faixa, this.nota]), el('div', 'pv-hod', [this.hod.el, el('small', null, 'mais provável')])]),
+      el('div', 'pv-topo', [el('div', 'pv-txt', [this.rot, this.faixa, this.nota]), this.hodCaixa]),
       el('div', 'pv-graf', this.g),
       this.fim,
     ]);
@@ -58,6 +63,8 @@ export class CartaoPrevisao {
     if (x === this.x) return;
     this.x = x;
     comSegundos = x > 1;
+    // B-054: hh:mm:ss não cabe na largura do hh:mm (o relógio saía do cartão)
+    this.hodCaixa.classList.toggle('seg', comSegundos);
     const molde = comSegundos ? '##:##:##' : '##:##';
     if (this.hod.molde !== molde) {
       const novo = new Hodometro({ molde });
@@ -68,7 +75,8 @@ export class CartaoPrevisao {
     this.chave = '';
   }
 
-  /** p = última previsão do tópico (ou null); circ = código da circunscrição do tópico; nomeCirc = nome para o texto. */
+  /** p = última previsão do tópico (ou null); circ = código da circunscrição do tópico; nomeCirc = lugar com a preposição
+   *  ("no Brasil", "na Bahia"; B-042). */
   definir(p, ehCirc, nomeCirc) {
     const chave = p ? `${p.instante}|${p.situacao}|${ehCirc}` : `nada|${ehCirc}`;
     if (chave === this.chave) return;
@@ -94,10 +102,11 @@ export class CartaoPrevisao {
         faixa = faixaTxt(m);
         const a = Math.round(100 * (m.apurado_p50 || 0));
         nota = m.prob_antes_fim < 0.2 ? 'deve ir até o fim da apuração' : `chance de sair antes do fim: ${Math.round(100 * m.prob_antes_fim)}% · com ~${a}% apurado`;
-        hod = m.incerta ? null : hm(m.p50);
+        if (m.incerta && m.eta) nota = `pelo ritmo atual · ${nota}`;
+        hod = provavel(m) && hm(provavel(m));
       } else if (!ehCirc) {
         rot = 'O matematicamente';
-        faixa = `se decide em ${nomeCirc}`;
+        faixa = `se decide ${nomeCirc}`;
         nota = 'abra a circunscrição para ver a previsão';
       }
       // chegada dos BUs parada no país: a previsão é a última normal, adiada pelo tempo parado
@@ -117,6 +126,8 @@ export class CartaoPrevisao {
     this.nota.classList.toggle('alerta', !!(p?.parada && p.situacao === 'suspensa'));
     if (this.fim.textContent !== fim) { this.fim.textContent = fim; this.fim.title = fim; }
     this.hod.definir(hod);
+    // B-054: sem horário, nada de "00:00:00 mais provável" esmaecido
+    this.hodCaixa.classList.toggle('vazio', !hod);
     this.desenhar(p);
   }
 

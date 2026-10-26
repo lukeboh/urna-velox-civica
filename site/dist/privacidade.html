@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<meta name="description" content="Privacidade, acesso e retenção de dados no Urna Velox: coletamos o mínimo, não vendemos nem compartilhamos informações pessoais dos visitantes.">
+<title>Privacidade e uso de dados · Urna Velox</title>
+<link rel="canonical" href="https://urnavelox.com.br/privacidade">
+<link rel="icon" href="/static/icone.svg?v={{versao}}" type="image/svg+xml">
+<link rel="stylesheet" href="/static/documento.css?v={{versao}}">
+<script src="/static/documento.js?v={{versao}}"></script>
+</head>
+<!-- molde das páginas de texto (/termos e /privacidade): o site/documentos.mjs põe aqui o texto dos arquivos do
+     repositório (docs/LICENCIAMENTO.md, LICENSE, LICENCA.pt-BR.md, docs/PRIVACIDADE.md) -->
+<body>
+<header class="topo">
+  <a class="marca" href="/">Urna <span>Velox</span></a>
+  <a class="voltar" href="/">← voltar à apuração</a>
+</header>
+<main class="doc">
+<h1>Privacidade, acesso e retenção de dados</h1>
+<p class="versao">Urna Velox v{{versao}} · mesmo texto do repositório do projeto</p>
+<section id="privacidade"><p>Em vigor desde 24/10/2026. O site publica este mesmo texto em <a href="/privacidade">urnavelox.com.br/privacidade</a> (gerado deste arquivo no build da página, <code>site/documentos.mjs</code>). Os termos de uso e a licença estão no <a href="/termos">LICENCIAMENTO.md</a>, publicado em <a href="/termos">urnavelox.com.br/termos</a>.</p>
+<h3 id="privacidade-em-poucas-palavras">Em poucas palavras</h3>
+<ul><li><b>Fazemos o mínimo.</b> Não há cadastro, login de visitante, cookies, anúncios, pixels nem ferramentas de rastreamento ou de análise de terceiros.</li><li><b>Não vendemos</b> nem alugamos nenhuma informação, e <b>não compartilhamos</b> informação pessoal dos visitantes com ninguém.</li><li>Tudo o que é registrado serve <b>só para viabilizar a sua experiência</b> (a página funcionar, ficar no ar e lembrar as suas preferências) e <b>melhorar a própria plataforma</b>.</li></ul>
+<h3 id="privacidade-1-quem-somos-e-a-que-se-aplica">1. Quem somos e a que se aplica</h3>
+<p>O Urna Velox é uma totalização eleitoral independente: lê os arquivos públicos de divulgação do Tribunal Superior Eleitoral (TSE) e mostra a apuração em tempo real. Esta política vale para todo o site <b>urnavelox.com.br</b>: a página da apuração, a playlist de replays (<code>/playlist</code>), a API pública (<code>/api/v1/…</code> e <code>/ws</code>) e o subdomínio de dados (<code>dados.urnavelox.com.br</code>). Ela segue a Lei Geral de Proteção de Dados (LGPD, Lei 13.709/2018).</p>
+<p>Os resultados exibidos são dados públicos de eleições (votos por candidato, seções apuradas), não dados pessoais de visitantes.</p>
+<h3 id="privacidade-2-política-de-acesso">2. Política de acesso</h3>
+<ul><li><b>Acesso livre e anônimo.</b> Qualquer pessoa vê a apuração sem se identificar. Nada no site pede nome, e-mail, CPF, telefone ou localização.</li><li><b>Sem nada de fora.</b> A página não carrega nada de outros endereços (sem CDN, fonte remota, anúncio ou rastreador); a política de segurança de conteúdo do servidor bloqueia qualquer tentativa. A única exceção são as consultas de resultado ao nosso próprio subdomínio de dados.</li><li><b>Limites de uso.</b> Para manter o serviço no ar para todos, há limites técnicos de conexões e de pedidos; quem passa deles recebe um aviso de serviço ocupado, sem nenhum registro adicional.</li><li><b>Área de operação.</b> O painel dos nós (<code>/painel</code>) e os comandos que alteram o serviço são só para os operadores do Urna Velox, com login próprio. Visitantes nunca precisam dele.</li><li><b>Uso do conteúdo.</b> Termos de uso e licença no <a href="/termos">LICENCIAMENTO.md</a> (uso livre sem fins comerciais; uso comercial exige licença).</li></ul>
+<h3 id="privacidade-3-o-que-é-registrado-para-quê-e-por-quanto-tempo">3. O que é registrado, para quê e por quanto tempo</h3>
+<div class="tabela" role="region" tabindex="0"><table><thead><tr><th>o quê</th><th>onde fica</th><th>para quê</th><th>retenção</th></tr></thead><tbody><tr><td>Preferências da página: tema claro/escuro, modo da comparação com o TSE, cartão de identificação recolhido, o dia em que o aviso inicial já foi mostrado, a vista e a cor do mapa das seções e a ordem dos cartões (<code>uv-tema</code>, <code>uv-comparar</code>, <code>uv-ident</code>, <code>uv-aviso-dia</code>, <code>uv-mapa</code>, <code>uv-cartoes</code>)</td><td><b>Só no seu navegador</b> (armazenamento local); nunca é enviado para nós</td><td>Lembrar as suas escolhas na próxima visita</td><td>Até você limpar os dados do site no navegador</td></tr><tr><td>Registro técnico de acesso: endereço IP, data e hora, endereço pedido, resposta e identificação do navegador (<i>user-agent</i>)</td><td>Nos nossos servidores</td><td>Manter o serviço no ar: diagnosticar falhas, medir carga e se defender de abuso e ataques</td><td>Apagado automaticamente por rotação: o registro novo sobrescreve o antigo, num volume fixo e pequeno, e não há cópia de longo prazo</td></tr><tr><td>Voto na playlist de replays: o IP <b>transformado num código irreversível</b> (hash com sal secreto; o IP em si não é guardado) e a opção escolhida</td><td>Nos nossos servidores</td><td>Garantir um voto por pessoa e permitir trocar ou retirar o voto</td><td>Apagado quando o replay votado entra no ar ou quando você retira o voto</td></tr><tr><td>Números agregados de operação: quantas conexões estão abertas, mensagens por minuto, uso de memória e processador</td><td>Nos nossos servidores</td><td>Melhorar o desempenho e planejar a capacidade da plataforma</td><td>Sem dado pessoal: são só contagens, sem IP nem identificação de visitante</td></tr></tbody></table></div>
+<p>Não usamos esses registros para traçar perfil, fazer publicidade, decidir nada automaticamente sobre ninguém ou cruzar com outras bases. Não há cookies: nem nossos, nem de terceiros.</p>
+<h3 id="privacidade-4-compartilhamento">4. Compartilhamento</h3>
+<p><b>Não vendemos, não alugamos e não compartilhamos informação pessoal dos visitantes</b> com empresas, partidos, campanhas, institutos de pesquisa, anunciantes ou qualquer outra pessoa. Para entregar a página, o tráfego passa pela infraestrutura dos provedores de hospedagem e de rede que contratamos (servidores em nuvem e, no subdomínio de dados, uma rede de entrega de conteúdo); eles só transportam e entregam o conteúdo, não recebem de nós nenhuma base de dados de visitantes. Só entregaríamos um registro técnico a uma autoridade diante de ordem judicial, como manda a lei.</p>
+<h3 id="privacidade-5-seus-direitos">5. Seus direitos</h3>
+<p>Pela LGPD você pode pedir confirmação de tratamento, acesso, correção ou eliminação dos seus dados. Como quase nada fica guardado e o pouco que fica não traz nome nem contato, na prática:</p>
+<ul><li>as preferências você mesmo apaga, limpando os dados do site no seu navegador;</li><li>o voto da playlist você retira na própria playlist;</li><li>os registros técnicos somem sozinhos com a rotação.</li></ul>
+<p>Dúvidas ou pedidos: escreva para o titular do projeto, Luciano Soares Bohnert, em <code>luciano.bohnert@gmail.com</code> (o mesmo contato da licença).</p>
+<h3 id="privacidade-6-segurança">6. Segurança</h3>
+<p>Todo o acesso é por HTTPS. Os servidores só respondem por uma lista fixa de endereços, a página não executa nada de terceiros e o acesso às máquinas e ao painel é restrito aos operadores.</p>
+<h3 id="privacidade-7-mudanças-nesta-política">7. Mudanças nesta política</h3>
+<p>Se mudarmos o que é registrado, esta política muda antes, com a data nova no topo. Nunca passaremos a vender ou compartilhar dados pessoais dos visitantes.</p></section>
+</main>
+<footer class="pe">© Urna Velox · <a href="/termos">Termos de uso</a> · <a href="/privacidade">Privacidade</a></footer>
+</body>
+</html>

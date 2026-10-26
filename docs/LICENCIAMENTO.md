@@ -8,7 +8,7 @@ O **Urna Velox** adota o modelo **Source-Available** com **dupla licença** (dec
 
 A PolyForm também permite o uso gratuito por instituições de ensino, organizações públicas de pesquisa, entidades beneficentes e instituições governamentais, qualquer que seja o financiamento. Contratos comerciais valem só para o uso comercial: não restringem nem revogam o uso não comercial garantido pela PolyForm.
 
-Copyright © 2026 Luciano Soares Bohnert. O texto que vale juridicamente é o do [LICENSE](../LICENSE) (texto oficial e integral da PolyForm Noncommercial 1.0.0, em inglês), com tradução para o português do Brasil de conteúdo idêntico em [LICENCA.pt-BR.md](../LICENCA.pt-BR.md); este documento apenas os explica.
+Copyright © 2026 Luciano Soares Bohnert. O texto que vale juridicamente é o do [LICENSE](../LICENSE) (texto oficial e integral da PolyForm Noncommercial 1.0.0, em inglês), com tradução para o português do Brasil de conteúdo idêntico em [LICENCA.pt-BR.md](../LICENCA.pt-BR.md); este documento apenas os explica. A privacidade, o acesso e a retenção de dados do site estão no documento irmão [PRIVACIDADE.md](PRIVACIDADE.md). Os dois, com o texto integral da licença, também estão no próprio site, em `urnavelox.com.br/termos` e `urnavelox.com.br/privacidade`.
 
 ## Uso não comercial — gratuito e livre
 

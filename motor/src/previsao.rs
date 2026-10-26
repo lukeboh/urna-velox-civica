@@ -350,13 +350,16 @@ pub struct Faixa {
     pub p90: i64,
     /// P90 − P10 maior que [`Parametros::max_faixa_s`]: mostrar como "ainda incerto"
     pub incerta: bool,
+    /// B-052: horário pelo ritmo atual (o que falta ÷ a velocidade média móvel), como o ETA de um navegador de trânsito:
+    /// sempre que há ritmo, mesmo com a faixa larga demais; `None` sem ritmo (nada entrando)
+    pub eta: Option<i64>,
 }
 
 impl Faixa {
     fn de(v: &mut [f64], max_faixa_s: i64) -> Option<Faixa> {
         if v.is_empty() { return None; }
         let (p10, p50, p90) = (percentil(v, 0.1).round() as i64, percentil(v, 0.5).round() as i64, percentil(v, 0.9).round() as i64);
-        Some(Faixa { p10, p50, p90, incerta: p90 - p10 > max_faixa_s })
+        Some(Faixa { p10, p50, p90, incerta: p90 - p10 > max_faixa_s, eta: None })
     }
     pub fn contem(&self, t: i64) -> bool { self.p10 <= t && t <= self.p90 }
 }
@@ -592,6 +595,17 @@ impl Relogio<'_> {
         self.resto(r, rng)
     }
 
+    /// B-052: horário em que os aptos chegam à fração `f` no ritmo atual (sem sorteio); `None` sem ritmo.
+    pub fn eta_aptos(&self, f: f64) -> Option<i64> { self.eta(f - self.frac_aptos) }
+
+    /// B-052: horário em que as seções chegam à fração `g` no ritmo atual (as seções acompanham os aptos).
+    pub fn eta_secoes(&self, g: f64) -> Option<i64> { self.eta(g - self.frac_secoes) }
+
+    fn eta(&self, df: f64) -> Option<i64> {
+        if df <= 0.0 { return Some(self.agora); }
+        (self.ema > 1e-9).then(|| self.agora + (df * self.eleitorado / self.ema).min(TETO_S).round() as i64)
+    }
+
     /// Horário (sorteado) em que as seções apuradas chegam à fração `g` (pela velocidade, as seções acompanham os aptos).
     pub fn ate_secoes(&self, g: f64, rng: &mut Rng) -> f64 {
         if g <= self.frac_secoes { return self.agora as f64; }
@@ -811,7 +825,7 @@ impl Previsor {
         for (i, u) in self.unidades.iter_mut().enumerate() {
             let Some(b) = &u.normal else { continue };
             let d = (agora - b.instante).max(0);
-            let mover = |f: &Faixa| Faixa { p10: f.p10 + d, p50: f.p50 + d, p90: f.p90 + d, incerta: f.incerta };
+            let mover = |f: &Faixa| Faixa { p10: f.p10 + d, p50: f.p50 + d, p90: f.p90 + d, incerta: f.incerta, eta: f.eta.map(|t| t + d) };
             let ult = u.serie.ultimo();
             let mat = if u.definida.is_some() { None } else { b.mat.map(|m| PrevMat { faixa: mover(&m.faixa), ..m }) };
             let p = Previsao {
@@ -869,9 +883,10 @@ impl Previsor {
         p.situacao = if definida { "definida" } else { "prevista" };
         // o fim da apuração é barato e vale para todo tópico (milhares de municípios): menos sorteios que o "matematicamente"
         let n = (par.sorteios / if u.circ { 2 } else { 4 }).max(32);
-        if fs < 0.99 { let mut v: Vec<f64> = (0..n).map(|_| rel.ate_secoes(0.99, &mut rng)).collect(); p.fim99 = Faixa::de(&mut v, par.max_faixa_s); }
+        let com_eta = |f: Option<Faixa>, eta: Option<i64>| f.map(|f| Faixa { eta, ..f });
+        if fs < 0.99 { let mut v: Vec<f64> = (0..n).map(|_| rel.ate_secoes(0.99, &mut rng)).collect(); p.fim99 = com_eta(Faixa::de(&mut v, par.max_faixa_s), rel.eta_secoes(0.99)); }
         let mut v: Vec<f64> = (0..n).map(|_| rel.ate_secoes(1.0, &mut rng)).collect();
-        p.fim100 = Faixa::de(&mut v, par.max_faixa_s);
+        p.fim100 = com_eta(Faixa::de(&mut v, par.max_faixa_s), rel.eta_secoes(1.0));
         if let (Some(circ), false) = (cad.circunscricao(u.cargo, &u.abr).filter(|_| u.circ), definida) {
             let nv = circ.candidatos.len();
             let mut estratos: Vec<EstratoVivo> = u.estratos.iter().map(|e| {
@@ -890,6 +905,8 @@ impl Previsor {
             for s in &estratos { apurado += s.apurado; for (a, b) in votos.iter_mut().zip(&s.votos) { *a += b; } }
             let e = EntradaMat { circ, votos: &votos, apurado, estratos: &estratos };
             p.mat = prever_mat(&e, par, &mut rng, &mut |f, r| rel.ate_aptos(f, r));
+            // no ritmo atual, até a fração dos aptos em que ele deve sair (a mediana dos sorteios)
+            if let Some(m) = p.mat.as_mut() { m.faixa.eta = rel.eta_aptos(m.apurado_p50); }
         }
         p
     }

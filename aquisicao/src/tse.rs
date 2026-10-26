@@ -9,7 +9,7 @@
 //! <base>/<amb>/<ciclo>/arquivo-urna/<pleito>/config/<uf>/<uf>-p<pleito:06>-cs.json   seções da UF
 //! <base>/<amb>/<ciclo>/arquivo-urna/<pleito>/dados/<uf>/<mun:05>/<zona:04>/<secao:04>/
 //!        p<pleito:06>-<uf>-m<mun:05>-z<zona:04>-s<secao:04>-aux.json      arquivos da seção
-//!        <hash>/o0<pleito:05><uf><mun:05><zona:04><secao:04>-bu.dat       BU (envelope BER)
+//!        <hash>/o<pleito:05><uf><mun:05><zona:04><secao:04>-bu.dat        BU (envelope BER)
 //! ```
 //! `<hash>` é o SHA-256 (base64, e depois em hexadecimal) do arquivo de assinaturas `…-vota.vsc`.
 

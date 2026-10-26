@@ -21,7 +21,7 @@ UNIDADE=urna-velox.service
 NO_ENV="$ETC/no.env"
 ROTAS="$ETC/rotas_tse.json"
 # chaves que o painel pode mudar (as mesmas de aquisicao/src/painel/config_no.rs) e o formato aceito
-EDITAVEIS='PLEITO|CICLO|AMBIENTE|BASE|RPS|UFS|ACELERACAO|CANDIDATOS|ORDEM|ACESSO|TETO_RPS_INTERNO'
+EDITAVEIS='PLEITO|CICLO|AMBIENTE|BASE|RPS|UFS|ACELERACAO|CANDIDATOS|ORDEM|ACESSO|TETO_RPS_INTERNO|TRAVA_PP'
 VALOR='[A-Za-z0-9._:/,@+=-]*'
 
 morrer() { echo "uv-painel-acao: $*" >&2; exit 2; }

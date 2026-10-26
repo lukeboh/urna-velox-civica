@@ -1,6 +1,6 @@
 {
   "name": "urna-velox-bench",
-  "version": "0.8.38",
+  "version": "1.0.10",
   "description": "Benchmarks Plano B (JavaScript)",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"

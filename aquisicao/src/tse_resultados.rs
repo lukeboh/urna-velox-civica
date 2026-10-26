@@ -121,6 +121,10 @@ pub struct TseResultados {
     pub op: Opcoes,
     /// tópico → (URL do `-u.json`, nome do arquivo); definido pelo motor na partida ([`TseResultados::definir_urls`])
     urls: RwLock<HashMap<String, (String, String)>>,
+    /// tópico → eleitorado do `candidatos.json` ([`TseResultados::definir_eleitorado`]; B-055) e os tópicos já
+    /// alertados por eleitorado divergente (um alerta por tópico)
+    eleitorado: RwLock<HashMap<String, u64>>,
+    eleitorado_alertado: Mutex<std::collections::HashSet<String>>,
     t: Mutex<HashMap<Arc<str>, Topico>>,
     acordar: tokio::sync::Notify,
     med: Medidas,
@@ -135,11 +139,32 @@ impl Drop for Inscricao { fn drop(&mut self) { self.tse.sair(&self.topico); } }
 
 impl TseResultados {
     pub fn novo(op: Opcoes) -> Arc<TseResultados> {
-        Arc::new(TseResultados { op, urls: RwLock::default(), t: Mutex::default(), acordar: tokio::sync::Notify::new(), med: Medidas::default(), taxa_ant: Mutex::default() })
+        Arc::new(TseResultados { op, urls: RwLock::default(), eleitorado: RwLock::default(), eleitorado_alertado: Mutex::default(), t: Mutex::default(), acordar: tokio::sync::Notify::new(), med: Medidas::default(), taxa_ant: Mutex::default() })
     }
 
     /// URLs dos `-u.json` de cada tópico publicado (os mesmos que a conferência baixa).
     pub fn definir_urls(&self, m: HashMap<String, (String, String)>) { *self.urls.write().unwrap() = m; }
+
+    /// Seções (total, totalizadas) do último arquivo lido do tópico (M-020, a trava).
+    pub fn secoes_de(&self, topico: &str) -> Option<(u64, u64)> {
+        let t = self.t.lock().unwrap();
+        let d = t.get(topico)?.dados.as_ref()?;
+        Some((d["secoes"]["total"].as_u64()?, d["secoes"]["totalizadas"].as_u64()?))
+    }
+
+    /// Eleitorado de cada tópico no `candidatos.json` (o que o "matematicamente" usa), para conferir com o `e.te` do TSE.
+    pub fn definir_eleitorado(&self, m: HashMap<String, u64>) { *self.eleitorado.write().unwrap() = m; }
+
+    /// B-055: texto do alerta `eleitorado_divergente` quando o `e.te` do `-u.json` do TSE (`te`, maior que zero) difere do
+    /// eleitorado do `candidatos.json` no tópico; `None` se confere, se não há o que comparar ou se o tópico já alertou.
+    /// Não faz requisição: usa o arquivo que a comparação já baixou.
+    pub fn conferir_eleitorado(&self, topico: &str, te: u64) -> Option<String> {
+        let cat = *self.eleitorado.read().unwrap().get(topico)?;
+        if te == 0 || te == cat || !self.eleitorado_alertado.lock().unwrap().insert(topico.to_string()) { return None; }
+        Some(format!("{topico}: eleitorado do candidatos.json {cat}, TSE {te} (diferença {}): regerar o candidatos.json \
+            (uv-coletor preparar --atualizar) e reiniciar o serviço; o \"matematicamente\" usa o do candidatos.json",
+            te as i64 - cat as i64))
+    }
 
     /// Inscreve uma conexão no tópico (sem o prefixo `tse:`). Erro: tópico sem `-u.json` conhecido.
     pub fn inscrever(self: &Arc<Self>, topico: &str) -> Result<(Inscricao, watch::Receiver<Option<Arc<Quadro>>>), &'static str> {
@@ -330,6 +355,14 @@ async fn buscar_um(tse: &TseResultados, com: &Comum, k: Arc<str>, url: String, a
     tse.med.buscas.fetch_add(1, Relaxed);
     let r = com.rede.get_com(&url, Cond { etag: etag.as_deref(), modificado: modif.as_deref(), baixa: true }, None).await;
     let site = r.as_ref().ok().map(|r| com.ver_relogio(r.data.as_deref())).unwrap_or_else(|| com.relogio_site.load(Relaxed));
+    // B-055: o eleitorado do candidatos.json confere com o do TSE? (o arquivo que esta busca já trouxe; nada a mais)
+    if let Ok(r) = &r {
+        if r.status == 200 {
+            if let Ok(o) = Oficial::de_bytes(&arq, &r.corpo) {
+                if let Some(x) = tse.conferir_eleitorado(&k, o.eleitorado) { com.alerta("eleitorado_divergente", &x); }
+            }
+        }
+    }
     let mut t = tse.t.lock().unwrap();
     let Some(e) = t.get_mut(&k) else { return };
     e.em_voo = false;
@@ -384,6 +417,19 @@ async fn buscar_um(tse: &TseResultados, com: &Comum, k: Arc<str>, url: String, a
 #[cfg(test)]
 mod testes {
     use super::*;
+
+    /// B-055: no 3221 o candidatos.json de 18/10 tinha Brasil 157.563.461 e o TSE, desde 15/10, 158.745.502.
+    #[test]
+    fn eleitorado_divergente_alerta_uma_vez_por_topico() {
+        let t = TseResultados::novo(Opcoes::default());
+        t.definir_eleitorado(HashMap::from([("br-c0001".to_string(), 157_563_461), ("df-c0001".to_string(), 2_258_995)]));
+        let x = t.conferir_eleitorado("br-c0001", 158_745_502).expect("eleitorado divergente tem de alertar");
+        assert!(x.contains("157563461") && x.contains("158745502") && x.contains("1182041"), "{x}");
+        assert_eq!(t.conferir_eleitorado("br-c0001", 158_745_502), None, "um alerta por tópico");
+        assert_eq!(t.conferir_eleitorado("df-c0001", 2_258_995), None, "igual: sem alerta");
+        assert_eq!(t.conferir_eleitorado("to-c0001", 1_182_041), None, "tópico sem eleitorado no catálogo");
+        assert_eq!(t.conferir_eleitorado("df-c0001", 0), None, "TSE ainda sem eleitorado (te 0)");
+    }
 
     #[test]
     fn intervalo_fora_da_faixa_recusado() {
@@ -457,5 +503,19 @@ mod testes {
         assert_eq!((s["topicos_ativos"].as_u64(), s["esperando_vaga"].as_u64(), s["inscritos"].as_u64()), (Some(1), Some(0), Some(1)));
         drop(b);
         assert_eq!(tse.saude_json(0)["topicos_ativos"].as_u64(), Some(0));
+    }
+
+    /// M-020: a trava lê as seções do último arquivo do tópico; sem arquivo lido, nada (vale o último valor da trava).
+    #[test]
+    fn secoes_do_ultimo_arquivo_para_a_trava() {
+        let tse = TseResultados::novo(Opcoes::default());
+        tse.definir_urls(HashMap::from([("br-c0001".to_string(), ("http://x/br".to_string(), "br-c0001-e006258-u.json".to_string()))]));
+        assert_eq!(tse.secoes_de("br-c0001"), None, "nem inscrito");
+        let (_insc, _rx) = tse.inscrever("br-c0001").unwrap();
+        assert_eq!(tse.secoes_de("br-c0001"), None, "inscrito, sem arquivo lido");
+        let v: Value = serde_json::from_str(r#"{"carg":[],"s":{"ts":"499248","st":"49925","sni":"0"},"e":{},"v":{}}"#).unwrap();
+        tse.t.lock().unwrap().get_mut("br-c0001").unwrap().dados = Some(resumo(&Oficial::de_json(&v)));
+        assert_eq!(tse.secoes_de("br-c0001"), Some((499_248, 49_925)));
+        assert_eq!(tse.secoes_de("sp-c0001"), None);
     }
 }

@@ -5,6 +5,8 @@ User-agent: *
 
 # Permitir a página inicial e os recursos estáticos embutidos
 Allow: /$
+Allow: /privacidade$
+Allow: /termos$
 Allow: /static/
 
 # Bloquear rotas de streaming e endpoints internos da API de totalização

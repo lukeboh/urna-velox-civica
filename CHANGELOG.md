@@ -2,6 +2,932 @@
 
 Todas as versões do Urna Velox. Regras em [docs/VERSIONAMENTO.md](docs/VERSIONAMENTO.md): cada commit sobe a versão; só as versões `X.Y.0` ganham tag (`vX.Y.0`; até a `0.3.0` todo commit ganhava a sua); o MINOR acompanha a última etapa concluída do [ROADMAP](ROADMAP.md) (etapas 1 a 9 = `0.1.0` a `0.9.0`, com a escalabilidade segura na etapa 6, a comparação com o TSE na 7, a previsão na 8 e o ensaio geral na 9 desde a renumeração de 16/10/2026; nas entradas anteriores à `0.6.7`, "etapa 7" / `0.7.0` = ensaio geral, hoje `0.9.0`; majoritários completos = `1.0.0`; proporcionais = `2.0.0`; até a 0.0.19 valia o esquema antigo de seis fases). As entradas `2.0.0-alpha.N`, abaixo da `0.6.0`, são o trabalho da etapa 6 feito na branch `feature/2.0-escalabilidade` antes da renumeração de 15/10/2026; nelas, "2.0" quer dizer a etapa 6 e "3.0", os proporcionais (hoje `2.0.0`).
 
+## [1.0.10] — 2026-10-26
+
+- **Revisão para a cópia pública:** capturas de tela do celular em `docs/bugs/` (B-030, B-031, B-043, B-045, B-052)
+  recortadas sem a barra de status do aparelho e a barra do navegador, e gravadas sem metadados (EXIF/ICC); as
+  análises avulsas dos logs de acesso do Caddy saem do `deploy/oci/`; `docs/HANDOFF_MODELO_BORDA_E_CONSISTENCIA.md`,
+  `docs/HANDOFF_CARGA_E_ARQUITETURA.md` e a entrada da 0.8.43 descrevem o WebSocket autenticado só pelo lado técnico; a citação do M-020 passa a "controle anti-exposição do TSE" (CHANGELOG, `docs/BUGS.md` e relatório
+  de 25/10).
+- Não mexe em totalização nem em resultado.
+
+## [1.0.9] — 2026-10-26
+
+- relatorio de acessos e operacao da eleicao de 25/10/2026
+
+## [1.0.8] — 2026-10-25
+
+- **M-020 — trava coberta por testes unitários** (Luciano, 18h34: "tente usar apenas testes unitários, na maior
+  cobertura possível dos pontos ajustados"). A fila dos retidos sai do motor para `trava::Fila` (ordem de chegada,
+  uma entrada por seção, solta até o limite; desligada, solta tudo) e a condição de valer, para `trava::vale`. Testes
+  novos: `trava::testes::fila_retem_na_ordem_e_solta_ate_o_limite` (ordem, limite 0, seção repetida, soltar a cada
+  segundo sem lote novo, desligar com retidos, BU substituto), `trava_e_fila_juntas_no_cenario_do_tse_soltando_tudo`
+  (500 BUs de uma vez com o TSE em 20 %: para em 30 %; TSE a 45 %: solta até 55 %; 0 = nada sai; 100/desligada = sai
+  tudo), `so_vale_contra_o_tse_com_a_comparacao` (simulador, replay, sem comparação),
+  `tse_resultados::testes::secoes_do_ultimo_arquivo_para_a_trava` (a % do TSE vem do último arquivo lido) e, em
+  `painel::config_no::testes::valida_cada_campo`, `TRAVA_PP` de 0 a 100 (101, -1 e texto recusados; não pede
+  CONFIRMO). Lib do `uv-aquisicao`: 122 ok; `test_painel_acao.sh`: 43 ok. Testes amplos (18h32): workspace sem falhas;
+  motor `--ignored` com dados reais 8 + 6 ok; página (mapa, aviso do TSE parado, 17h, modo) ok; ensaios do serviço em
+  andamento. **Compilada e não implantada** (aguarda o aval do Luciano).
+
+## [1.0.7] — 2026-10-25
+
+- **M-020 — escala da trava de 0 a 100** (Luciano, 18h26): `TRAVA_PP=0` = **nunca à frente do TSE**, `100` = sem
+  limite; vazio ou ausente = desligada (na 1.0.6, 0 desligava). O painel aceita de 0 a 100. Novo
+  `deploy/oci/trava.sh <0-100|desligar>` (sem argumento, mostra o valor): muda nos dois nós sem reiniciar o serviço.
+  `trava::testes` cobrem 0, 10, 100 e ausente. **1.0.6 e 1.0.7 compiladas e não implantadas** (Luciano, 18h26: "Não
+  implante sem meu aval"); a implantação da 1.0.6 que tinha começado foi interrompida antes da troca de binários (os
+  dois nós seguem na 1.0.5; `TRAVA_PP=10` já está no `no.env` dos dois, sem efeito na 1.0.5).
+
+## [1.0.6] — 2026-10-25
+
+- **M-020 — trava "no máximo X p.p. à frente do TSE"** (Luciano, 18h03: "controle anti-exposição do TSE"; decisões
+  das 18h10 e 18h18). Com `TRAVA_PP` > 0 no `no.env` (editável no painel dos nós, relido a cada 5 s, **sem
+  reiniciar**; vazio/0 = desligada), o `uv-servico` só **aplica** BU enquanto a % de seções totalizadas do Brasil
+  (Presidente) for menor que a % do `br-c0001-e006258-u.json` do TSE + `TRAVA_PP`. A coleta segue igual (BU baixado,
+  validado e gravado no pacote); os que passam do teto ficam **retidos** na ordem de chegada e entram a cada segundo,
+  até o teto, quando o TSE anda. Sem dado do TSE vale o último lido (0 % antes do primeiro): nunca solta por falta de
+  dado. A trava só vale contra o site do TSE (não no replay), depois da retomada (o diário entra inteiro) e com a
+  comparação ligada (é dela a busca); o fim da apuração espera os retidos; a sondagem não pede seção retida.
+  **Rede (combinado com o Luciano em 25/10, 18h10):** o `br-c0001` do TSE passa a ser buscado sempre, por uma
+  inscrição permanente na comparação (uma busca por `--tse-intervalo`, 30 s, por nó, com `If-None-Match`, prioridade
+  baixa, regra do 429). Nada na página (18h18: "sem precisar mostrar nada para o usuário"); o `estado` e o
+  `saude.json` trazem `trava` (`pp`, `ligada`, `tse_pct`, `retidos`, `soltos`). Testes: `trava::testes`
+  (`teto_em_pontos_percentuais`, `le_o_no_env_e_mantem_o_ultimo_tse`); lib do `uv-aquisicao` 118 ok; workspace sem
+  falhas. Não muda o resultado final (só o momento em que cada BU entra): conferência contra os oficiais no fim da
+  apuração. `uv-painel-acao`: `TRAVA_PP` entre as chaves editáveis.
+
+## [1.0.5] — 2026-10-25
+
+- **B-058 — `ultimo_bu` vazio depois de um reinício até o próximo BU** (Luciano, 17h58: "Ataque"). Achado de novo na
+  implantação da 1.0.4 (17h56), com o TSE sem BU novo desde 17:11:45: o `estado` vinha com `ultimo_bu.site` nulo e o
+  aviso M-019 não tinha o horário (e um BU atrasado do exterior, como os de Londres das 15h47, o faria dizer "desde
+  15h47"). Agora a retomada tira o horário do diário: a maior disponibilização das seções com BU
+  (`ultimo_bu_do_diario`). Teste: `servico::testes::ultimo_bu_vem_do_diario_na_retomada` — **antes**: `B-058: o último
+  BU do diário na retomada — left: None, right: Some(1792948305)`; **depois**: ok (lib do `uv-aquisicao`: 116 ok;
+  workspace sem falhas). Só o horário exibido: sem conferência contra os oficiais.
+
+## [1.0.4] — 2026-10-25
+
+- **M-019 — aviso no topo quando o TSE não publica BUs** (Luciano, 25/10, 17h42; o último BU publicado era das
+  17:11:45). Chip âmbar no começo da faixa: **"TSE sem novos BUs desde 17h11 · retomamos automaticamente quando
+  voltarem"** (no celular, só "TSE sem novos BUs desde 17h11", no lugar do ritmo, que fica em 0). Aparece na noite ao
+  vivo (não no replay), depois das 17h, com a apuração aberta, quando o último BU no TSE que a página conhece
+  (`ultimo_bu.site` do `estado`, que chega no máximo a cada 10 s, ou o `ultimo_bu` do resultado na tela) tem mais de
+  10 min. Reavaliado a cada segundo: **some sozinho** no primeiro BU novo. Sem horário do último BU (ex.: logo depois
+  de um reinício, B-058), não aparece. Teste novo `site/testes/sem_bus.mjs` (1366 e 360 px: à vista com "desde 17h11",
+  nada da faixa fora da tela, some em até 3 s com um BU novo, nada com 4 min parado nem antes das 17h); `antes_17h.mjs`
+  continua ok. Só a página: sem conferência contra os oficiais.
+- Vai junto na implantação o B-065 da 1.0.3 (exterior sondado com o `cs.json` atrasado).
+
+## [1.0.3] — 2026-10-25
+
+- **B-065 — o exterior ficava preso ao ritmo do `cs.json` depois que ele passava a listar seções** (Luciano, 16h38:
+  "nosso concorrente está com mais seções"). Às 16h40: concorrente com **776 de 1.351** urnas do exterior, Urna Velox
+  com **708** (o mesmo das 15h46). A diferença, cidade a cidade: **Londres 0 × 48** e **Lisboa 83 × 103**. O `aux.json`
+  de Londres 29971/0001/0985 estava no ar desde **15:47:02** (BU "Recebido"), mas o `zz-p003221-cs.json` seguia com as
+  708 seções das 15h46 (`cs_alterados` 0). Causa: a sondagem antecipada do exterior (B-056) só valia enquanto o
+  `cs.json` do ZZ não listasse nenhuma seção; ele passou a listar às 14h e, daí em diante, a sondagem só voltava
+  faltando 5 % ou 50 seções — o último evento `sondagem` nos dois nós é das 14h01 (`sondadas` 0 desde o reinício das
+  16h10). Agora, no domingo, o exterior segue sondado (mesmas regras: fora as agregadas e as que já estão na fila do
+  `cs.json`, calendário do 1º turno, município com BU a cada 20 s, reforço só com a fila do Brasil abaixo de 20, 429
+  desliga o reforço) enquanto faltar seção. Brasil: nada muda. Teste: `servico::testes::exterior_sondado_com_o_cs_json_atrasado`
+  — **antes**: `B-065: o exterior segue sondado com o cs.json listando seções — left: Nao, right: Antecipada`;
+  **depois**: ok (lib do `uv-aquisicao`: 115 ok; workspace sem falhas). `exterior_sondado_antes_do_cs_json` ajustado à
+  regra nova (o caso "cs.json listando, domingo" passa de `Nao` a `Antecipada`; fora do domingo continua a de 16/10).
+  Não mexe em totalização: sem conferência contra os oficiais. **Pronto e não implantado** (Luciano: só subir agora se
+  for muito problemático).
+
+## [1.0.2] — 2026-10-25
+
+- **B-064 — o "de N" do mapa das seções não batia com o total de seções da página** (Luciano, 15h36 do 2º turno de
+  2026, suspeitando das agregadas). Em produção (1.0.0): mapa com **517.179** seções (`/api/v1/mapa/estado`), página
+  com **499.248** (`secoes.total` do `br-c0001`). O mapa numerava todas as seções do catálogo, inclusive as
+  **agregadas** (sem urna nem BU próprio), que o `Publicador` tira do total desde a 0.9.x (B-051). Agora:
+  `mapa::chaves_do_catalogo` deixa fora as agregadas do `candidatos.json`; as que se revelam agregadas na noite (`nsp`
+  no `cs.json` ou sondadas sem `aux.json`) saem do total do mapa junto com o da página (`Motor::agregada` chama
+  `Mapa::retirar`); a fotografia leva os índices retirados em `ret` e o `total` já descontado, as mensagens `mapa`
+  levam o `total`, e a página relê a fotografia quando ele muda (o total da UF e o do exterior também descontam).
+  Agregada que vem com BU volta ao total, como na página. Testes: `mapa::testes::b064_total_do_mapa_igual_ao_da_pagina`
+  — **antes**: `lista do mapa sem a agregada do candidatos.json — left: Some(2), right: Some(1)`; **depois**: ok (lib
+  do `uv-aquisicao`: 114 ok); `site/testes/mapa_pagina.mjs` (cenário B-064) — **antes** (dist da 1.0.0): `FALHA B-064
+  agregada da noite 4796 ≠ 4794`, `FALHA B-064 total da UF`; **depois**: 36 conferências ok.
+- **Mapa: o botão "Globo" passa a se chamar "Exterior"** (pedido do Luciano, 25/10, 15h47; o valor guardado em
+  `uv-mapa` continua `globo`).
+- Votos e totais da apuração não mudam (só o cartão do mapa): conferência = o total do mapa igual ao `secoes.total` da
+  página em produção depois da implantação.
+
+## [1.0.1] — 2026-10-25
+
+- **B-063 — `30_verificar.sh` (e qualquer comando com script de ~2.300 a 3.500 bytes) recusado pela OCI** (achado ao
+  conferir a implantação da 1.0.0): `content.source.text size must be between 1 and 4096`. O `uv_oci.py` mandava o script
+  em linha (base64, que cresce 4/3, dentro do wrapper) se ele tivesse até 3.500 bytes (o repositório tinha 2.000; o 3.500,
+  e a saída em linha até 600 bytes, eram mudanças locais do Luciano, mantidas); o `30_verificar.sh` (~2.500 bytes) virava
+  um comando de ~4.650 caracteres. Agora o comando é montado (`montar_wrapper`) e vai em linha só se couber em
+  `LIMITE_TEXTO` = 4.096 caracteres; senão o script vai pelo bucket. Teste novo `deploy/oci/testes/test_uv_oci.py`
+  (`LimiteDoTexto`: scripts de 100 a 6.000 bytes) — **antes**: `4652 not less than or equal to 4096 : script de 2600
+  bytes`; **depois**: 6 ok. Conferido de verdade: `./30_verificar.sh` contra os dois nós da 1.0.0 (antes: o traceback da
+  OCI no nó A; depois: os dois nós, acompanhando, `--rps 95 --intervalo-cs 10`, 0 HTTP 429, federação com `no-a` e `no-b`).
+  Só o script local de operação muda: nada a implantar nos nós (seguem na 1.0.0).
+- Nada mexe em totalização ou resultado: sem conferência contra os oficiais.
+
+## [1.0.0] — 2026-10-25
+
+- **1.0.0 — sistema completo para os cargos majoritários** (pedido do Luciano, 24/10, 22h22: "quero subir … com a
+  versão ganhando um 1.0.0"): automatizado, federação, WebSocket, site com comparação, previsão e, agora, o mapa.
+- Branch `claude/mapa-secoes` rebaseada sobre o `b056-ci` **0.9.27** (`main` 0.9.24 com B-056 a B-059, o seletor de
+  fonte M-015 da 0.9.25, o aviso de versão nova M-016 da 0.9.26 e a cobertura da sondagem B-060 da 0.9.27; ficam de
+  fora, por decisão do Luciano, `claude/sonda-test-message` e `merge/ws-autenticado`); o mapa passa a ser o **M-017** (o
+  M-013 e o M-014 são os termos e o letreiro; o M-015 e o M-016, o seletor e o aviso). Escrito antes como 0.9.19 e
+  0.9.20 na branch.
+- **M-017 — Mapa das seções** (Luciano, 24/10, 20h33; mockup aprovada no chat: "Só Brasil escuro. E com opção de
+  mapa mundi"): novo cartão na coluna larga, abaixo da corrida. Cada BU totalizado "explode" (anel e clarão) e deixa um
+  ponto aceso; a luz é aditiva (onde há muitas seções juntas, fica branco), e ao fim da noite o Brasil inteiro aparece
+  iluminado pelas ~500 mil seções. Só a silhueta do Brasil é escura, com um halo da aurora; o cartão é o vidro do
+  portal. Opções guardadas no navegador (`uv-mapa`): vista **Brasil** ou **Globo** (esfera translúcida que se gira com
+  o mouse ou o dedo, continentes em malha de pontos; o exterior acende em rosa e cada BU de fora viaja num arco até
+  Brasília) e cor **Luz** ou **Horário** (faixa de 6 min do BU, ciano → violeta → rosa). Os marcos da noite (1ª seção
+  do Brasil e de cada UF, BU nº 100 mil…) soltam uma onda maior e um selo no mapa. Só busca e desenha quando o cartão
+  está na tela; modo HTTP (B-026): relê a fotografia a cada consulta.
+- **Servidor** (`aquisicao/src/mapa.rs`, protocolo §4.8): o servidor não sabe de geografia; numera as seções do
+  catálogo (lista ordenada pela chave município/zona/seção), acende a seção na primeira aplicação do BU (do lote, da
+  federação e, na retomada, do diário com a faixa da disponibilização) e entrega por `GET /api/v1/mapa/secoes` (lista
+  fixa por processo, `ETag`, `max-age=300`), `GET /api/v1/mapa/estado` (fotografia: um byte por seção em base64, refeita
+  no máximo 1×/s, `max-age=5`) e `{"op":"mapa","desde":n,"epoca":e}` no WebSocket (o que acendeu depois de `n`, no
+  máximo uma mensagem a cada 250 ms por conexão, até 8.192 pares por mensagem; outra época → `reiniciar`). Saúde:
+  bloco `difusao.mapa`. (Escrito numa sessão sem as dependências do Rust; compilou de primeira em 24/10 e os testes
+  passaram — abaixo.)
+- **Geografia** (`site/geo/gerar_mapa.py` → `site/src/mapa.json` → `/static/mapa.json`): contorno das UFs, centro dos
+  5.570 municípios pelo código do TSE, malha dos continentes, cidades do exterior e os **locais de votação de 2026**.
+  Fontes e licenças em `site/geo/README.md`.
+  - Locais: base oficial "Eleitorado — local de votação" de **2026** (gerada pelo TSE em 09/10/2026), lida do cache
+    que o mcp-eleitoral já guardava na estação (`locais-votacao-2026.v1.json`; nada baixado do TSE): 95.570 locais,
+    517.179 seções. Novo `gerar_mapa.py --so-locais --locais <base>` troca só os locais (e a tabela do exterior) de um
+    `mapa.json` já gerado. Formato `locais_v: 2`: por zona, só as fronteiras onde a posição muda (as seções de locais
+    diferentes vêm intercaladas na numeração: 282.576 fronteiras, 1.195 sem coordenada → em volta do município),
+    posição em 1/5 da unidade do plano (~0,9 km, abaixo de um pixel); a página lê o formato antigo também. No ensaio,
+    512.557 seções ficam no seu local de votação; as demais são do exterior ou de locais sem coordenada.
+  - Exterior: os locais do exterior vêm sem coordenada na base; continua pelo nome da cidade. A tabela EXTERIOR ganhou
+    as 20 grafias do TSE que faltavam (RAMALLAH, BANGKOK, KINGSTON-JAMAICA, ISLAMABADE, KUAITE, RIADE, …) e agora
+    cobre as **186 cidades da base** (`--exigir-exterior` falha se faltar alguma).
+  - Tamanho: 3,6 MB (era 199 KB sem os locais).
+- **Estáticos em gzip** (`aquisicao/src/pagina.rs`, `difusao.rs`): nem o Caddy (sem `encode`) nem o serviço
+  comprimiam — até o `app.js` ia cru. Agora, com `Accept-Encoding: gzip` (sem `q=0`), o `uv-servico` manda o corpo em
+  gzip (calculado uma vez por processo, nível 6; a fonte `woff2`, já comprimida, não), com `Vary: Accept-Encoding`. O
+  `mapa.json` trafega com **786 KB** e o `app.js` com ~50 KB. Teste novo `difusao::testes::estaticos_em_gzip` —
+  **antes**: `assertion failed: /static/mapa.json sem gzip`; **depois**: ok (descomprime byte a byte no original; sem o
+  cabeçalho e com `gzip;q=0`, corpo cru; `woff2` nunca).
+- **B-061 — raio negativo nas explosões do mapa** (achado no ensaio a 300×): o quadro é desenhado com o horário do
+  `requestAnimationFrame`, que pode ser anterior ao início de uma explosão criada nele; a fase negativa dava raio
+  negativo e `IndexSizeError` no `arc`. A explosão que ainda não começou espera o quadro seguinte. Teste em
+  `site/testes/mapa_pagina.mjs` ("B-061 explosão adiantada", Brasil e globo) — **antes**: 4 falhas (raio −22,05 e
+  −12,86); **depois**: 32 ok, 0 falha.
+- **M-018 — sem o "Anuncie Aqui"** (Luciano, 25/10, 13h59: "Pode remover o 'anuncie aqui'. Não vou mais querer
+  mostrá-la"): sai o chip âmbar do M-011 (`index.html`, estilos) e o link `mailto:`; com o selo escondido (M-012) a grade
+  do topo passa a `auto 1fr auto` (celular: `1fr auto`, a navegação na 2ª linha), com o tema no fim da linha.
+  `site/testes/topo_anuncie.mjs` reescrito para o pedido — **antes** (dist da 0.9.27): "sem o chip", "nenhum Anuncie" e
+  "nenhum mailto" falham a 1920, 1366, 390, 360 e 320 px nos dois temas; **depois**: tudo ok (o tema no fim da linha, sem
+  sobrepor a marca nem a navegação, sem rolagem lateral; M-010 e M-012 continuam).
+- **Todo cartão do painel se maximiza e se reorganiza** (`site/src/cartoes.js`): no canto de cada cartão, a alça
+  (arrastar para outra posição ou para a outra coluna; no teclado, setas com a alça em foco) e o botão de maximizar
+  (Esc ou o véu fecham). A ordem fica no navegador (`uv-cartoes`); `window.__uv.cartoes.restaurarLayout()` volta ao
+  padrão. Tudo por `translate`/`scale` (a `transform` continua da inclinação tátil); a vaga segura o lugar do cartão.
+  `docs/PRIVACIDADE.md` (e `/privacidade`) citam as duas preferências novas.
+- Testes: `site/testes/mapa_pagina.mjs` (novo, sem servidor: carga, fotografia, mensagens ao vivo, mensagem velha,
+  outra época, exterior e cidade sem posição, selo do marco, palco fixo ao trocar de vista, preferência guardada,
+  globo que gira, maximizar/restaurar com a mesma caixa, véu, ordem pelo teclado guardada depois de recarregar, layout
+  padrão, CLS 0 depois da carga, nada fora da página a 390 e 1366 px nos dois temas, e o B-061): 32 ok, 0 falha.
+  Rust: `mapa::testes` (faixas, lista
+  e índices, mensagens, fotografia, histórico em várias mensagens) e `difusao::testes::mapa_das_secoes_ponta_a_ponta`
+  (REST com ETag/304, fotografia, `op: mapa` com histórico e ao vivo, seção fora do catálogo, outra época, servidor sem
+  mapa) e `estaticos_em_gzip`: sobre a 0.9.27: `cargo test --release -p uv-aquisicao` **113 ok** (com o teste do B-060
+  da 0.9.27), `-p urna-velox` ok, `versao.sh verificar` ok. Página (sem servidor): `mapa_pagina` 32 ok, `aviso_versao`,
+  `seletor_fonte`, `termos`, `promo_letreiro`, `topo_anuncie` (M-018), `modo_pagina`, `antes_17h`, `painel_celular`,
+  `relogio`, `ws_recusado`, `ritmo_pagina`, `previsao_cartao` ok; `visual_pagina` só as 56 falhas do B-037 de antes.
+- **B-062 — próxima eleição anunciada no letreiro antes do primeiro estado** (achado na suíte da 1.0.0): com a playlist
+  chegando antes do `estado`, o letreiro anunciava "Próxima eleição AO VIVO" na madrugada da eleição, já com BUs do
+  exterior (o item, à vista, só sai ao passar da borda esquerda). Sem `estado` ainda, não se anuncia nada. Teste em
+  `site/testes/antes_17h.mjs` ("madrugada, estado depois da playlist") — **antes**: 3 falhas (1366, 390 e 360 px);
+  **depois**: tudo certo, duas vezes seguidas.
+- **Ensaios com o simulador do 1º turno** (`site/testes/ensaio_mapa.mjs`, novo: compara o cartão com a saúde do serviço
+  a cada passo; `carga_pagina.mjs --mapa`, novo: carga com o cartão à vista; nenhuma requisição ao TSE):
+  - ao vivo a 60×: o cartão carrega em ~0,5 s (`mapa.json` em gzip); com a apuração parada, **cartão = mapa do serviço
+    = seções aplicadas** (413.949 = 413.949 = 413.949; no fim, 499.207 nos três);
+  - recarregar a página no meio da noite: o cartão volta em 472 ms e segue;
+  - reiniciar o `uv-servico` (retomada de 440.957 BUs do diário em 13,1 s): o cartão troca de época e relê a
+    fotografia. Com o serviço fora por ~12 s, a página entra no **modo HTTP** (B-026: 3 falhas seguidas do WebSocket) e
+    fica até ~2 min só com as consultas de 60 s antes de voltar ao WebSocket — comportamento de antes, não do mapa, mas
+    vale para cada reinício de nó com o site aberto. Reinício curto (2 s): segue ao vivo sem modo HTTP;
+  - mensagens `mapa`: ~10,6 bytes por seção (~5,5 MB por cliente na noite inteira, espalhados pelas horas);
+  - 500× não existe no simulador (o controle aceita de 1 a 300×); ensaiado a 300×;
+  - com a barra de replay (`--controle-replay`) a página recarrega sozinha quando a sessão do replay muda (de antes;
+    só no simulador).
+- Para depois (não bloqueia): o domínio de leitura `dados.urnavelox.com.br` (Caddy) só repassa `/api/v1/resultado/*` e
+  `/api/v1/estado`; as leituras do mapa caem no 404 dele e a página repete no próprio domínio (funciona, uma ida a
+  mais). Sem `--controle-replay`, a 60× o serviço publicou ~200 atualizações/s do `br-c0001` (com ele, ~10/s): efeito
+  do simulador acelerado, mesmo código da 0.9.26.
+- Nada mexe em totalização ou resultado (o mapa só lê as seções aplicadas): sem conferência contra os oficiais.
+
+## [0.9.27] — 2026-10-25
+
+- **`uv-servico`: a sondagem do exterior cobre todas as seções do nó (B-060; Luciano, 25/10: "já temos mais de 237 BUs recebidos no painel do TSE, só 199 publicados: deixamos algum BU do exterior de lado?").** Nós e o site concorrente tinham as mesmas 199 seções, município a município; o painel do TSE conta BUs ainda não publicados. Mas o `sondadas` do evento `sondagem` estava parado em 1.170 de 1.351 sondáveis: ~181 seções do exterior nunca consultadas em 48 min de serviço (faixa quente de 140 seções a cada 20 s + 971 frias, contra 8 seleções por rodada, metade delas do outro nó e descartadas sem requisição). Agora: só as candidatas da partição do nó disputam a rodada (`so_do_no`); 1/4 da rodada é cota das sondadas há mais tempo, nunca sondadas primeiro, em qualquer faixa (`escolher_sondas`); o reforço do exterior passa de 8 para 12 por rodada, todas requisições reais do nó (a fila do Brasil vazia e o 429 desligando o reforço continuam); o evento `sondagem` traz `candidatas` e `nunca`. Teste: `servico::testes::sondagem_cobre_todas_as_secoes_do_no` (antes: falha "B-060: a rodada devia disputar só as seções deste nó", `20` × `10`; depois: ok no CI; simulação de 7 min com 2.000 seções sem nenhuma fria sem consulta e a faixa quente sempre a menos de 60 s). Não mexe em totalização: sem conferência contra os oficiais. **Só testes unitários; não implantado** (testes completos e o merge ficam para a próxima sessão do Luciano).
+
+## [0.9.26] — 2026-10-25
+
+- **Página: aviso de versão nova para quem deixou a aba aberta (M-016; Luciano, 25/10: "quando troca de versão, o usuário tem que fazer um refresh? perde a conexão?").** Antes: ao trocar a versão do serviço o WebSocket cai por ~60 s e a página **reconecta sozinha** (espera crescente de ~1 s a 30 s, balanceada para o outro nó pelo Caddy; depois de 3 falhas, modo HTTP a cada ~60 s), sem perder dados (o instantâneo da reconexão restaura o resultado e o número nunca volta); mas **não percebia a versão nova**: quem deixou a aba aberta seguia com o JavaScript antigo até recarregar (o `index.html` é `no-cache` e cita `?v=<versão>`; os estáticos são `immutable`). Hoje isso não machuca (só o front mudou, o protocolo é o mesmo); se uma versão mudar o protocolo ou a API, a página antiga ficaria incompatível. Agora: a mensagem `estado` traz `versao`; quando ela é **maior** que a da página (`?v=` do `app.js`), aparece um aviso fixo, fora do fluxo (nada se move), acima da barra do feed: **"Nova versão disponível · Atualizar · ✕"**. "Atualizar" recarrega; ✕ dispensa aquela versão (uma ainda maior traz o aviso de volta). Só maior, nunca diferente: durante uma troca de nós um já está na versão nova e o outro na antiga, e a página pode cair no antigo. Versão ilegível (desenvolvimento) nunca avisa. Medição (POST vazio em `/api/v1/uso/`, como no M-015): `versao-aviso`, `versao-atualizar`, `versao-dispensar`. Teste novo `site/testes/aviso_versao.mjs` (sem servidor; 106 verificações de 320 a 1440 px: igual/menor/ilegível sem aviso, maior com aviso inteiro e sem corte, nada se mexe, CLS +0,0000, ✕ e versão maior, "Atualizar" recarrega, medição); `seletor_fonte.mjs` continua com 212 verificações ok. Só front (`dist/` refeito); não implantado: sobe junto com a próxima versão.
+
+## [0.9.25] — 2026-10-25
+
+- **Página: seletor de fonte dos números que o usuário percebe e entende (M-015; Luciano, 25/10: "o pessoal não está percebendo que tem um botão para selecionar a origem dos dados").** Só no front (`site/src/`, `site/dist/` refeito), pensando no celular e **sem nada pular**: a linha das fontes tem altura fixa (117 px empilhada até 1199 px; 79 px com o texto ao lado do controle de 1200 px para cima) e cada texto cabe numa linha, sem reticência, de 320 a 1440 px. (1) Rótulo **"De onde vêm os números"** com o botão ⓘ. (2) Nomes **Urna Velox · Comparar · TSE oficial** (o do meio era "Ambos"; a chave interna e o `?comparar=ambos` continuam). (3) Frase de uma linha que muda com o modo: "Boletins somados assim que o TSE os publica", "Lado a lado: veja quem está à frente", "Só o arquivo oficial do TSE (≈ 1 min)". (4) **TSE ainda sem totais**: em vez do "arquivo do TSE das 19:19 · há 10 h" com zeros (que parecia defeito), "O TSE ainda não começou a totalizar" e a frase "Sem totais no TSE ainda; só o Urna Velox". (5) O ⓘ abre a folha com a explicação das três fontes e das 17h e **um botão por fonte** (escolhe e fecha). (6) **Dica da primeira visita**: sombra no controle e a frase "Toque em Comparar para conferir com o TSE" por 6 s, uma vez por navegador (`localStorage`); só no modo padrão. (7) **Medição de uso** sem backend: `navigator.sendBeacon` de um POST vazio em `/api/v1/uso/fonte-uv|fonte-ambos|fonte-tse|fonte-info|fonte-dica` (o servidor responde 404; vale a linha no log de acesso do Caddy: `grep '"uri":"/api/v1/uso/' /var/log/caddy/urna-velox-acesso.log`), sem IP gravado além do que o Caddy já registra. Rótulo com contraste 6,4:1 no tema claro (era 3,2:1 com a cor mais fraca). Teste novo `site/testes/seletor_fonte.mjs` (sem servidor; 212 verificações: textos, estado sem totais, folha, dica, medição, nada se mexe ao trocar de modo, sem corte, sem rolagem horizontal, CLS depois do carregamento 0,0000, contraste no claro). **O CLS do carregamento nas telas largas (0,013 a 0,034, no topo e no rodapé) já existia na `main`** (medido com o mesmo teste: 0,0319 / 0,0139 / 0,0132); no celular é 0,0000. Outros testes do site: `antes_17h`, `modo_pagina`, `previsao_cartao`, `promo_letreiro`, `ritmo_pagina` e `topo_anuncie` passam; `visual_pagina` (56 falhas do B-037) e `playlist_pagina` (erro) falham **igual na `main`**. Sem mudança de código do motor, da coleta ou do servidor; a página é embutida no binário (o `dist/` vai no commit).
+
+## [0.9.24] — 2026-10-25
+
+- **`uv-servico`: município do exterior com BU é sondado inteiro a cada 20 s; janela do calendário de 30 min (B-059; Luciano, 25/10, 05h46: "estamos atrás do site concorrente").** Comparado município a município: Camberra, Sydney, Wellington e Seul iguais; **Nagoya 3 × 13**. Os BUs de Nagoya chegaram ~20 min antes do horário do 1º turno, fora da janela do B-057 (5 min), e ficaram a 300 s por seção. Agora, para **qualquer** município do exterior: (1) se já tem BU e ainda faltam seções, todas as dele são sondadas a cada 20 s, independente do calendário; (2) a janela "devida" abre 30 min antes do horário esperado. Sem mudar o teto (reforço de 8 req/s por nó, fila do Brasil vazia, 429 desliga o reforço). Teste: `servico::testes::exterior_municipio_quente_sondado_a_cada_20s` (antes: falha "B-059: município com BU não é sondado a cada 20 s", `(2, 300)` × `(0, 20)`; depois: ok no CI). Não mexe em totalização: sem conferência contra os oficiais. Implantação nos dois nós, um de cada vez.
+
+## [0.9.23] — 2026-10-25
+
+- **Registro do B-058** (Luciano, 25/10, 05h35): depois de um reinício do serviço a hora "Totalizado pelo Urna Velox às" fica zerada até um BU novo ser aplicado (resultados publicados com `ultimo_bu` e `totalizado_em` vazios, mesmo com 32 seções apuradas). Só o sintoma, em [docs/BUGS.md](docs/BUGS.md); a ordem de ataque é do Luciano. Sem mudança de código.
+
+## [0.9.22] — 2026-10-25
+
+- **`uv-servico`: exterior sondado pelo calendário do turno anterior, com reforço e contingência de 429 (B-057; Luciano, 25/10, 05h: site de terceiros pegava BUs do exterior antes).** A sondagem antecipada do B-056 pedia 2 req/s, cada seção a cada 300 s, na ordem do catálogo (volta de ~11 min). Agora o `cs.json` do 1º turno (`fontes/cs/zz-p<pleito-1>-cs.json`, ao lado do `candidatos.json`; sem ele, nada muda) diz quando cada seção costuma chegar: as "devidas" (de 5 min à frente a 2 h atrás) saem primeiro e a cada 20 s, as atrasadas (2–12 h) a cada 60 s, as futuras a cada 300 s. Reforço de 8 req/s por nó (cada órgão com o seu teto de 100 req/s) só na sondagem antecipada e com a fila de pedidos abaixo de 20: o exterior não toma requisições do Brasil às 17h. **Contingência:** depois de qualquer HTTP 429 o reforço acaba até reiniciar o serviço (volta a 2 req/s e 300 s) e sai o alerta `reforco_exterior_desligado`. No Brasil nada muda: com o `cs.json` listando as seções, elas são pedidas direto (a sondagem só cobre as que nunca ganham disponibilização). Teste: `servico::testes::exterior_sondado_pelo_calendario` (antes: falha "B-057: seção devida agora", `(2, 300)` × `(0, 20)`; depois: ok no CI). Não mexe em totalização: sem conferência contra os oficiais. Implantação nos nós um de cada vez, com o acordo do Luciano.
+
+## [0.9.21] — 2026-10-25
+
+- **`uv-servico`: o exterior (ZZ) é sondado antes do `cs.json` listar as seções (B-056; Luciano, 25/10, 03h: "no primeiro turno a zz já divulgava às 1h").** Em 25/10 o `aux.json` e o BU de Wellington estavam no ar desde 01:51 e o `zz-p003221-cs.json` ainda era o de 09/10 sem nenhuma disponibilização; o serviço não via nenhum BU do exterior. Agora, num domingo e enquanto o `cs.json` do ZZ (com `nsp`) não listar nenhuma seção, as seções do ZZ sem BU são sondadas já (até 2 req/s, cada seção a cada 300 s, primeiro as dos municípios com BU), sem esperar o primeiro BU; depois volta a regra de 16/10. UFs do Brasil não mudam. Teste: `servico::testes::exterior_sondado_antes_do_cs_json` (antes: falha "B-056: o exterior não é sondado antes do cs.json"; depois: ok). Suíte no CI do GitHub: urna-velox 28+4+1+7+4+6 e uv-aquisicao 105 ok. Não mexe em totalização: sem conferência contra os oficiais. Comentário do nome do BU em `tse.rs` corrigido. Implantação nos nós só com o acordo do Luciano.
+
+## [0.9.20] — 2026-10-24
+
+- **`--intervalo-cs` configurável pelo `no.env` e em 10 s na produção** (Luciano, 24/10, 22h22: "Baixe o
+  --intervalo-cs do uv-servico de 30 s para 10 s em produção (pleito 3221), antes da 01h"). O
+  `deploy/oci/servidor/uv-iniciar.sh` passa `--intervalo-cs "${INTERVALO_CS:-30}"` (padrão 30 s, o mesmo do binário);
+  o `10_implantar.sh` grava `INTERVALO_CS` no `no.env` (do `nos.env`, padrão 30; exemplo no `nos.env.exemplo`) e o
+  `30_verificar.sh` mostra os `--intervalo-cs`, `--intervalo-cs-ocioso`, `--rps` e `--tse-intervalo` da linha de
+  comando de cada nó. Nos dois nós, `INTERVALO_CS=10` no `/etc/urna-velox/no.env`. **Sem mudança** no
+  `--intervalo-cs-ocioso` (1 s), no `--rps` (95) nem no `--tse-intervalo` (padrões do binário). Os 100 req/s por
+  órgão continuam garantidos pelo código (o `--intervalo-cs` só encurta a espera entre ciclos de releitura com seções
+  chegando; o teto de requisições é o mesmo). O painel não edita a chave (fica fora de `EDITAVEIS`, como antes).
+- Teste: `deploy/oci/testes/test_uv_iniciar.sh` (novo; cópia do `uv-iniciar.sh` com os caminhos numa pasta temporária e
+  um `uv-servico` falso que imprime os argumentos) — **antes**: 4 falhas de 8 (sem `--intervalo-cs` na linha de
+  comando); **depois**: 8 ok (sem a chave → 30; `INTERVALO_CS=10` → 10, um só; vazia → 30; `EXTRA` continua por
+  último; sem `--intervalo-cs-ocioso` nem `--tse-intervalo`; `--rps` do `no.env`).
+- Implantação com os binários da 0.9.19 (`50_atualizar.sh --sem-compilar`: só os scripts mudaram; o
+  `/opt/urna-velox/VERSION` dos nós segue 0.9.19).
+- Nada mexe em totalização ou resultado: sem conferência contra os oficiais.
+
+## [0.9.19] — 2026-10-24
+
+- **Antes de começar:** o mesmo pedido tinha sido passado, sem querer, a outra IA. Ela deixou alterações **sem commit,
+  sem build e sem implantar** em `site/src/estilo.css`, `site/src/feed.js` e `site/src/index.html` (a produção seguia
+  na 0.9.18). Estavam incompletas: os termos iam para o fim da página, mas sem teste; e o "letreiro" só deixava o texto
+  do item da próxima eleição vazar (`overflow: visible`), sem rodar e sem o aviso das 01h. Descartadas
+  (`git checkout -- site/src`) e refeitas abaixo com testes; da ideia dela ficou a largura do item do letreiro
+  recalculada quando o texto muda (`feed.js`), agora também empurrando os itens que vêm depois.
+- **M-013 — termos de uso e privacidade no fim da página, centralizados** (Luciano, 24/10, 21h44: "Pode ficar sempre ao
+  fundo, não precisa ficar sempre visível. Atrapalha a visualização. Deixe para ser visível só quando o usuário rolar até
+  lá embaixo. E aí pode estar centralizado"). Já tinha subido para o celular na branch `merge/ws-autenticado` (M-009,
+  0.9.13); aqui vale para todas as larguras. A linha sai do `position: fixed` (à direita, acima do letreiro) e vai para
+  o fluxo, depois do painel, centralizada (`site/src/estilo.css`); o `padding-bottom` do body continua reservando o
+  letreiro e o player, então, rolada até o fim, a linha fica acima deles.
+- **M-014 — a próxima eleição ao vivo avisa dos BUs do exterior e roda como um letreiro quando não cabe** (Luciano,
+  24/10, 21h44: "quero que o texto da próxima eleição fique rodando igual um letreiro se necessário, mas é que quero
+  avisar que a partir da 01h da madruga já podem chegar BUs do exterior"):
+  - chip da faixa: "· BUs do exterior a partir da 01h" até a 01h do dia da eleição e "· BUs do exterior já podem
+    chegar" depois (até o primeiro BU, quando a noite passa a "ao vivo" e o chip dá lugar ao "Oficial às 17h"); só para
+    eleições gerais (`textoExterior` em `site/src/app.js`);
+  - o chip encolhe até o espaço que sobra na faixa (o BUs/min não encolhe; os avisos ainda ocultos cedem primeiro;
+    mínimo de 116 px, com o selo AO VIVO sempre inteiro e parado); se o texto não cabe, ele roda dentro de uma janela,
+    como um letreiro (cópia emendada atrás, ~40 px/s, só `transform`, pontas esmaecidas, algarismos de largura fixa para
+    a contagem não mexer no passo); se cabe, fica parado; com "reduzir movimento" no sistema, não anda;
+  - o mesmo aviso no item do letreiro do rodapé e no título do chip; o aviso que o chip abre ganha a linha "Exterior"
+    (a partir da 01h o TSE já pode publicar os BUs do exterior, o Urna Velox totaliza cada um assim que sai, a oficial
+    começa às 17h).
+- Testes:
+  - `site/testes/termos.mjs` reescrito para o pedido (com o conteúdo esticado para a página rolar: no alto, os termos
+    fora da tela; rolada até o fim, à vista, centralizados na área útil, sem cobrir o letreiro nem o player) —
+    **antes**: falha nos dois pontos novos a 1366 px (y 674 de 768 no alto; centro em 1019, à direita); **depois**: 0
+    falhas (114 ok). O centro é o da área útil: o `html` tem `scrollbar-gutter: stable`, então a 1366 px o centro é 676.
+  - `site/testes/promo_letreiro.mjs` (novo; 1920, 1366, 1024, 390, 360 e 320 px, antes e depois da 01h, e com "reduzir
+    movimento") — **antes**, no `dist` da 0.9.18: 48 falhas (sem o aviso no chip, no letreiro e no aviso aberto, e sem
+    janela de letreiro); no meio do caminho, 6 falhas no celular (o chip de pausa, invisível mas com 260 px guardados,
+    deixou de ceder espaço e o chip da eleição ficou com 13 px), corrigidas com os avisos ocultos cedendo primeiro e o
+    mínimo de 116 px; **depois**: 0 falhas — parado a 1920 e 1366, rodando a 1024, 390, 360 e 320.
+  - Suíte da página (sem servidor): `topo_anuncie`, `modo_pagina`, `antes_17h`, `painel_celular`, `relogio`,
+    `ws_recusado`, `ritmo_pagina`, `previsao_cartao` verdes; `visual_pagina` com as mesmas 56 falhas do B-037 de
+    antes, nenhuma nova.
+- Nada mexe em totalização ou resultado: sem conferência contra os oficiais.
+
+## [0.9.18] — 2026-10-24
+
+- **M-011 — "Anuncie Aqui" ocupa todo o espaço horizontal que sobra no topo** (Luciano, 24/10, 20h59). Com o selo
+  escondido (`.topo:has(> #conexao[hidden])`), a grade do topo passa a `auto minmax(0, max-content) minmax(140px, 1fr)
+  auto` no computador (a navegação fica do tamanho do conteúdo e o chip estica até o botão do tema) e `auto
+  minmax(0, 1fr) auto` no celular (da marca ao tema; a navegação continua na 2ª linha). Com o selo de volta, vale a
+  grade de sempre. Medido no teste: 1.638 px a 1920, 1.084 px a 1366, 177 px a 390, 147 px a 360 e 128 px a 320, com
+  só o espaçamento da grade (14 px; 10 px a 320) dos dois lados.
+- **M-012 — o aviso "Próxima eleição AO VIVO" sem o link "▶ Playlist"** enquanto o selo estiver escondido (Luciano,
+  24/10, 21h00: "SIM"): vale para o aviso que abre sozinho na primeira visita do dia, para o toque na contagem da faixa
+  e para o item do letreiro (`detalheAviso` em `site/src/app.js` olha o `hidden` do `#conexao`: tirar o `hidden` traz o
+  selo e o link de volta juntos).
+- Testes: `site/testes/topo_anuncie.mjs` ganha "ocupa o espaço que sobra no topo" (folga até 16 px dos dois lados; o
+  fim da navegação medido pelo conteúdo) e o aviso sem a playlist (sozinho na primeira visita e pelo toque na contagem,
+  1366 e 390 px) — **antes**, no `dist` da 0.9.17: 14 falhas (10 do espaço — o chip com 99 a 135 px e até 1.517 px de
+  folga — e 4 da playlist); **depois**: 0. `modo_pagina`: com o selo escondido, confere que o aviso **não** leva à
+  playlist. Suíte da página (sem servidor): `modo_pagina`, `antes_17h`, `termos`, `painel_celular`, `relogio`,
+  `ws_recusado`, `ritmo_pagina`, `previsao_cartao` verdes; `visual_pagina` com as mesmas 56 falhas do B-037 de antes,
+  nenhuma nova (as 12 larguras de 360 a 1920 px cobrem o topo novo).
+- Nada mexe em totalização ou resultado: sem conferência contra os oficiais.
+
+## [0.9.17] — 2026-10-24
+
+- **Numeração:** feita na `main` (0.9.7) e numerada 0.9.17 de propósito (`versao.sh definir`), porque a branch
+  `merge/ws-autenticado` já usou da 0.9.8 à 0.9.16 (o VIP que não foi para a produção e os registros de operação de
+  24/10). Prioridade da noite, nas palavras do Luciano (24/10, 20h24): "O objetivo agora é priorizar a totalização".
+- **M-010 — aviso "destinação dos votos presumida 'Válido'" fora da página** (Luciano, 24/10, 20h24: "vamos remover,
+  temporariamente esse chip. Coloca como melhoria a gente pensar numa forma de apresentar ele e deixar poucas
+  dúvidas"). Só a página (`site/src/app.js`): o alerta `destinacao_presumida` continua no `/api/v1/estado`, no
+  `alertas.csv` e no `30_verificar.sh`; os outros avisos da faixa ("seções esperadas incoerentes", "BU reenviado ou
+  seção anulada") continuam. A forma de apresentá-lo fica registrada como melhoria em `docs/BUGS.md`.
+- **M-011 — chip "Anuncie Aqui" no alto da página**, em âmbar (o mesmo do selo REPLAY), na coluna que era do selo, com
+  link só para `mailto:urna.velox@proton.me` (`site/src/index.html`, `site/src/estilo.css`).
+- **M-012 — selo "EM BREVE" / Playlist escondido** até o fim da totalização do 2º turno (atributo `hidden` no
+  `#conexao`; o `app.js` continua atualizando o selo, só não aparece). Para voltar: tirar o `hidden`.
+- **Cache do `dados.urnavelox.com.br` de volta a 30 s** (Luciano, 24/10, 20h30: "podemos voltar as configurações do
+  cloudflare para 30 s de cache"): `header_down Cache-Control "public, max-age=30, s-maxage=30"` no
+  `Caddyfile.template` (era 120/150 desde a 0.8.48); a Cache Rule `dados-api` da Cloudflare respeita a origem, então
+  nada muda lá. Implantado direto no `/etc/caddy/Caddyfile` dos dois nós (só essa linha, sem regerar o resto: o Caddy
+  instalado ainda tem as rotas do VIP da 0.9.12), B e depois A, com cópia em `/etc/caddy/Caddyfile.20261024-cache150`.
+  O Caddy dos nós roda sem a API de admin: `systemctl reload caddy` falha ("connection refused" na 2019) e deixa o
+  processo com a config antiga; só o `restart` aplica (como o `instalar_caddy.sh`). Conferido: `caddy validate` ok,
+  Caddy ativo, `https://urnavelox.com.br/api/v1/estado` 200 em cada nó e a Cloudflare devolvendo
+  `public, max-age=30, s-maxage=30`.
+- Testes: `site/testes/topo_anuncie.mjs` (novo; 1920, 1366, 390, 360 e 320 px, temas claro e escuro: chip à vista,
+  inteiro, na primeira linha do topo, entre a marca e o tema, âmbar, link só com o e-mail; selo escondido; sem o aviso
+  da destinação; o aviso de seção anulada continua; sem rolagem horizontal) — **antes**, no `dist` da 0.9.7: falha
+  (`#anuncie` não existe); **depois**: 0 falhas. `deploy/oci/testes/test_caddyfile.py`
+  (`test_dados_so_le_resultado_e_estado_com_cache_de_30s`): falha antes (o template tinha 120/150), passa depois;
+  `deploy/oci/testes` 53 ok. Suíte da página (sem servidor): \modo_pagina\ (com as conferências do selo à vista e do toque no selo puladas enquanto o \#conexao\ tiver \hidden\, M-012; antes do ajuste, 12 falhas só nelas), \ntes_17h\, \	ermos\, \painel_celular\, \
+elogio\, \hodometro\, \ws_recusado\, \
+itmo_pagina\, \previsao_cartao\, \preposicoes\ verdes; \isual_pagina\ com as mesmas 56 falhas do B-037 (pílula dos termos) que a 0.9.7 já tinha, nenhuma nova (\identificacao\ e \playlist_pagina\ pedem servidor real e não rodaram).
+- Nada mexe em totalização ou resultado (só a página e o cache da borda): sem conferência contra os oficiais.
+
+## [0.9.7] — 2026-10-24
+
+- **B-055: eleitorado do 3221 desatualizado no `candidatos.json`** (visto pelo Luciano em 24/10, 13h17: "eleitores que
+  faltam" 157.563.461 no Urna Velox × eleitorado apto 158.745.502 no TSE, Brasil, Presidente). O TSE publicou os
+  `-u.json` pré-apuração do 2º turno aos poucos (o TO entrou só em 15/10, `te` 1.182.041), e o `uv-coletor preparar
+  --atualizar` só baixava de novo o `ele-c.json` e os `cs.json`: o `candidatos.json` de 18/10 nos nós tinha os
+  `-u.json` de 13/10. Também estavam desatualizados o eleitorado e as seções de 11 abrangências de Presidente por UF, a
+  circunscrição de Governador do ES (2.538.949 × 2.987.603) e os candidatos da suplementar de TO 95338.
+  - **Correção operacional** (antes do código): preparo regerado com os `-u.json` baixados de novo
+    (`~/uvreal/2026-2t/preparo-20261024`, 74 requisições a ≤ 5 req/s, código 0, 517.179 seções), Brasil 158.745.502 e
+    TO 1.182.041 conferidos com o TSE, arquivo enviado aos nós A e B (`/srv/urna-velox/preparo/candidatos.json`; o
+    anterior em `candidatos.json.20261018`) e 3221 reiniciado com `63_ciclo.sh --reiniciar` (13h40). Pelo domínio,
+    `/api/v1/resultado/br-c0001` com `"eleitorado":158745502`.
+  - `preparo.rs`: `--atualizar` baixa de novo todas as fontes (`ele-c.json`, `cm.json`, `-u.json`, `cs.json`).
+  - Alerta novo `eleitorado_divergente` (`tse_resultados.rs`, `servico.rs`): o `e.te` do `-u.json` que a comparação com
+    o TSE já baixou é conferido com o eleitorado do `candidatos.json` do tópico; um alerta por tópico, sem requisição a
+    mais.
+  - Testes: `preparo::testes::atualizar_baixa_de_novo_os_u_json` (vermelho na 0.9.6: `left: (1000, 0)`, `right: (1700,
+    700)`; verde na 0.9.7) e `tse_resultados::testes::eleitorado_divergente_alerta_uma_vez_por_topico`. Suíte do
+    workspace (`cargo test --release --workspace`) toda verde (uv-aquisicao 104, motor 28 + integrações). Não rodados
+    os `--ignored` nem as conferências com os oficiais: a mudança não mexe em totalização nem em resultado (catálogo de
+    entrada e alerta). Binários dos nós continuam na 0.9.5; o alerta só vale depois de implantar a 0.9.7.
+
+## [0.9.6] — 2026-10-24
+
+- **0.9.5 implantada nos nós, um de cada vez** (pedido do Luciano, 24/10, com a vitrine do 3221 no ar e a playlist
+  na suspensão da eleição oficial): `compilar_local_arm64.sh` e, nó a nó, a troca dos binários (o passo do
+  `63_ciclo.sh --binarios`, só no nó da vez) seguida de `63_ciclo.sh --reiniciar` do mesmo nó: B às 13:17:51 e,
+  conferido o B, A às 13:21:05 (retomada do 3221 em 0,2 s, 0 BUs, 0 perdidos, 0 órfãos; só o alerta já conhecido
+  `destinacao_presumida`). Nos dois, `uv-ciclo-no`, `uv-ciclo-tel`, `uv-ciclo-vigia` e `caddy` ativos, sem reinício
+  extra; no `uv-servico` local (8080) `/`, `/api/v1/estado` (`versao` 0.9.5), `/privacidade`, `/termos`, `/robots.txt`
+  e `/sitemap.xml` com HTTP 200 e o link "Privacidade" na página; a playlist do nó A (8090) com 200. Pelo domínio,
+  `urnavelox.com.br` `/`, `/privacidade` e `/termos` com 200 (o `/privacidade` dava 404 enquanto só o B estava na
+  0.9.5) e `dados.urnavelox.com.br/api/v1/estado` com 200 e `versao` 0.9.5. Nada mexe em totalização.
+
+## [0.9.5] — 2026-10-24
+
+- **Merge do branch `claude/politica-privacidade` (0.9.4 a 0.9.6 do branch, saídos da 0.9.3) na `main`.** Entram a
+  página de privacidade, acesso e retenção de dados (`/privacidade`), os termos de uso e a licença no próprio site
+  (`/termos`), as duas geradas no `npm run build` a partir de `docs/PRIVACIDADE.md`, `docs/LICENCIAMENTO.md`,
+  `LICENCA.pt-BR.md` e `LICENSE` (`site/documentos.mjs`, molde `site/src/documento.html`), o link "Privacidade" no
+  rodapé junto da licença e as rotas `GET /privacidade` e `GET /termos` no `uv-servico`. Só a versão conflitou:
+  `VERSION`, manifestos e lockfiles ficam com a da `main`; as entradas do branch ficam abaixo como histórico (a `main`
+  já tem outra 0.9.4 e a 0.9.5 é esta). `site/dist/` regenerado com `npm run build`.
+- Testes fumaça depois do merge (WSL do Luciano, 24/10, pedido dele: sem a suíte exaustiva): `cargo build --release
+  --workspace` sem erro nem aviso; `cargo test --release -p uv-aquisicao pagina` 4/4 (`termos_e_privacidade_no_site`,
+  `tabela_fixa` e os demais); `site/testes/termos.mjs` tudo certo. Não rodados: o resto da suíte, os `--ignored` e as
+  conferências com os oficiais (o merge não mexe em totalização nem em resultado).
+
+#### Histórico do branch `claude/politica-privacidade`
+
+### 0.9.6 do branch `claude/politica-privacidade` (2026-10-24)
+
+- **Termos de uso e licença no próprio site** (`/termos`), sem depender do GitHub para o visitante conhecer as regras.
+  A página traz o `docs/LICENCIAMENTO.md`, a tradução `LICENCA.pt-BR.md` e o texto oficial do `LICENSE` (com as linhas
+  `Required Notice:` como estão nos arquivos). O link "Termos de uso" do rodapé e o `<link rel="license">` da página da
+  apuração apontam para `/termos` (antes, para a cópia pública no GitHub).
+- **Fonte única:** `/termos` e `/privacidade` são geradas no `npm run build` a partir dos arquivos do repositório
+  (`site/documentos.mjs`, conversor de Markdown mínimo, e o molde `site/src/documento.html`); a `privacidade.html`
+  escrita à mão saiu, e `privacidade.{css,js}` viraram `documento.{css,js}`. Links entre os documentos viram links
+  internos (`/termos#licenca-pt`, âncoras da licença com prefixo); endereços externos ficam só como texto.
+- `docs/PRIVACIDADE.md`: contato de dúvidas e pedidos passa a ser o e-mail do titular (o mesmo da licença) em vez dos
+  chamados no GitHub. Rota `GET /termos` no `uv-servico` (`aquisicao/src/difusao.rs`, `aquisicao/src/pagina.rs`);
+  `/termos` no `sitemap.xml` e no `robots.txt`. Ajuste de quebra de linha nas páginas de texto (a URL da PolyForm
+  alargava a página a 390 px).
+- Testes: `pagina::testes::termos_e_privacidade_no_site` (substitui o `pagina_de_privacidade`: molde preenchido,
+  nenhum link nem recurso externo, licença integral nas duas línguas com as âncoras internas, mesmo texto dos arquivos
+  do repositório, sitemap e robots) e `tabela_fixa` (a página da apuração não cita mais o GitHub) ok, 4 testes de
+  `pagina`; `site/testes/termos.mjs` 90 conferências, tudo certo; `/termos` e `/privacidade` sem rolagem horizontal a
+  390 e 1366 px. Não mexe em totalização nem em resultado.
+
+### 0.9.5 do branch `claude/politica-privacidade` (2026-10-24)
+
+- **Privacidade no rodapé, discreta como a licença, e documento irmão no repositório.** O link "Privacidade" deixa de
+  ser uma caixa própria e entra na mesma linha e na mesma caixa da licença (`© Urna Velox · … · Termos de uso ·
+  Privacidade`; `.termos-caixa` em `site/src/estilo.css`, `site/src/index.html`). A política ganha o texto no
+  repositório em `docs/PRIVACIDADE.md`, ao lado do `docs/LICENCIAMENTO.md` (que agora cita o irmão), citada no
+  `README.md` junto da licença e na própria página `/privacidade`.
+- Testes: `pagina::testes::pagina_de_privacidade` confere também que o `docs/PRIVACIDADE.md` traz os mesmos
+  compromissos, preferências e data da página (4 testes de `pagina` ok); `site/testes/termos.mjs` 90 conferências, tudo
+  certo (desktop e celular, dois temas, com e sem replay). Não mexe em totalização nem em resultado.
+
+### 0.9.4 do branch `claude/politica-privacidade` (2026-10-24)
+
+- **Página de privacidade, acesso e retenção de dados** (`/privacidade`): a parte
+  burocrática do site numa página só, servida pelo `uv-servico` (`site/src/privacidade.{html,css,js}`, embutidos em
+  `aquisicao/src/pagina.rs`; rota em `aquisicao/src/difusao.rs`). Diz que o Urna Velox faz o mínimo: sem cadastro,
+  cookies, anúncios ou rastreadores; não vende, não aluga e não compartilha informação pessoal dos visitantes; o que é
+  registrado serve só para a experiência do usuário e para melhorar a plataforma. Tabela do que é registrado, para quê
+  e por quanto tempo: preferências no `localStorage` (`uv-tema`, `uv-comparar`, `uv-ident`, `uv-aviso-dia`; nunca saem
+  do navegador), log de acesso do Caddy (rotação por tamanho), voto da playlist (IP só como hash com sal, apagado quando
+  o replay entra no ar ou o voto é retirado) e números agregados de operação. Política de acesso, compartilhamento
+  (provedores de hospedagem e da CDN do subdomínio de dados só transportam o tráfego), direitos pela LGPD, segurança e
+  mudanças. Link "Privacidade" ao lado dos termos de uso, na página da apuração; `/privacidade` no `sitemap.xml` e no
+  `robots.txt`.
+- Testes: `pagina::testes::pagina_de_privacidade` (novo: versão preenchida, estáticos na tabela, compromissos e
+  preferências descritos, nada externo além dos links para a cópia pública, link na apuração, sitemap e robots) e os
+  demais de `pagina` ok; `site/testes/termos.mjs` passa a conferir também o link "Privacidade" (90 conferências, tudo
+  certo, Chromium do ambiente). Não mexe em totalização nem em resultado (sem conferência com os oficiais).
+
+## [0.9.4] — 2026-10-24
+
+- **0.9.3 implantada nos nós, um de cada vez** (pedido do Luciano, 23/10, durante o replay do 452 em tempo real):
+  `compilar_local_arm64.sh` e, nó a nó, a troca dos binários (o passo do `63_ciclo.sh --binarios`) seguida de
+  `63_ciclo.sh --reiniciar` do mesmo nó: B às 20:24 (de volta às 20:25:57; retomada de 471.791 BUs do diário em 96 s,
+  0 perdidos, 0 órfãos) e, conferido o B (`uv-servico 0.9.3`, `/` e `/api/v1/estado` com HTTP 200, a página servida já
+  com o "por volta de" e a regra única do relógio), A às 20:28:56 (retomada de 472.797 BUs em 56 s, 0 perdidos). Os dois
+  terminaram o 452 com os 478.026 BUs e às 23:01 passaram, pela rotação, à vitrine do 2º turno (3221, espera). A
+  conexão local com a API da OCI caiu durante o acompanhamento do reinício do A; o reinício não foi repetido.
+- **Saúde dos nós em 24/10, 12h** (só leitura): `63_ciclo.sh --estado` com os nós sincronizados em
+  `20261023-2300-3221-espera`; nos dois, `uv-servico 0.9.3`, `uv-ciclo-no`, `uv-ciclo-tel`, `uv-ciclo-vigia` e `caddy`
+  ativos, sem reinício do serviço desde as 23:01, fila 0, RSS ~48 MB, carga ~0, disco livre 54 GB (A) e 77 GB (B); nas
+  últimas 24 h só o alerta já conhecido `destinacao_presumida` (1, na partida do 3221). Pelo endereço público de cada
+  nó, `/`, `/api/v1/estado` (`versao` 0.9.3), `/playlist`, `/api/v1/playlist` e `/static/app.js?v=0.9.3` com HTTP 200;
+  `urnavelox.com.br` e `dados.urnavelox.com.br` com 200. A playlist está na suspensão da eleição oficial (24/10 00:00
+  a 29/10 00:00): nenhum simulado novo, a vitrine do 3221 fica no ar; o vigia registra a cada 5 min "hora fechada
+  atingida … consultando a playlist" e mantém a suspensão, como previsto. Nada mexe em totalização.
+
+## [0.9.3] — 2026-10-23
+
+- **Merge do branch `claude/bugs-previsao-ritmo` (0.8.48 e 0.8.49 do branch, saídos da 0.8.47) na `main`; bugs
+  renumerados.** O branch registrou e corrigiu B-029, B-030 e B-031, números que na `main` já eram dos bugs visuais da
+  revisão de 22/10; aqui viraram **B-052** (antigo B-029: previsão sempre "em horário ainda incerto"; `eta`, o horário
+  pelo ritmo atual, em `motor/src/previsao.rs` e `aquisicao/src/previsao.rs`, e "por volta de hh:mm" em
+  `site/src/previsao.js`), **B-053** (antigo B-030: chip de ritmo com 200–300 mil BUs/min; ritmo medido no relógio do
+  serviço, `site/src/app.js`) e **B-054** (antigo B-031: relógio "00:00:0" cortado no cartão da previsão), em
+  `docs/BUGS.md` (tabela, ordem de ataque e seções), nos comentários do código e dos testes, em `docs/PROTOCOLO_WS.md`,
+  no `site/README.md` e nas capturas (`docs/bugs/B-052-previsao-{1,2}.jpg`). Os B-029 a B-031 da `main` não mudam. As
+  entradas 0.8.48 e 0.8.49 do branch ficam abaixo como histórico (a `main` já tem outras 0.8.48 e 0.8.49), com os
+  números novos. Versões e manifestos ficam com a da `main`; `site/README.md` junta os testes dos dois lados.
+- **Cartão da previsão, uma regra só para o relógio "mais provável"** (`site/src/estilo.css`): o B-044 da `main`
+  (largura do molde, `min-width: 88px`) e o antigo B-031 do branch (`.pv-hod.seg` com `width: 100px`) resolviam o
+  mesmo "hh:mm:ss" passando da borda. Fica a largura do B-044; `.seg` só reduz a fonte para 21 px com segundos e
+  `.vazio` esconde o relógio sem horário (B-054). `site/dist/` regenerado com `npm run build`.
+- Testes depois do merge (WSL do Luciano, 23/10): `aquisicao/scripts/compilar_dev.sh` (build e `cargo test --release
+  --workspace`) sem falha, com o `uv-aquisicao` em 101 testes (os 100 da `main` e o
+  `previsao::testes::previsao_sempre_com_horario`); `--ignored` com dados reais `previsao_acompanha_servico_atrasado`
+  (1.114 previsões de ac-c0003) e `horarios_do_sistema_no_simulado` ok. Site sem servidor, com o `dist/` regenerado:
+  `previsao_cartao` (B-052/B-054) e `ritmo_pagina` (B-053) tudo ok; `visual_pagina` 1260 conferências, 0 falha (B-044
+  com a regra única do relógio); `hodometro`, `relogio`, `termos`, `preposicoes`, `ws_recusado`, `modo_pagina`,
+  `painel_celular`, `playlist_identidade`, `cores` e `cores_distancia` ok; `antes_17h` com 1 falha na primeira rodada
+  (390 px, "o letreiro não anuncia a próxima eleição AO VIVO", rodando junto do `visual_pagina`) e tudo certo nas 3
+  rodadas seguintes, sozinho. Com `uv-servico` e `uv-simulador` locais (replay do 3220 a 500×, `ensaio_carga_pagina.sh`;
+  nada do TSE): `previsao_pagina` ok (153 mensagens `previsao`, 40 redesenhos, maior trecho parado 1 s; o cartão mostra
+  "sai por volta de 19:12:37" e depois "entre 19:12:35 e 19:12:41") e `horarios_pagina` ok (CLS ≤ 0,006); evidências em
+  `D:\dados\urna-velox\ensaios\20261023-1914-integra-{previsao,horarios}`. Não rodados: `curva_sem_salto_no_modo_rapido`
+  (interrompido por tempo; a curva não muda aqui) e as conferências com os oficiais (o merge não mexe em totalização nem
+  em resultado: só previsão, ritmo e página).
+
+#### Histórico do branch (renumerado: B-052 = antigo B-029, B-053 = antigo B-030, B-054 = antigo B-031)
+
+### 0.8.49 do branch `claude/bugs-previsao-ritmo` (2026-10-22)
+
+- **Bugs B-053, B-052 e B-054 corrigidos** (ordem de 22/10 aprovada pelo Luciano; testes, saídas antes/depois e
+  causas em `docs/BUGS.md`):
+  - **B-053 — chip de ritmo com 200–300 mil BUs/min:** o ritmo era medido no relógio da página; depois de uma pausa
+    sem mensagens (celular em segundo plano, WebSocket reconectando) o salto do `seq` era dividido por poucos segundos.
+    Agora vem do `estado`: BUs aplicados e relógio do serviço da mesma mensagem, janela de 60 s no relógio do serviço,
+    série refeita numa sessão nova do replay (`site/src/app.js`). Teste `site/testes/ritmo_pagina.mjs`: antes 152.234
+    BUs/min depois de 90 s de pausa (serviço a 42.000) e o chip preso em 0 num replay que recomeça; depois 42.000.
+  - **B-052 — previsão sempre "em horário ainda incerto":** toda faixa da previsão ganha o `eta`, o horário **pelo ritmo
+    atual** (o que falta ÷ a velocidade média móvel, como o ETA de um navegador de trânsito), recalculado a cada
+    rodada e presente sempre que há ritmo, também no modo rápido (`motor/src/previsao.rs`, mensagem `previsao` em
+    `aquisicao/src/previsao.rs`, `docs/PROTOCOLO_WS.md` §4.7). O cartão mostra "por volta de 10:12:30" e esse horário
+    no relógio "mais provável" quando a faixa P10–P90 é larga demais; com a faixa estreita, "entre … e …" como antes.
+    Testes `aquisicao/src/previsao.rs::previsao_sempre_com_horario` e `site/testes/previsao_cartao.mjs`.
+  - **B-054 — relógio "00:00:0" cortado:** sem horário nenhum o relógio "mais provável" some (nada de 00:00:00
+    esmaecido); com segundos (simulado acelerado) ele cabe no cartão (21 px em 100 px). Teste
+    `site/testes/previsao_cartao.mjs` (dígitos dentro da área útil do cartão a 390 e 1366 px).
+- Testes: `cargo test --release --workspace` verde; da página, `ritmo_pagina`, `previsao_cartao`, `modo_pagina`,
+  `ws_recusado`, `hodometro` e `relogio` ok; clippy sem aviso novo. **Não rodados** (sessão sem `UV_DADOS` nem
+  servidor): os `--ignored` com dados reais e os testes da página que precisam do `uv-servico`. Não mexe em
+  totalização nem em resultado (só a previsão e a página): sem conferência com os oficiais.
+
+### 0.8.48 do branch `claude/bugs-previsao-ritmo` (2026-10-22)
+
+- **Bugs registrados (só o sintoma, sem análise até a ordem de ataque):**
+  - **B-052** (Luciano): no card "Previsão" (replay do 1º turno de 2026, celular), o horário do matematicamente e o
+    do fim da apuração ficam constantemente "em horário ainda incerto". Pedido junto: sempre dar uma previsão, ainda
+    que imprecisa, reajustada continuamente (como o ETA do Waze), inclusive no modo muito rápido. Capturas em
+    `docs/bugs/B-052-previsao-{1,2}.jpg`.
+  - **B-053** (Luciano): o chip de ritmo chega a 200–300 mil BUs por minuto, claramente irreal.
+  - **B-054** (Claude, nas capturas do B-052): relógio "00:00:0" com "mais provável" ao lado de "em horário ainda
+    incerto", cortado na borda direita do card no iPhone.
+- Não mexe em código, totalização nem resultado.
+
+## [0.9.2] — 2026-10-23
+
+- **B-051 corrigido: o fim da apuração não depende mais do `s.ts` pré-apuração** (pedido do Luciano: automático, sem
+  regerar o `candidatos.json`). O `s.ts` do 3221 nos nós está desatualizado (Brasil 494.864 e SP 33.403, contra 499.248
+  e 103.904 no catálogo), e o fim usava esse número: a apuração podia encerrar cedo e reabrir a cada BU. Agora o esperado
+  de cada abrangência é o total de seções do catálogo (listadas no `cs.json` menos as agregadas, o mesmo número da
+  página), com o `s.ts` só como piso; as agregadas descobertas na noite (no `cs.json` lido durante a apuração ou
+  sondadas sem `aux.json`) saem do total. Base: esse total é igual ao `s.ts` oficial final em todas as abrangências de
+  2026 1º turno (83/83) e 2024 (51/51 e 5.574/5.574). O alerta `secoes_esperadas_incoerentes` fica só para `s.ts` acima
+  do catálogo; `s.ts` abaixo vira o registro `sts_desatualizado`. Teste novo
+  `servico::sts_desatualizado_nao_encerra_cedo` (2º turno de 2024, AM e RO, `s.ts` cortado para 30 %): antes,
+  primeiro encerramento com 1.807 de 5.102 BUs, 10 reaberturas e parada com 5.086; depois, um encerramento com os
+  5.102 e conferência 2/2. Detalhes em `docs/BUGS.md`; `docs/OPERACAO.md` (alertas) e `ARCHITECTURE.md` atualizados.
+  Verificação no WSL do Luciano (mexe no fim da apuração; código idêntico ao do commit): `cargo test --release
+  --workspace` ok; conferências do motor contra os oficiais (`--ignored`) 14/14; ensaios do serviço (`--test servico
+  --ignored`) 17/17, com o novo; federação 6/6. Replays completos a 300×, sem filtro de UF: 1º turno de 2026
+  (3220) com um encerramento só, nos 499.207 BUs (+ 41 não instaladas), sem reabertura, conferência 83/83; 1º turno de
+  2024 (452, como no ciclo diário: recebimento no TSE e corte às 2h) com um encerramento nos 478.026 BUs, sem
+  reabertura, 5.569/5.569 abrangências completas, conferência 5.542/5.574 com os votos idênticos e as mesmas 33
+  situações de sempre (32 municípios com candidatos cassados, destinação presumida).
+
+## [0.9.1] — 2026-10-23
+
+- **0.9.0 implantada nos nós** (pedido do Luciano, 23/10, durante a vitrine do 3221, antes do 452 das 17h):
+  `compilar_local_arm64.sh` e `63_ciclo.sh --binarios` nos dois; `--reiniciar B` (16:30) e, com o B de volta,
+  `--reiniciar A` (16:31); `63_ciclo.sh --playlist` (playlist com a identidade da apuração, B-048; no A o Caddy recusou
+  o *reload* e foi reiniciado). Conferido: os dois nós com o `uv-servico 0.9.0`, a página pública na 0.9.0, `/`,
+  `/api/v1/estado`, `/playlist` e `/api/v1/playlist` com HTTP 200, nós sincronizados. Nada mexe em totalização.
+- **Sobras do teste de estresse da borda (21/10) fora do clone:** `scripts/restaurar_cloudflare.ps1` (uso único, com o
+  ID da regra e o caminho do cliente particular) e `work/` (corpos das chamadas à API) arquivados em
+  `D:\dados\urna-velox\ensaios\2026-10-21-estresse-borda`. Conferido na Cloudflare (só GET): `security_level` em
+  `medium` desde 22/10 15:16 e nenhuma regra de acesso por IP na zona. A entrada 0.8.48, que listava o script como
+  adicionado, foi corrigida.
+- Alerta já conhecido e anterior a esta versão, visto nos reinícios: `secoes_esperadas_incoerentes` no
+  `candidatos.json` do 3221 (`s.ts` pré-apuração parcial em várias UFs); regerar o `candidatos.json` perto da eleição.
+
+## [0.9.0] — 2026-10-23
+
+- **Etapa 9 (ensaio geral) fechada como `0.9.0` por decisão do Luciano (23/10)**, depois da revisão do replay do 1º
+  turno de 2026 a 1× com a 0.8.59 (bugs visuais B-029 a B-045, B-047 e B-048, e o piso das 17h nos replays B-049/B-050).
+  O conteúdo é o da 0.8.59, sem mudança de código. O critério do ROADMAP ("dois ensaios completos seguidos sem
+  intervenção") não foi medido nesta versão, e continuam abertos os itens ⬜ da etapa 9 (critério A da federação,
+  falhas provocadas, runbook, cobertura, atraso disponibilização → BU aplicado). Os testes `--ignored` com dados reais
+  (conferência com os oficiais) não rodaram sobre esta versão; nada mexe em totalização desde a última conferência.
+
+## [0.8.59] — 2026-10-23
+
+- **Merge do `main` (0.8.48, cache da borda em 120–150 s e 7.500 clientes/nó) no branch `claude/bugs-revisao-visual`.**
+  As duas linhas usavam a 0.8.48: as entradas do branch foram renumeradas para 0.8.49–0.8.58 (aqui e nas referências
+  de `docs/BUGS.md` e `docs/OPERACAO.md`); a 0.8.48 do `main` fica como está. Código sem conflito (só versões e
+  CHANGELOG). Testes depois do merge: `cargo test --release -p urna-velox` ok (50; 14 `--ignored` não rodados, sem
+  `~/uvreal` nesta máquina); `cargo test -p uv-aquisicao --lib` 100 ok (inclui `simulador::testes::piso_das_17h` e
+  `pagina`); `npm run build` com `site/dist/` idêntico ao commitado; site sem servidor: `hodometro`, `relogio`,
+  `termos`, `preposicoes`, `ws_recusado`, `modo_pagina`, `painel_celular`, `playlist_identidade`, `antes_17h` tudo
+  certo e `visual_pagina` 1260 conferências, 0 falha; `deploy/oci/testes` 53 ok (3 pulados). Pendentes, no WSL do
+  Luciano: os `--ignored` (conferência com os oficiais) e o replay curto do 3220 com o piso das 17h.
+
+## [0.8.58] — 2026-10-23
+
+- **Replays: os BUs que saíram antes das 17h entram juntos às 17h** (B-049; decisão do Luciano: a madrugada em tempo
+  real seria monótona). `uv-simulador --piso` (padrão `17:00:00` no dia da eleição; `""` desliga) e
+  `simulador::com_piso`: seção publicada (`cs.json`) ou com horário antes do piso entra no piso. No 3220, os 781 BUs do
+  exterior publicados antes das 17h entram às 17:00:00 (antes, às 17:08, pelo recebimento agrupado do `aux.json`).
+  Teste novo `simulador::testes::piso_das_17h` (vermelho antes, verde depois); `cargo test -p uv-aquisicao --lib` ok.
+  A noite real não muda.
+
+## [0.8.57] — 2026-10-23
+
+- **Site: totalização antes das 17h explicada; B-050 corrigido** (decisão do Luciano: mostrar e explicar). No Brasil a
+  totalização começa oficialmente às 17h, mas o Urna Velox totaliza cada BU assim que o TSE o publica, e os do
+  exterior saem a partir de ~1h da madrugada de domingo (1º turno de 2026: o primeiro às 01:49). Enquanto a
+  totalização está no ar antes das 17h do dia da eleição, a faixa mostra o chip "Oficial às 17h · por enquanto, só BUs
+  do exterior" e o letreiro um item fixo; os dois abrem a explicação. A contagem "Próxima eleição AO VIVO · faltam"
+  some com o selo AO VIVO (B-050). Teste novo `site/testes/antes_17h.mjs`: antes 23 falhas, depois tudo certo; suíte
+  do site sem servidor ok (`visual_pagina` 1260 conferências). `docs/OPERACAO.md`: no dia da eleição, o serviço no ar
+  antes da 1h.
+
+## [0.8.56] — 2026-10-23
+
+- **BUs do exterior antes das 17h (análise, sem mudança de código).** Conferido nos arquivos públicos do 1º turno de
+  2026 (1 `cs.json` e 9 `aux.json` do exterior, em 23/10, fora de qualquer apuração): o TSE publicou 781 das 1.310
+  seções do exterior antes das 17h de Brasília, a primeira às 01:49:24 (Wellington). Horários do `cs.json` em hora de
+  Brasília; o recebimento do `aux.json` dessas seções vem agrupado às 17:08. Registrados B-049 (os replays usam o
+  recebimento e nunca reproduziram a madrugada) e B-050 (selo "AO VIVO" e contagem "faltam 15h" juntos).
+
+## [0.8.55] — 2026-10-22
+
+- **B-048: a página `/playlist` com a identidade visual do Urna Velox** (pedido do Luciano). Teste novo
+  `site/testes/playlist_identidade.mjs` (compara, no navegador, a playlist com a página da apuração: tema padrão,
+  tokens do tema, fonte, aurora, marca, vidro, títulos, botão de tema; 1366, 390 e 360 px): **antes 100 falhas, depois
+  tudo certo**. `uv-playlist.html` com os tokens e estilos do `site/src/estilo.css`: tema escuro por padrão como o app
+  (antes seguia o do sistema), botão ◐, marca "Urna Velox" com "Velox" leve (antes em degradê), títulos na Archivo
+  larga, cartões de vidro iguais. `test_playlist.py` (14) ok. Vale nos nós depois do `63_ciclo.sh`.
+
+## [0.8.54] — 2026-10-22
+
+- **Site: segundo lote de bugs visuais, com testes antes da correção** (`site/testes/visual_pagina.mjs` ampliado:
+  antes 188 falhas, depois 1260 conferências ok, 0 falha; detalhes em `docs/BUGS.md`).
+  - B-033: o ☰ do letreiro desenhado em SVG, centrado no botão. B-037: pílula "Termos de uso" opaca. B-038: pausado,
+    o letreiro para antes do rótulo "pausado".
+  - B-039: no celular o selo do "matematicamente" ocupa o lugar do subtítulo, sem a faixa vazia reservada embaixo.
+  - B-040: com a barra de identificação presa no alto, a faixa acima dela (e a do relógio do iPhone) não mostra mais o
+    conteúdo que rola por baixo.
+  - B-041: "Seções apuradas" alinhado ao rótulo e "BUs/min" centrado no chip (o hodômetro desliza a linha inteira).
+  - B-046 (faixa da previsão serrilhada) continua registrado: precisa da série real de previsões para reproduzir.
+
+## [0.8.53] — 2026-10-22
+
+- **Site: bugs visuais corrigidos, cada um com o teste que o comprova antes da correção** (ordem deixada com o Claude
+  pelo Luciano em 22/10; detalhes, saídas antes/depois em `docs/BUGS.md`). Teste novo `site/testes/visual_pagina.mjs`
+  (sem servidor real: 2 cenários, 12 larguras de 360 a 1920 px, dois temas, modos "Urna Velox" e "Ambos"; mede caixas
+  no navegador): **antes 526 falhas, depois 1004 conferências ok, 0 falha**. E `site/testes/preposicoes.mjs` (B-042):
+  antes 35 falhas, depois tudo certo.
+  - B-029/B-030: "." de milhar, "," decimal e ":" das horas na linha de base dos dígitos (`.hod .vis` em flex).
+  - B-031: o "+"/"−" da diferença colado no número (opção `prefixo` do hodômetro). B-032/B-036/B-043: no celular, em
+    "Ambos", o nome na largura inteira em cima e diferença, Urna Velox e TSE em colunas próprias embaixo (o selo da
+    posição não cobre mais os votos); a pílula "eleito às …" encurta para "eleito" quando a linha é estreita e o nome
+    fica à vista.
+  - B-045/B-034/B-035/B-044: cartões e textos dentro das margens (coluna da direita com `min-width: 0`; uma coluna só
+    abaixo de 1200 px; linha das fontes em duas linhas de 1200 a 1365 px; caixa dos eleitores que faltam inteira no
+    cartão a 360 px; horário "mais provável" da previsão com a largura do molde).
+  - B-047 (novo, visto nas capturas): sem valor, o hodômetro dos eleitores que faltam mostrava zeros-fantasma fora da
+    caixa.
+  - B-042: "Governador na Bahia", "Primeira seção totalizada no Rio de Janeiro", "se decide no Brasil".
+  - Suíte do site sem servidor ok (`hodometro`, `relogio`, `termos`, `ws_recusado`, `modo_pagina`, `painel_celular`);
+    `cargo test -p uv-aquisicao --lib pagina` ok. Os ensaios com `uv-servico` e dados reais não rodaram nesta sessão.
+    Nada mexe em totalização ou resultado.
+
+## [0.8.52] — 2026-10-22
+
+- **Registros (só o sintoma):** B-045 (cartões "Apuração" e "Previsão" passam da borda direita no celular)
+  confirmado pelo Luciano, com captura em `docs/bugs/B-045-cartoes-borda.jpg`; a mesma captura mostra o B-034 no
+  iPhone (número dos eleitores que faltam cortado embaixo pela caixa).
+
+## [0.8.51] — 2026-10-22
+
+- **Registros (só o sintoma):** B-030 ganhou a captura do Luciano (":" das horas bem deslocado no iPhone,
+  `docs/bugs/B-030-dois-pontos-hora.jpg`). Na mesma captura, registrados B-044 (horário "mais provável" da previsão
+  mostra "00:00:0", cortado, com a previsão incerta e a chegada de BUs parada), B-045 (cartões "Apuração" e
+  "Previsão" passam da borda direita no celular) e B-046 (faixa da previsão serrilhada).
+
+## [0.8.50] — 2026-10-22
+
+- **B-043 registrado (só o sintoma):** na comparação "Ambos" no celular, a linha do candidato eleito mostra só a
+  pílula "eleito às hh:mm:ss" e não o nome (visto pelo Luciano no iPhone, Prefeito de Bujari/AC, replay do 1º turno de
+  2024; captura em `docs/bugs/B-043-nome-some-eleito.jpg`).
+
+## [0.8.49] — 2026-10-22
+
+- **Revisão visual do site (só registro, sem mudança de código):** 14 bugs visuais registrados em `docs/BUGS.md`
+  (B-029 a B-042), só com o sintoma, aguardando a ordem de ataque. B-029 a B-033 vistos pelo Luciano no iPhone
+  ("." de milhar e ":" das horas mais baixos; na comparação "Ambos", "+" da diferença deslocado e selo da posição
+  cobrindo um dígito dos votos; ícone ☰ pequeno e descentralizado; captura em `docs/bugs/B-031-ambos-celular.jpg`).
+  B-034 a B-042 vistos pelo Claude em capturas com dados falsos, de 360 a 1920 px, nos dois temas (cartão "Apuração"
+  transbordando de 961 a ~1150 px e a 360 px, título truncado, "Termos de uso" e "pausado" por cima do conteúdo,
+  espaço vazio no cabeçalho da corrida no celular, "Governador em Bahia", entre outros). Sem rolagem horizontal em
+  nenhuma largura; CLS ≈ 0.
+
+## [0.8.48] — 2026-10-22
+
+- **Diferencial de cache da CDN (`dados.urnavelox.com.br`) ampliado para 120–150 s e implantado nos nós:**
+  - `deploy/oci/servidor/Caddyfile.template` ajustado para `header_down Cache-Control "public, max-age=120, s-maxage=150"` (antes `30` s): a borda da Cloudflare (`s-maxage=150`) retém os JSONs de `/api/v1/resultado/*` e `/api/v1/estado` por 2,5 minutos e o navegador (`max-age=120`) por 2 minutos, estabelecendo defasagem de 2 a 3 minutos no modo HTTP em relação ao WebSocket em tempo real (~6 ms).
+  - Implantado imediatamente nos nós A e B da OCI e conferido na borda da Cloudflare (`cf-cache-status: HIT`, `Cache-Control: public, max-age=120, s-maxage=150`).
+  - `deploy/oci/servidor/instalar_caddy.sh`: `chown -R caddy:caddy /var/log/caddy` também após o `caddy validate` (que como `root` cria os arquivos de log com dono `root`, causa do B-027) antes do `systemctl restart caddy`.
+- **Dimensionamento WebSocket e relatório de estresse de borda (`docs/RELATORIO_ESTRESSE_E_CAPACIDADE_BORDA.md`):**
+  - Limite padrão `--max-clientes` (`aquisicao/src/bin/uv-servico.rs` e `aquisicao/src/difusao.rs`) ajustado de `5000` para `7500` por nó (`15000` conexões WebSocket no cluster de 2 nós), calibrado após ensaio de saturação individual e combinada (16.000 conexões WebSocket na OCI com 0 falhas e p99 de 7,55 ms + 100.000 sessões virtuais na CDN Cloudflare com 100% de Cache HIT e p50 de 15,8 ms).
+  - Scripts de ensaio (`scripts/teste_carga_cdn.mjs`, `scripts/teste_combinado.mjs`) e relatório consolidado adicionados (o `restaurar_cloudflare.ps1`, de uso único, ficou fora do repositório; ver 0.9.1).
+- Testes: `deploy/oci/testes` 53 ok (`test_dados_so_le_resultado_e_estado_com_cache_de_120_150s`).
+
+## [0.8.47] — 2026-10-21
+
+- **Passo 3 do plano de borda, implantação (sem mudança de código):** subdomínio `dados.urnavelox.com.br` no ar
+  atrás da Cloudflare. Zona `urnavelox.com.br` delegada à Cloudflare (Free; NS `paris`/`zod`; o DS do Registro.br saiu
+  na troca, DNSSEC a religar depois do 2º turno); SSL/TLS Full (strict); Cache Rule `dados-api` (cache do JSON,
+  respeitando o `Cache-Control` da origem); nuvem **laranja só nos dois registros `dados`**, domínio principal e
+  `www` cinza (direto nos nós, como antes). Feito pelo token restrito à zona e pelo cliente auditado da skill
+  `cloudflare` (home-env).
+  - **Conferido:** nos dois nós (Run Command), `/api/v1/estado` e `/api/v1/resultado/<tópico>` 200 com
+    `Cache-Control: public, max-age=30, s-maxage=30`, `/painel` e `/ws` 404, versão 0.8.46; pela borda,
+    `Server: cloudflare` e o mesmo resultado MISS → HIT com o mesmo `ETag`.
+  - **Incidente (B-027, registrado):** ao aplicar o Caddy com o site `dados` (15h18 no A, 15h20 no B), o Caddy não
+    subiu nos dois nós (`/var/log/caddy/urna-velox-dados.log` com dono `root`): **site principal fora do ar ~1h20**,
+    até 16h37/16h38, restabelecido à mão (`chown -R caddy:caddy /var/log/caddy`, `systemctl restart caddy`).
+    Até a correção, não reaplicar o `02_configurar_borda.sh` sem conferir esse arquivo.
+  - **B-028 (registrado):** com `dados` apontando para os dois IPs, nenhum nó obtinha o certificado (o desafio da
+    Let's Encrypt caía no outro nó). Obtido renomeando por alguns minutos um registro de cada vez (16h38–16h45).
+  - Observação para o passo 4 (nó canônico): direto nos nós, o `seq` (ETag) do mesmo tópico difere entre A e B, então
+    o `If-None-Match` pode voltar 200 quando o Caddy alterna de nó.
+  - `docs/CHECKPOINT_BORDA.md` e `docs/BUGS.md` atualizados.
+- **Da sessão anterior, sem commit até agora (revisado):**
+  - `docs/PROPOSTA_COMPARACAO_DIRETA_CDN_TSE.md` e item no `ROADMAP.md` (`1.x`): proposta do Luciano de 21/10 — com a
+    comparação ligada numa eleição ao vivo, o navegador lê o `-u.json` direto de `resultados.tse.jus.br` (no
+    carregamento e a cada 30 s, com `ETag`/304) em vez da inscrição `tse:<tópico>` no `uv-servico`; replay continua
+    pelo servidor (`tse_simulado`). **Só documento, nada implementado.** Pendências citadas lá: CORS da CDN do TSE e
+    CSP. Correção a fazer no documento: o arquivo da CSP é `aquisicao/src/pagina.rs` (não `aquisicao/src/servico/`).
+- Testes: `deploy/oci/testes` 53 ok. Não mexe em totalização nem em
+  resultado.
+
+## [0.8.46] — 2026-10-20
+
+- **Passo 3 do plano de borda, parte do código: subdomínio `dados` para o modo HTTP (B-026)** — ordem trocada pelo
+  Luciano (20/10, 22h23): Cloudflare antes da CPU paga (passo 2), para medir antes de pagar. **Nada implantado**: o
+  site `dados` só entra com `DOMINIO_DADOS` no `nos.env`, depois de o nome estar no DNS.
+  - **Caddy:** `gerar_caddyfile.sh` ganhou o 6º argumento (o nome do subdomínio; vazio = sem o bloco, e o Caddy não
+    tenta o certificado de um nome fora do DNS). O bloco `DADOS` do `Caddyfile.template` só atende `GET`/`HEAD` de
+    `/api/v1/resultado/*` e `/api/v1/estado`, com `Cache-Control: public, max-age=30, s-maxage=30` (`header_down`,
+    no lugar do `max-age=1`/`no-cache` da origem); o resto 404 em JSON; erro do serviço 503 em JSON com `no-store`
+    (não fica no cache da borda) e `Access-Control-Allow-Origin: *`; log próprio (`urna-velox-dados.log`, para
+    medir o que chega aos nós). Origens como hoje (o próprio nó e o par, `round_robin`): a ordem A, B fica para o
+    passo 4 (nó canônico), que muda todas as rotas. `instalar_caddy.sh` (5º argumento), `02_configurar_borda.sh` e
+    `63_ciclo.sh --playlist` passam `DOMINIO_DADOS`; `nos.env.exemplo` explica quando preencher.
+  - **Página:** `<meta name="uv-dados" content="https://dados.urnavelox.com.br">`; enquanto o nome não existe, a
+    consulta falha e a página usa o próprio domínio (com pausa de 10 min na base), como já testado na 0.8.44.
+  - **CSP** (`aquisicao/src/pagina.rs`): `connect-src 'self' https://dados.urnavelox.com.br` (antes só `'self'`: o
+    navegador bloquearia a base); o `tabela_fixa` aceita o meta.
+  - **Testes que comprovam:** `deploy/oci/testes/test_caddyfile.py` `TestDados` (5 novos: sem o argumento nada muda;
+    com ele, o site principal idêntico e o `dados` só com a leitura e o cache de 30 s, nos dois papéis; nomes
+    inválidos e `dados` = domínio principal recusados; roteiros passam `DOMINIO_DADOS`; `caddy adapt` 2.11.7 com as
+    duas origens e `GET`/`HEAD`). Antes: 4 falhas (sem rota para o `dados`, nome inválido aceito, sem o bloco,
+    roteiros sem `DOMINIO_DADOS`); depois: `deploy/oci/testes` 53 ok. `pagina::testes::csp_libera_a_base_das_consultas`
+    (novo): antes falhava ("a CSP não libera a base das consultas"); depois ok. `site/testes/ws_recusado.mjs` ganhou o
+    cenário "base no ar" (segundo servidor em outra origem): resultado e estado lidos na base, 0 `OPTIONS`
+    (sem preflight), nenhuma consulta ao próprio domínio — tudo certo. Suíte do site (`modo_pagina`, `relogio`,
+    `hodometro`, `termos`, `painel_celular`) ok; `cargo test -p uv-aquisicao --lib` 99 ok. Não mexe em totalização
+    nem resultado.
+  - `docs/CHECKLIST_CLOUDFLARE.md` (novo): o que o Luciano faz na Cloudflare e no Registro.br, na ordem, e onde eu
+    entro (implantação e conferências com o ok dele). `docs/CHECKPOINT_BORDA.md` atualizado.
+
+## [0.8.45] — 2026-10-20
+
+- **`?modo=http` na URL — conferir o modo HTTP (B-026) do celular** (pedido do Luciano, 20/10): com o parâmetro,
+  o próprio navegador age como se o `/ws` fosse recusado (sem abrir conexão; a espera e a entrada no modo HTTP são as
+  de sempre, ~3 s) e consulta o servidor de verdade nos intervalos de verdade (60 s; a nova tentativa do WebSocket
+  também é "recusada", então a página fica no modo HTTP). Nada muda no servidor; afeta só quem usa o parâmetro. Ex.:
+  `https://urnavelox.com.br/?modo=http#/br/c0001`. Teste: `site/testes/ws_recusado.mjs` ganhou o cenário (antes:
+  4 falhas — a página abria o WebSocket; depois: tudo certo). `modo_pagina`, `termos` e `cargo test -p uv-aquisicao
+  --lib` (98) ok. Não mexe em totalização nem resultado.
+- `site/testes/modo_http_producao.mjs` (novo): a mesma conferência contra o site real por um Chromium do Playwright
+  com o `/ws` bloqueado só nele; depois de `--liberar` s libera o WebSocket e confere a volta ao tempo real (uma
+  consulta por minuto de um navegador só).
+- **0.8.44 implantada nos nós** (ok do Luciano, 19h47): `63_ciclo.sh --binarios` nos dois; B reiniciado
+  (`--reiniciar B`, retomou com 477.215 BUs). A 0.8.45 substitui a 0.8.44 antes do reinício do A.
+
+## [0.8.44] — 2026-10-20
+
+- **B-026 — acima do `--max-clientes`, a página não mostrava a apuração** (passo 1 do
+  `docs/HANDOFF_MODELO_BORDA_E_CONSISTENCIA.md`): com o `/ws` respondendo 503 "limite de clientes", o
+  `site/src/conexao.js` só reconectava. Agora, depois de **3 falhas seguidas** do WebSocket (recusa ou queda; uma
+  conexão que durou 30 s zera a conta), a página entra no **modo HTTP**: a cada **60 s (±20 %)** consulta só o
+  resultado dos tópicos da tela (`GET /api/v1/resultado/<tópico>`, com `If-None-Match` → 304 sem corpo) e o estado
+  da apuração (`GET /api/v1/estado`), entregues ao mesmo `receber` do WebSocket; um tópico que entra na tela é
+  consultado na hora. **Nova tentativa do WebSocket a cada ~2 min (±20 %)**, silenciosa; quando abre, volta ao tempo
+  real e as consultas param. Aviso discreto na faixa, no lugar do BUs/min: "atualizando a cada minuto (muitos
+  acessos)"; o selo mantém o modo (AO VIVO/REPLAY) e o título dele explica o que fica parado (letreiro de eventos e
+  marcos, "faltam", comparação com o TSE e previsão: só pelo WebSocket). Nenhuma rota nova no servidor.
+  - **Base das consultas configurável**: `<meta name="uv-dados" content="">` no `index.html` (vazia = o próprio
+    domínio; no passo 3, `https://dados.urnavelox.com.br`). Na base de outro domínio a página não põe cabeçalho
+    próprio (o `If-None-Match` pediria um preflight CORS, que o site `dados` não atenderá): o navegador revalida sozinho
+    com o ETag (`cache: 'no-cache'`). Erro de rede ou 5xx na base → o próprio domínio, e a base fica em pausa por 10 min.
+  - **Teste que comprova:** `site/testes/ws_recusado.mjs` (novo; servidor `node:http` falso com o `/ws` recusando
+    com 503, a 1366 e a 390 px, e a base fora do ar). Antes: **22 falhas** (a página em "conexão caiu · volta em Ns",
+    nenhuma consulta). Depois: **tudo certo** (resultado na tela e atualizado; só `br-c0001` e o estado consultados;
+    3–4 respostas 304; menor intervalo entre consultas ≥ 80 %; WebSocket tentado de novo a cada ~5 s no teste; volta
+    ao tempo real e as consultas param).
+  - **Suíte do site:** `ws_recusado`, `modo_pagina`, `relogio`, `hodometro`, `termos` e `painel_celular` ok;
+    `cargo test -p uv-aquisicao --lib` 98 ok (a página é embutida no `uv-servico`; o `tabela_fixa` pegou um
+    endereço externo num comentário do `index.html`, tirado). Não mexe em totalização nem resultado: sem conferência
+    nova contra os oficiais.
+  - **Para o passo 3:** a CSP da página (`connect-src 'self'`, `aquisicao/src/pagina.rs`) bloquearia as consultas a
+    `dados.urnavelox.com.br` (a página cairia no próprio domínio, sem o cache da borda): incluir a origem ali e a
+    exceção no `tabela_fixa` junto com o `<meta name="uv-dados">` preenchido. `PROTOCOLO_WS.md` §10 e
+    `site/README.md` citam o modo HTTP e o teste novo.
+  - **Implantar** (não feito; só com o ok do Luciano): binários (`63_ciclo.sh --binarios`: a página está embutida no
+    `uv-servico`).
+  - `docs/CHECKPOINT_BORDA.md` (novo): onde está o plano de borda, para retomar de outra sessão.
+
+## [0.8.43] — 2026-10-20
+
+- **Metas do 2º turno no plano de borda** (decisão do Luciano, 20/10, 19h20): 10.000 clientes WebSocket em tempo real
+  (por ordem de chegada; autenticação depois do 2º turno) e 100.000 por HTTP com até 2–3 min de atraso.
+  `docs/HANDOFF_MODELO_BORDA_E_CONSISTENCIA.md` reescrito com as metas (§0) e o roteiro na ordem: (1) modo HTTP na
+  página a cada 60 s (B-026), (2) 4 OCPUs nos dois nós (pago, um de cada vez, o B primeiro), (3) Cloudflare **só no
+  subdomínio `dados.urnavelox.com.br`**, cache de 30 s, domínio principal sem mudança, (4) nó canônico, (5) teste de
+  carga contra as metas e `max_clientes`, (6) congelamento na sexta e no sábado. `HANDOFF_CARGA_E_ARQUITETURA.md`
+  §7.4 cita as metas. Só documentação; não mexe em totalização nem resultado.
+
+## [0.8.42] — 2026-10-20
+
+- **Teste de carga e revisão do plano para o 2º turno (20/10):**
+  - `uv-carga` com TLS/WSS (feature `rustls-tls-webpki-roots` do `tokio-tungstenite`; `urls(end)` escolhe
+    `http`/`ws` ou `https`/`wss`) e fim das conexões contando a rampa (`fim_em = t0 + duracao + tempo_rampa`);
+    automação em `scripts/teste_carga.py` / `teste_carga.sh` (`--local` com o simulador a 60×, `--producao`).
+    Feito em outra sessão; rodado contra produção (2 × `max_clientes 5000`: 10.543 conexões, 1.457 recusadas com 503).
+  - `docs/HANDOFF_CARGA_E_ARQUITETURA.md`: relatório do teste, revisto (§7). A "capacidade máxima" de 10 mil é o
+    limite configurado, não uma medida; as latências de produção têm de 0 a 37 amostras; o limite local dos 12 mil era
+    o `ulimit` do gerador; a pasta de evidências citada era de outra rodada (corrigida). Painel dos nós: ~130 KB por
+    conexão (memória com folga) e CPU de 40–50 % dos 2 OCPUs com ~5.000 clientes por nó: **a CPU é o limite**.
+  - `docs/HANDOFF_MODELO_BORDA_E_CONSISTENCIA.md` reescrito em passos (um por vez): decisões do Luciano, consulta
+    HTTP quando o WebSocket é recusado, teste de carga que mede a CPU, nó canônico (mesma ordem A, B nos dois Caddys;
+    a versão anterior faria o B preferir a si mesmo), mais CPU e cache na borda (opcionais), congelamento na sexta.
+  - **B-026 registrado** (`docs/BUGS.md`, só o sintoma): acima do `max_clientes`, a página não mostra a apuração (só
+    tenta reconectar o WebSocket).
+  - Não mexe em totalização nem resultado; o `uv-carga` é só o gerador de carga.
+
+## [0.8.41] — 2026-10-20
+
+- **B-025 — a porta 8080 (o `uv-servico` direto, sem o Caddy) abria de qualquer lugar da internet:** a Security List
+  tinha `0.0.0.0/0 → 8080` (criada à mão) e, por ela "cobrir" a sub-rede, a regra da sub-rede nunca foi criada; os
+  firewalls dos nós tinham uma regra antiga sem origem. `uv_oci.py fechar-portas` (novo; só regras exatas, regra
+  ampla falha alto), `liberar-portas sub-rede` sem contar regra pública, `02_configurar_borda.sh` fecha para a
+  internet 8080/8090/8095/7700/7701 depois de liberar a sub-rede, `instalar_caddy.sh` tira a regra antiga. Teste
+  `deploy/oci/testes/test_liberar_portas.py` (5 novos): antes 2 falhas + 3 erros, depois 10 ok; `deploy/oci/testes`
+  48 ok. **Aplicado em produção** na mesma ordem (sub-rede → tira a pública → firewall): de fora a 8080 não responde
+  mais; site, playlist, painel, WebSocket e o balanceamento entre os nós conferidos pelos dois nós. Sem reinício; não
+  mexe em totalização nem resultado.
+
+## [0.8.40] — 2026-10-20
+
+- **B-024 — a contagem "Próxima eleição AO VIVO" e o "▶" do selo sumiam para quem caía no nó B:** o domínio aponta
+  para os dois nós e o Caddy do B mandava a playlist para `127.0.0.1:8090`, que só existe no A (503). Agora o
+  `gerar_caddyfile.sh` recebe o papel da playlist: no B, `remoto:<IP público do A>` (proxy para o HTTPS do A); no A,
+  `local:<IPs do B>` (`trusted_proxies`; `X-Real-IP` = `{client_ip}`, um voto por visitante). O `02_configurar_borda.sh`
+  e o `63_ciclo.sh --playlist` passam o papel de cada nó. A página, sem a playlist, tenta de novo em 25–35 s (antes,
+  15 min). Testes que comprovam: `deploy/oci/testes/test_caddyfile.py` (4 novos) e `site/testes/modo_pagina.mjs`
+  (playlist com 503 na partida); antes 3 falhas + 1, depois tudo certo; `deploy/oci/testes` 43 ok, `cargo test -p
+  uv-aquisicao --lib` 98 ok. Não mexe em totalização nem resultado.
+
+## [0.8.39] — 2026-10-20
+
+(Feita em paralelo com a 0.8.38 do servidor espelho, 4faac0b; reaplicada em cima dela.)
+
+- **M-004 — "replay" no lugar de "simulado", um selo só e a próxima eleição ao vivo sempre à vista** (pedido do
+  Luciano, 20/10): os dados são reais, então o que passa fora da noite oficial é um **replay**, como a reprise de um
+  jogo.
+  - O selo do topo virou um botão que diz o modo — **REPLAY** em âmbar, **AO VIVO** em vermelho, **EM BREVE** antes
+    de a apuração começar — e é também o acesso à playlist (abre o aviso com o link "▶ Playlist"); o chip "Dados
+    reais do TSE" e o botão "▶ Playlist" da faixa saíram. O ponto do selo continua mostrando a conexão.
+  - **Próxima eleição AO VIVO** com contagem regressiva, sempre à vista (também durante um replay): chip em destaque
+    na faixa ("Próxima eleição AO VIVO · 2º turno · Eleições Gerais 2026 · domingo (25/10), 17h · faltam 4d 02h
+    13min"; no celular "AO VIVO (25/10), 17h 4d 02h", com o BUs/min inteiro ao lado a 360 px — B-018) e item fixo no
+    letreiro. Some quando a noite oficial está na tela. A data vem do campo novo `proxima_ao_vivo` do `uv-playlist`
+    (17h de Brasília de cada `ELEICOES_OFICIAIS`, `UV_INICIO_APURACAO` troca a hora); com o `uv-playlist` antigo, da
+    suspensão + 17h. A página busca a playlist na partida e a cada ~15 min.
+  - Aviso na primeira entrada do dia (num replay ou com a próxima eleição anunciada; nunca com a noite oficial no
+    ar), com a próxima eleição ao vivo no alto.
+  - Textos para o público: página da apuração, `/playlist` ("Playlist de Replays das Eleições"), mensagens do
+    `uv-playlist`, painel, README, `docs/CICLO_DIARIO.md` e glossário. Nomes internos (`uv-simulador`,
+    `--simulacao`, campo `simulacao` do protocolo) ficam como estão.
+- **B-022 — a vitrine do 2º turno (`3221-espera`) não mostrava a playlist e dizia "ao vivo"**: o acesso à playlist só
+  existia com `simulacao.rotulo`, e o selo dizia "ao vivo" com o WebSocket conectado. Agora o selo diz EM BREVE e
+  leva à playlist em qualquer modo. **B-023 — o aviso "uma vez por dia" contava o dia em UTC** e reabria depois das
+  21h de Brasília; agora é o dia do visitante. Teste que comprova: `site/testes/modo_pagina.mjs` (novo, sem
+  servidor: página de `dist/`, WebSocket e playlist falsos, a 1366, 390 e 360 px). Antes: 52 falhas (as do B-022 e do
+  B-023 em `docs/BUGS.md`); depois: tudo certo. `deploy/oci/testes/test_playlist.py` ganhou `TestProximaAoVivo`.
+- **M-005 — oficialização do endereço `urnavelox.com.br`:** o Caddy do nó A responde **301** (Moved Permanently) de
+  tudo o que chegar por `urnavelox.duckdns.org` para o mesmo caminho no domínio oficial (inclusive `/robots.txt` e
+  `/sitemap.xml`); o `index.html` tem `<link rel="canonical" href="https://urnavelox.com.br/">`. O Caddyfile de cada
+  nó sai agora do `deploy/oci/servidor/gerar_caddyfile.sh` (o mesmo no `02_configurar_borda.sh` e no
+  `63_ciclo.sh --playlist`): o bloco do endereço antigo só entra no A, para onde o DuckDNS aponta (`DOMINIO_ANTIGO` no
+  `nos.env` troca; vazio desliga); o `instalar_caddy.sh` valida o arquivo novo antes de trocar. Teste novo
+  `deploy/oci/testes/test_caddyfile.py` (A com o 301, B sem o bloco, nomes inválidos recusados; com `UV_CADDY`, o
+  `caddy adapt` 2.11.7 confere o `status_code` 301 e o `Location` `https://urnavelox.com.br{http.request.uri}`);
+  `pagina::testes::tabela_fixa` exige a tag canônica.
+- **Testes:** workspace `cargo test --release` 148 ok (36 ignorados: os `--ignored` com dados reais, não necessários aqui); `deploy/oci/testes` ok (com o `caddy` 2.11.7); página: `modo_pagina`, `relogio`, `hodometro`, `termos` e `painel_celular` ok. Não mexe em totalização nem resultado: sem conferência nova contra os oficiais.
+- **Implantar** (não feito nesta versão): binários (`63_ciclo.sh --binarios`, a página está embutida no
+  `uv-servico`) e `63_ciclo.sh --playlist` (o `uv-playlist` com `proxima_ao_vivo` e o Caddy com o 301).
+- **Selo "EM BREVE"** no lugar de "AGUARDANDO" (vitrine do 3221 e noite oficial antes das 17h): no celular
+  (136 px) o "AGUARDANDO" aparecia cortado ("AGUAR…"); no celular o selo do modo também perde o espaçamento largo
+  entre letras. `site/testes/modo_pagina.mjs` passou a exigir o nome do modo inteiro no selo (replay e espera, a
+  1366, 390 e 360 px): antes "AGUAR…", depois tudo certo.
+
 ## [0.8.38] — 2026-10-20
 
 - **Modo `interno` descrito como servidor espelho:** nos textos (`CLAUDE.md`, `docs/PAINEL.md`, ajuda do

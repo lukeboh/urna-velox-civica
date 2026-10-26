@@ -205,7 +205,7 @@ enum Cmd {
         /// Não usa a rede: só o que estiver em --fontes
         #[arg(long)]
         offline: bool,
-        /// Baixa de novo o ele-c.json e os cs.json mesmo se já estiverem no cache
+        /// Baixa de novo todas as fontes (ele-c.json, cm.json, -u.json e cs.json) mesmo se já estiverem no cache (B-055)
         #[arg(long)]
         atualizar: bool,
         /// Toda destinação = "Válido" (simula a pré-apuração a partir de arquivos já apurados)

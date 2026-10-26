@@ -193,6 +193,8 @@ pub struct Comum {
     pub publicadas_cs: Mutex<BTreeMap<String, u64>>,
     /// UF → seções agregadas (com `nsp`) no último `cs.json` lido: nunca sondadas (não têm urna nem `aux.json`)
     pub agregadas_cs: Mutex<HashMap<String, HashSet<u64>>>,
+    /// sobe quando as agregadas de alguma UF mudam no `cs.json`: o motor as tira do total de seções (B-051)
+    pub agregadas_ger: std::sync::atomic::AtomicU64,
     /// BU que vale em cada seção ([`impressao`] do hash do diretório, anulada) — para não baixar de novo o que não mudou
     pub aplicados: Mutex<HashMap<ChaveUf, (u64, bool)>>,
     /// BUs que estão nos pacotes sem valer em nenhuma seção (queda antes do diário): (sha256 do .vsc, arquivo, posição, tamanho)
@@ -344,6 +346,110 @@ pub const SONDA_POR_RODADA: usize = 2;
 /// ... numa UF do Brasil, só quando faltam no máximo estas seções para o `s.ts` (no exterior, 5 % ou 50)
 pub const SONDA_FALTAM_UF: u64 = 50;
 
+/// Se as seções sem disponibilização de uma UF entram na sondagem ([`Motor::sondar`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Sonda {
+    Nao,
+    /// só quando toda seção com disponibilização no `cs.json` da UF já estiver resolvida
+    SeResolvidas,
+    /// já, sem esperar a disponibilização no `cs.json`
+    Antecipada,
+}
+
+/// Decide a sondagem de uma UF: `n` seções esperadas, `ap` apuradas, `publicadas` com disponibilização no último
+/// `cs.json` (`None`: ainda não lido), `algo_apurado`: algum BU já aplicado, `domingo`: o relógio do site está num
+/// domingo.
+fn quando_sondar(zz: bool, com_nsp: bool, n: u64, ap: u64, publicadas: Option<u64>, algo_apurado: bool, domingo: bool) -> Sonda {
+    // B-065: também depois que o cs.json do ZZ passa a listar seções (ele anda em lotes, atrás dos aux.json)
+    if zz && com_nsp && domingo && publicadas.is_some() && ap < n { return Sonda::Antecipada; }
+    if !algo_apurado || (!zz && !com_nsp) || ap == 0 || ap >= n { return Sonda::Nao; }
+    let limite = if zz { (n / 20).max(50) } else { SONDA_FALTAM_UF };
+    if n - ap > limite { Sonda::Nao } else { Sonda::SeResolvidas }
+}
+
+/// O instante (segundos civis de Brasília, como o `relogio_site`) cai num domingo (01/01/1970 foi quinta-feira).
+fn domingo(t: i64) -> bool { (t.div_euclid(86400) + 4).rem_euclid(7) == 0 }
+
+/// B-057: reforço da sondagem antecipada do exterior. Requisições por rodada (uma por segundo) com a regra antecipada
+/// ligada e a fila de seções do Brasil quase vazia ([`SONDA_FILA_OCIOSA`]); em cada nó (cada órgão tem o seu teto). B-060: 12
+/// (eram 8), porque agora todas são requisições deste nó (antes metade era do outro nó e descartada); uma cota (1/4) é das
+/// sondadas há mais tempo
+pub const SONDA_POR_RODADA_EXTERIOR: usize = 12;
+/// ... só com a fila de pedidos abaixo disto: o exterior não toma requisições do Brasil
+pub const SONDA_FILA_OCIOSA: i64 = 20;
+/// ... seção "devida" (a hora em que o turno anterior a disponibilizou, de 30 min à frente até 2 h atrás): a cada 20 s
+pub const SONDA_REPETIR_DEVIDA_S: i64 = 20;
+/// ... seção que já devia ter chegado há mais de 2 h (e há menos de 12 h) e não veio: a cada 60 s
+pub const SONDA_REPETIR_ATRASADA_S: i64 = 60;
+const SONDA_DEVIDA_ANTES_S: i64 = 1800;
+const SONDA_DEVIDA_DEPOIS_S: i64 = 7200;
+
+/// Calendário de chegada do exterior: chave da seção → segundo do dia (hora do site) em que o `cs.json` do turno
+/// anterior a disponibilizou. As seções agregadas (sem data) ficam de fora.
+fn calendario_de_cs(texto: &str) -> HashMap<u64, i64> {
+    let Ok(cs) = serde_json::from_str::<crate::tse::ConfigSecoes>(texto) else { return HashMap::new() };
+    cs.secoes("zz").into_iter().filter_map(|s| urna_velox::metricas::segundos(&s.disponivel).map(|t| (s.chave(), t.rem_euclid(86400)))).collect()
+}
+
+/// `<pasta do candidatos.json>/fontes/cs/zz-p<pleito-1>-cs.json` (o 1º turno de um 2º turno); sem o arquivo, sem calendário.
+fn carregar_calendario_exterior(cfg: &Config) -> HashMap<u64, i64> {
+    let Some(dir) = cfg.candidatos.parent() else { return HashMap::new() };
+    let p = dir.join("fontes").join("cs").join(format!("zz-p{:06}-cs.json", cfg.alvo.pleito.saturating_sub(1)));
+    std::fs::read_to_string(&p).map(|t| calendario_de_cs(&t)).unwrap_or_default()
+}
+
+/// Faixa (0 = devida agora, 1 = atrasada, 2 = futura ou sem calendário) e intervalo de repetição (s) de uma seção do
+/// exterior na sondagem antecipada, pelo segundo do dia esperado (`esperado`) e o relógio do site (`agora`).
+fn faixa_calendario(esperado: Option<i64>, agora: i64) -> (u8, i64) {
+    let Some(e) = esperado else { return (2, SONDA_REPETIR_S) };
+    // atraso em relação ao horário esperado, em (-12 h, +12 h]: negativo = ainda não deu a hora
+    let mut d = (agora.rem_euclid(86400) - e).rem_euclid(86400);
+    if d > 43200 { d -= 86400; }
+    if (-SONDA_DEVIDA_ANTES_S..=SONDA_DEVIDA_DEPOIS_S).contains(&d) { (0, SONDA_REPETIR_DEVIDA_S) }
+    else if d > SONDA_DEVIDA_DEPOIS_S { (1, SONDA_REPETIR_ATRASADA_S) }
+    else { (2, SONDA_REPETIR_S) }
+}
+
+/// Faixa e repetição de uma seção do exterior na sondagem antecipada: `quente` = o município dela já tem BU (B-059).
+fn faixa_secao(esperado: Option<i64>, agora: i64, quente: bool) -> (u8, i64) {
+    if quente { return (0, SONDA_REPETIR_DEVIDA_S); }
+    faixa_calendario(esperado, agora)
+}
+
+/// Requisições da sondagem por rodada (uma por segundo): o reforço do exterior ([`SONDA_POR_RODADA_EXTERIOR`]) só com a
+/// regra antecipada ligada, nenhum 429 desde a partida e a fila de pedidos quase vazia; senão [`SONDA_POR_RODADA`].
+fn sondas_por_rodada(antecipada: bool, tomou_429: bool, fila: i64) -> usize {
+    if antecipada && !tomou_429 && fila < SONDA_FILA_OCIOSA { SONDA_POR_RODADA_EXTERIOR } else { SONDA_POR_RODADA }
+}
+
+/// Uma seção candidata à sondagem: prioridade (faixa × 2 + 0/1), quando foi pedida pela última vez (`i64::MIN` = nunca) e a chave.
+type Candidata = (u8, i64, ChaveUf);
+
+/// A seção está devida? Nunca pedida, ou pedida há `repetir` s ou mais (hora do site).
+fn devida(ultima: Option<i64>, agora: i64, repetir: i64) -> bool { ultima.is_none_or(|t| agora - t >= repetir) }
+
+/// B-060: só as candidatas deste nó (a partição da federação) entram na disputa pelo orçamento da rodada; as do outro nó
+/// são descartadas depois, sem requisição (`coletor`), e gastavam metade do orçamento à toa.
+fn so_do_no(mut lista: Vec<Candidata>, minha: impl Fn(&ChaveUf) -> bool) -> Vec<Candidata> {
+    lista.retain(|c| minha(&c.2));
+    lista
+}
+
+/// B-060: as `por_rodada` seções da rodada. `cota` delas (só com o reforço) vão para as sondadas há mais tempo (as nunca
+/// sondadas primeiro), qualquer que seja a faixa: nenhuma seção fica sem consulta por falta de orçamento, mesmo com a faixa
+/// quente sozinha pedindo mais do que a rodada comporta. As demais vão por prioridade (faixa, depois a mais antiga).
+fn escolher_sondas(mut lista: Vec<Candidata>, por_rodada: usize, cota: usize) -> Vec<ChaveUf> {
+    let cota = cota.min(por_rodada);
+    lista.sort_unstable();
+    let por_prioridade = por_rodada - cota;
+    let mut escolhidas: Vec<ChaveUf> = lista.iter().take(por_prioridade).map(|c| c.2).collect();
+    // a cota: entre as que sobraram, as sondadas há mais tempo (as nunca sondadas têm `i64::MIN`)
+    let mut resto: Vec<&Candidata> = lista.iter().skip(por_prioridade).collect();
+    resto.sort_unstable_by_key(|c| (c.1, c.0, c.2));
+    escolhidas.extend(resto.into_iter().take(cota).map(|c| c.2));
+    escolhidas
+}
+
 // ------------------------------------------------------------------ diário de seções
 
 /// O que vale numa seção (compacto: meio milhão de seções numa eleição geral). O BU está em `<dados>/<uf>.uvpk`, na
@@ -412,6 +518,12 @@ pub fn ler_diario(p: &Path) -> anyhow::Result<(HashMap<ChaveUf, Situ>, HashMap<C
     Ok((sit, disp, n))
 }
 
+/// Horário (relógio do site) do último BU aplicado segundo o diário: a maior disponibilização das seções com BU.
+/// B-058: sem isso o `ultimo_bu` ficava vazio depois de um reinício até o próximo BU.
+fn ultimo_bu_do_diario(sit: &HashMap<ChaveUf, Situ>, disp: &HashMap<ChaveUf, i64>) -> Option<i64> {
+    sit.iter().filter(|(_, s)| matches!(s, Situ::Bu { .. })).filter_map(|(k, _)| disp.get(k).copied().filter(|&t| t > 0)).max()
+}
+
 /// Leitor de BU que não guarda nada: valida o BU antes de aplicar (um BU ilegível não chega ao estado pela metade).
 struct Nulo;
 impl urna_velox::bu::Sink for Nulo {
@@ -445,7 +557,7 @@ fn reenfileirar(com: &Arc<Comum>, tx: &FilaTx, mut t: Tarefa, base: f64, exp: u3
 }
 
 /// Relê os `cs.json` das UFs a cada `intervalo` segundos e enfileira cada seção nova ou com disponibilização
-/// alterada. Seção sem disponibilização não gera requisição.
+/// alterada. Seção sem disponibilização não gera requisição aqui (a sondagem, [`Motor::sondar`], cuida das exceções).
 pub async fn acompanhar(com: Arc<Comum>, ufs: Vec<String>, mut conhecidas: HashMap<ChaveUf, i64>, tx: FilaTx) {
     let mut etags: HashMap<String, String> = HashMap::new();
     let mut ausentes: HashSet<String> = HashSet::new();
@@ -512,7 +624,10 @@ pub async fn acompanhar(com: Arc<Comum>, ufs: Vec<String>, mut conhecidas: HashM
                             novas += 1;
                         }
                     }
-                    com.agregadas_cs.lock().unwrap().insert(uf.clone(), c.agregadas());
+                    let ag = c.agregadas();
+                    if com.agregadas_cs.lock().unwrap().insert(uf.clone(), ag.clone()).as_ref() != Some(&ag) {
+                        com.agregadas_ger.fetch_add(1, Relaxed);
+                    }
                     com.publicadas_cs.lock().unwrap().insert(uf, publicadas);
                 }
                 Err(e) => { com.cont.cs_erros.fetch_add(1, Relaxed); com.cont.erros_rede.fetch_add(1, Relaxed); com.registrar("aviso", "cs_erro", json!({"uf": uf, "erro": e.to_string()})); }
@@ -958,6 +1073,8 @@ struct Motor<'a> {
     sondadas: HashMap<ChaveUf, i64>,
     /// abrangências cuja sondagem foi recusada por passar dos limites (um alerta só por abrangência)
     sonda_recusada: HashSet<String>,
+    /// calendário de chegada do exterior (B-057): do `cs.json` do turno anterior
+    calendario_zz: HashMap<u64, i64>,
     esc: Escritor,
     diario: std::fs::File,
     eventos: std::fs::File,
@@ -965,8 +1082,16 @@ struct Motor<'a> {
     pub_dir: PathBuf,
     /// abrangências publicadas por cargo (só as das UFs acompanhadas)
     abrs: Vec<(u8, Vec<Abrangencia>)>,
-    /// abrangência → seções esperadas (`s.ts` pré-apuração)
+    /// abrangências publicadas (sem repetir entre cargos), cada uma com o `s.ts` pré-apuração como piso (0 = sem `s.ts`).
+    /// O esperado de cada uma é o maior entre o total de seções do catálogo (listadas no `cs.json` menos as agregadas,
+    /// como a página mostra; igual ao `s.ts` oficial final em 2024 e 2026) e esse piso ([`Motor::esperadas`], B-051)
     esperado: Vec<(Abrangencia, u64)>,
+    /// geração das agregadas do `cs.json` já tiradas do total ([`Comum::agregadas_ger`])
+    agregadas_ger_vista: u64,
+    /// M-020: BUs retidos pela trava (na ordem de chegada), as seções deles, e se a trava vale (só contra o TSE de
+    /// verdade, depois da retomada)
+    retidos: crate::trava::Fila<ChaveUf, Box<BuRecebido>>,
+    travar: bool,
     secoes_muni: Vec<Vec<u64>>,
     munis_sujos: Vec<bool>,
     ufs_sujas: Vec<bool>,
@@ -1036,7 +1161,7 @@ impl<'a> Motor<'a> {
     /// Aplica um lote de mensagens: grava os BUs novos nos pacotes, aplica ao estado, escreve o diário, reavalia o
     /// "matematicamente" e grava os eventos.
     fn lote(&mut self, msgs: Vec<Msg>) -> anyhow::Result<()> {
-        if msgs.is_empty() { return Ok(()); }
+        if msgs.is_empty() && self.retidos.is_empty() { return Ok(()); }
         let mut bus = vec![];
         let mut outras = vec![];
         for m in msgs { match m { Msg::Bu(b) => bus.push(b), x => outras.push(x) } }
@@ -1056,6 +1181,7 @@ impl<'a> Motor<'a> {
         let bus_antes = self.seq();
         let mut mudou = false;
         self.lote_secoes.clear();
+        let bus = self.pela_trava(bus);
         for b in bus { if let Some(t) = self.aplicar_bu(*b, &mut linhas) { em = Some(em.map_or(t, |x: i64| x.max(t))); mudou = true; } }
         for m in outras { self.outra(m, &mut linhas); }
         if !linhas.is_empty() { self.diario.write_all(linhas.as_bytes())?; }
@@ -1077,7 +1203,35 @@ impl<'a> Motor<'a> {
         }
         if !self.lote_secoes.is_empty() { self.custo_marcos.por(std::mem::take(&mut self.marcos_ms)); }
         self.entregar_marcos();
+        // mapa das seções (crate::mapa): as seções do lote acendem (as já acesas não mudam)
+        if !self.lote_secoes.is_empty() {
+            if let Some(h) = &self.com.difusao { h.entregar(crate::difusao::Entrada::Secoes(self.lote_secoes.iter().map(|x| (x.k.1, x.hora)).collect())); }
+        }
         Ok(())
+    }
+
+    /// M-020: com a trava ligada, os BUs do lote entram na fila dos retidos (na ordem de chegada) e saem dela só até o
+    /// teto (% do TSE + `TRAVA_PP` p.p. das seções do Brasil, Presidente). Desligada, solta tudo o que estiver retido.
+    fn pela_trava(&mut self, bus: Vec<Box<BuRecebido>>) -> Vec<Box<BuRecebido>> {
+        use crate::trava::TRAVA;
+        let ligada = self.travar && TRAVA.ligada();
+        if !ligada && self.retidos.is_empty() { return bus; }
+        let limite = ligada.then(|| {
+            let (tot, ap) = self.pubr.secoes(self.est, &Abrangencia::Brasil);
+            crate::trava::aplicaveis(TRAVA.pp(), TRAVA.tse_pct(), tot, ap)
+        });
+        let sai = self.retidos.passar(bus.into_iter().map(|b| (b.k, b)).collect(), limite);
+        TRAVA.retidos.store(self.retidos.len() as u64, Relaxed);
+        TRAVA.soltos.fetch_add(sai.len() as u64, Relaxed);
+        sai
+    }
+
+    /// M-020: relê o `TRAVA_PP` do `no.env` e a % do TSE (o `br-c0001` que a comparação busca).
+    fn atualizar_trava(&mut self) {
+        if !self.travar { return; }
+        let p = std::env::var_os("UV_NO_ENV").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/etc/urna-velox/no.env"));
+        crate::trava::TRAVA.reler(&p);
+        if let Some((tot, st)) = self.com.tse.as_ref().and_then(|t| t.secoes_de(crate::trava::TOPICO)) { crate::trava::TRAVA.definir_tse(tot, st); }
     }
 
     /// Manda os marcos acumulados à difusão (já estão no `marcos.csv`).
@@ -1262,6 +1416,8 @@ impl<'a> Motor<'a> {
                     self.secoes.insert(k, Situ::Agregada);
                     linhas.push_str(&linha_diario("agregada", k, "", None, "", false, "", "", "", 0, 0, seq));
                     self.acao("agregada");
+                    // fora do total de seções (B-051): senão o fim da apuração esperaria por ela
+                    if let Some(m) = self.agregada(k.0, k.1) { self.sujar(Some(m), k.0); }
                 }
             }
             Msg::Oficiais { .. } | Msg::Parar | Msg::Bu(_) => {}
@@ -1315,16 +1471,47 @@ impl<'a> Motor<'a> {
         }
     }
 
-    /// Fim da apuração: todas as abrangências com as seções esperadas totalizadas (BUs + não instaladas), nenhuma seção
-    /// na fila nem pendente, e toda seção com disponibilização no último `cs.json` resolvida. O `s.ts` pré-apuração pode
-    /// estar desatualizado (no 3221, baixado em 12/10, SP tinha 33.403 seções e o `cs.json` 91.326): por isso a
-    /// publicação encerrada é reaberta se chegar BU novo depois (ver `aplicar_bu`), e contra o site real o serviço
-    /// continua acompanhando depois da conferência.
+    /// Seções esperadas numa abrangência: o total do catálogo (listadas no `cs.json` menos as agregadas — as do
+    /// `candidatos.json` e as descobertas na noite —, mais as não instaladas fora dele; o mesmo número da página) ou o
+    /// `s.ts` pré-apuração, o que for maior. Até a 0.9.1 valia só o `s.ts`, que pode vir desatualizado para baixo (no
+    /// 3221 em 23/10: SP 33.403 contra 103.904 no `cs.json`) e encerrava a apuração cedo (B-051).
+    fn esperadas(&self, abr: &Abrangencia, piso: u64) -> u64 { self.pubr.secoes(self.est, abr).0.max(piso) }
+
+    /// A abrangência tem todas as seções esperadas totalizadas (BUs + não instaladas).
+    fn completa(&self, abr: &Abrangencia, piso: u64) -> bool { self.pubr.secoes(self.est, abr).1 >= self.esperadas(abr, piso) }
+
+    /// Seção do catálogo que se revelou agregada na noite: sai do total de seções da página ([`Publicador::agregada`])
+    /// e do mapa das seções (B-064). Devolve o município quando o total mudou.
+    fn agregada(&mut self, uf: [u8; 2], k: u64) -> Option<usize> {
+        let r = self.pubr.agregada(uf, k);
+        if r.is_some() { if let Some(m) = self.com.difusao.as_ref().and_then(|h| h.mapa()) { m.retirar(k); } }
+        r
+    }
+
+    /// Agregadas novas no `cs.json` lido na noite (`nsp` que o `candidatos.json` não tinha): fora do total de seções.
+    fn tirar_agregadas_do_cs(&mut self) {
+        let g = self.com.agregadas_ger.load(Relaxed);
+        if g == self.agregadas_ger_vista { return; }
+        self.agregadas_ger_vista = g;
+        let mut novas = vec![];
+        for (uf, ag) in self.com.agregadas_cs.lock().unwrap().iter() {
+            let Ok(u) = <[u8; 2]>::try_from(uf.as_bytes()) else { continue };
+            for &k in ag { novas.push((u, k)); }
+        }
+        let mut n = 0u64;
+        for (u, k) in novas { if let Some(m) = self.agregada(u, k) { self.sujar(Some(m), u); n += 1; } }
+        if n > 0 { self.com.registrar("info", "agregadas_do_cs", json!({"secoes": n, "texto": "seções agregadas no cs.json que o candidatos.json não tinha: fora do total de seções"})); }
+    }
+
+    /// Fim da apuração: todas as abrangências com as seções esperadas ([`Motor::esperadas`]) totalizadas, nenhuma seção
+    /// na fila nem pendente, e toda seção com disponibilização no último `cs.json` resolvida. Se chegar BU novo depois,
+    /// a publicação encerrada é reaberta (ver `aplicar_bu`), e contra o site real o serviço continua acompanhando
+    /// depois da conferência.
     fn concluida(&self) -> bool {
-        if self.esperado.is_empty() || self.com.fila.load(Relaxed) > 0 || !self.pendentes.is_empty() { return false; }
+        if self.esperado.is_empty() || self.com.fila.load(Relaxed) > 0 || !self.pendentes.is_empty() || !self.retidos.is_empty() { return false; }
         let publicadas: u64 = self.com.publicadas_cs.lock().unwrap().values().sum();
         let resolvidas = self.secoes.values().filter(|s| matches!(s, Situ::Bu { .. } | Situ::NaoInstalada)).count() as u64;
-        resolvidas >= publicadas && self.esperado.iter().all(|(abr, n)| self.pubr.secoes(self.est, abr).1 >= *n)
+        resolvidas >= publicadas && self.esperado.iter().all(|(abr, n)| self.completa(abr, *n))
     }
 
     /// O estado mudou depois da apuração encerrada (BU atrasado, reenvio, anulação): a publicação volta a "apurando"
@@ -1465,6 +1652,7 @@ impl<'a> Motor<'a> {
     /// Verificações de segundo a segundo: fim da apuração, arquivo-sinal CONFERIR, conferência periódica, nova
     /// tentativa dos oficiais e sondagem das seções sem disponibilização.
     fn verificar(&mut self) -> anyhow::Result<()> {
+        self.tirar_agregadas_do_cs();
         if !self.encerrada && self.concluida() { self.encerrar()?; }
         let sinal = self.com.cfg.saida.join("CONFERIR");
         if sinal.exists() {
@@ -1538,67 +1726,100 @@ impl<'a> Motor<'a> {
     /// fora as agregadas (`nsp` no `cs.json`, que não têm `aux.json`), cada uma de novo a cada [`SONDA_REPETIR_S`]
     /// (hora do site), no máximo [`SONDA_POR_RODADA`] por segundo e [`SONDA_ABR`] seções por UF. "Nao instalada"
     /// conta; 404 ou sem BU, a seção continua esperada. Sem `nsp` no `cs.json` da UF (arquivo antigo), o comportamento
-    /// de antes: só o exterior, uma vez cada, 404 = agregada. É a única exceção à regra "seção sem disponibilização não
-    /// gera requisição". Antes da eleição (nada apurado) não sonda nada; `--sem-sondagem` desliga.
+    /// de antes: só o exterior, uma vez cada, 404 = agregada. Antes da eleição (nada apurado) não sonda nada.
+    ///
+    /// Exterior antes do `cs.json` (B-056, 25/10/2026): o TSE põe no ar o `aux.json` e o BU das seções do exterior
+    /// horas antes de pôr a disponibilização no `cs.json` (3221: Wellington recebido às 01:51:38, `cs.json` ainda de
+    /// 09/10 às 03:07). Num domingo (relógio do site), com o `cs.json` do ZZ (com `nsp`) lido — desde a 1.0.3 (B-065)
+    /// também depois que ele passa a listar seções, porque anda em lotes atrás dos `aux.json` (708 às 15h46 de 25/10,
+    /// Londres no ar desde 15:47) —, as seções do ZZ sem BU e fora da fila do `cs.json` são sondadas já, nas mesmas regras (fora as agregadas, ≤ [`SONDA_POR_RODADA`] por
+    /// segundo, cada uma a cada [`SONDA_REPETIR_S`]), primeiro as dos municípios que já têm BU. São as duas exceções
+    /// à regra "seção sem disponibilização não gera requisição"; `--sem-sondagem` desliga as duas.
     fn sondar(&mut self) {
-        if !self.com.cfg.sondar || self.encerrada || self.ultimo_bu_site.is_none() { return; }
+        if !self.com.cfg.sondar || self.encerrada { return; }
+        let algo_apurado = self.ultimo_bu_site.is_some();
         let com = self.com;
         let agora = com.relogio_site.load(Relaxed);
         let publicadas = com.publicadas_cs.lock().unwrap().clone();
         let agregadas = com.agregadas_cs.lock().unwrap();
         let vazio = HashSet::new();
-        // (última sondagem, seção): as nunca sondadas primeiro, depois as mais antigas
-        let mut lista: Vec<(i64, ChaveUf)> = vec![];
+        // (prioridade, última sondagem, seção): município com BU primeiro, depois as nunca sondadas, depois as mais antigas
+        let mut lista: Vec<(u8, i64, ChaveUf)> = vec![];
+        let mut antecipada = false;
+        // contingência (B-057): depois de qualquer 429 o reforço do exterior acaba (volta a 2 req/s e 300 s por seção)
+        let tomou_429 = com.rede.http429.load(Relaxed) > 0;
+        if tomou_429 && self.sonda_recusada.insert("reforco_429".into()) {
+            com.alerta("reforco_exterior_desligado", "HTTP 429 do TSE: o reforço da sondagem do exterior (8 req/s, 20 s por seção) fica desligado até reiniciar o serviço");
+        }
         for (abr, n) in &self.esperado {
             let Abrangencia::Uf(u) = abr else { continue };
-            let n = *n;
+            let n = self.esperadas(abr, *n);
             let uf_s = String::from_utf8_lossy(u).into_owned();
             let ag = agregadas.get(&uf_s).unwrap_or(&vazio);
             let com_nsp = !ag.is_empty();
             let zz = u == b"zz";
-            if !zz && !com_nsp { continue; }
             let ap = self.pubr.secoes(self.est, abr).1;
-            if ap == 0 || ap >= n { continue; }
-            let limite = if zz { (n / 20).max(50) } else { SONDA_FALTAM_UF };
-            if n - ap > limite { continue; }
-            // toda seção com disponibilização da UF já resolvida (as que faltam são as sem disponibilização)
+            let pub_uf = publicadas.get(&uf_s).copied();
+            let quando = quando_sondar(zz, com_nsp, n, ap, pub_uf, algo_apurado, domingo(agora));
+            if quando == Sonda::Nao { continue; }
+            antecipada |= quando == Sonda::Antecipada;
             let mut resolvidas = 0u64;
+            // (município com BU primeiro, seção): na antecipada, as seções do mesmo posto saem juntas
             let mut v = vec![];
             for m in self.munis_de(abr) {
+                let mut com_bu = false;
+                let ini = v.len();
                 for &k in &self.secoes_muni[m] {
                     let ku = (*u, k);
                     match self.secoes.get(&ku) {
-                        Some(Situ::Bu { .. } | Situ::NaoInstalada) => resolvidas += 1,
+                        Some(Situ::Bu { .. }) => { resolvidas += 1; com_bu = true; }
+                        Some(Situ::NaoInstalada) => resolvidas += 1,
                         Some(Situ::Agregada) => {}
-                        None => if !ag.contains(&k) && !self.pendentes.contains_key(&ku) { v.push(ku); },
+                        None => if !ag.contains(&k) && !self.pendentes.contains_key(&ku) && !self.retidos.contem(&ku) { v.push((1u8, ku)); },
                     }
                 }
+                if com_bu { for x in &mut v[ini..] { x.0 = 0; } }
             }
-            if resolvidas < publicadas.get(&uf_s).copied().unwrap_or(u64::MAX) || v.is_empty() { continue; }
+            // fora da antecipada: toda seção com disponibilização da UF já resolvida (as que faltam são as sem
+            // disponibilização)
+            if quando == Sonda::SeResolvidas && resolvidas < pub_uf.unwrap_or(u64::MAX) { continue; }
+            if v.is_empty() { continue; }
             if v.len() > SONDA_ABR {
                 if self.sonda_recusada.insert(abr.codigo()) {
                     com.alerta("sondagem_limitada", &format!("{}: {} seções sem disponibilização; sondagem recusada (limite de {SONDA_ABR} por UF) — confira as não instaladas pelo oficial", abr.codigo(), v.len()));
                 }
                 continue;
             }
-            for ku in v {
+            for (prio, ku) in v {
+                // exterior na antecipada, sem 429: faixa e repetição pelo calendário do turno anterior (B-057)
+                let (f, rep) = if quando == Sonda::Antecipada && zz && !tomou_429 {
+                    faixa_secao(self.calendario_zz.get(&ku.1).copied(), agora, prio == 0)
+                } else { (0, SONDA_REPETIR_S) };
+                let prio = f * 2 + prio;
                 match self.sondadas.get(&ku) {
-                    None => lista.push((i64::MIN, ku)),
-                    Some(&t) if com_nsp && agora - t >= SONDA_REPETIR_S => lista.push((t, ku)),
+                    None => lista.push((prio, i64::MIN, ku)),
+                    Some(&t) if com_nsp && devida(Some(t), agora, rep) => lista.push((prio, t, ku)),
                     _ => {}
                 }
             }
         }
         drop(agregadas);
+        // B-060: só as seções deste nó disputam o orçamento; o reforço reserva uma cota para as sondadas há mais tempo
+        let lista = so_do_no(lista, |ku| match &com.federado {
+            Some(f) => f.minha(&Secao { uf: ku.0, municipio: (ku.1 >> 32) as u32, zona: (ku.1 >> 16) as u16, secao: ku.1 as u16, disponivel: String::new() }),
+            None => true,
+        });
         if lista.is_empty() { return; }
-        lista.sort_unstable();
-        lista.truncate(SONDA_POR_RODADA);
+        let candidatas = lista.len();
+        let nunca = lista.iter().filter(|c| c.1 == i64::MIN).count();
+        let por_rodada = sondas_por_rodada(antecipada, tomou_429, com.fila.load(Relaxed));
+        let cota = if por_rodada > SONDA_POR_RODADA { (por_rodada / 4).max(1) } else { 0 };
         let mut pedido = vec![];
-        for (_, ku) in lista {
+        for ku in escolher_sondas(lista, por_rodada, cota) {
             self.sondadas.insert(ku, agora);
             pedido.push(Secao { uf: ku.0, municipio: (ku.1 >> 32) as u32, zona: (ku.1 >> 16) as u16, secao: ku.1 as u16, disponivel: String::new() });
         }
-        com.registrar("info", "sondagem", json!({"secoes": pedido.len(), "sondadas": self.sondadas.len()}));
+        com.registrar("info", "sondagem", json!({"secoes": pedido.len(), "sondadas": self.sondadas.len(), "candidatas": candidatas, "nunca": nunca}));
         let _ = self.pedidos.send(Pedido::Sondar(pedido));
     }
 
@@ -1656,6 +1877,8 @@ impl<'a> Motor<'a> {
                 "lote": self.custo_lote.json(), "saude": self.custo_saude.json(), "verificacao": self.custo_verif.json(), "sincronia_disco": p(&c.custo_sync),
                 "marcos": self.custo_marcos.json(), "faltam": self.custo_faltam.json()},
             "ultimo_bu": {"seq": self.seq(), "site": self.ultimo_bu_site.map(crate::texto_hora), "sistema": self.ultimo_bu_sis.map(crate::relogio::iso_ms)},
+            "trava": {"pp": crate::trava::TRAVA.pp(), "ligada": self.travar && crate::trava::TRAVA.ligada(), "tse_pct": (crate::trava::TRAVA.tse_pct() * 100.0).round() / 100.0,
+                "retidos": self.retidos.len(), "soltos": crate::trava::TRAVA.soltos.load(Relaxed)},
             "relogio_sistema": c.relogio.json(),
             "acoes": self.acoes, "alertas": alertas,
             "motor": {"bus": self.est.bus.load(Relaxed), "duplicados": self.est.duplicados.load(Relaxed), "fora_catalogo": self.est.fora_catalogo.load(Relaxed),
@@ -1664,7 +1887,7 @@ impl<'a> Motor<'a> {
             "matematicamente": {"eventos": self.ac.eventos.len(), "revogacoes": self.ac.revogacoes(),
                 "decididas": self.ac.circs.iter().filter(|x| x.mat_circ != urna_velox::matematica::MatCirc::Apurando).count(), "circunscricoes": self.ac.circs.len()},
             "apuracao": {"encerrada": self.encerrada, "conferencias": self.conferencias,
-                "abrangencias_completas": self.esperado.iter().filter(|(a, n)| self.pubr.secoes(self.est, a).1 >= *n).count(), "abrangencias_esperadas": self.esperado.len()},
+                "abrangencias_completas": self.esperado.iter().filter(|(a, n)| self.completa(a, *n)).count(), "abrangencias_esperadas": self.esperado.len()},
             "recursos": {"rss_mb": status_mb("VmRSS"), "rss_anon_mb": status_mb("RssAnon"), "pico_rss_mb": status_mb("VmHWM"),
                 "cpu_pct_atual": arred(100.0 * (cpu - cpu_ant) / dt), "cpu_pct_medio": arred(100.0 * cpu / up), "disco_livre_gb": arred(disco_livre_gb(&c.cfg.dados))},
         });
@@ -1685,7 +1908,7 @@ impl<'a> Motor<'a> {
                 "secoes": {"catalogo": self.cat.secoes.len(), "publicadas_cs": j["secoes"]["publicadas_cs"], "aplicadas": self.seq(),
                     "nao_instaladas": j["secoes"]["nao_instaladas"], "pendentes": self.pendentes.len()},
                 "ultimo_bu": j["ultimo_bu"], "pausa_429": {"ativa": !pausa.is_zero(), "retomada_em": j["rede"]["retomada_em"], "pausas": pausas},
-                "conferencias": self.conferencias, "alertas": j["alertas"]});
+                "conferencias": self.conferencias, "alertas": j["alertas"], "trava": j["trava"]});
             // só com --controle-replay (docs/PROTOCOLO_WS.md §4.3)
             if let Some(r) = h.replay_json() { e["replay"] = r; }
             if let Some(s) = &c.cfg.simulacao { e["simulacao"] = json!({"rotulo": s}); }
@@ -1735,7 +1958,7 @@ fn retomar(m: &mut Motor, sit: HashMap<ChaveUf, Situ>, disp: &mut HashMap<ChaveU
                 aplicados += 1;
             }
             Situ::NaoInstalada => m.pubr.nao_instalada(k.0, k.1),
-            Situ::Agregada => {}
+            Situ::Agregada => { m.agregada(k.0, k.1); }
         }
         m.secoes.insert(k, s);
     }
@@ -1887,59 +2110,58 @@ fn rodar_motor(com: Arc<Comum>, rx: crossbeam_channel::Receiver<Msg>, pedidos: t
     // comparação com o TSE: o -u.json de cada tópico publicado (o mesmo endereço da conferência)
     if let Some(t) = &com.tse {
         let a = &com.cfg.alvo;
-        let mut urls = HashMap::new();
+        let (mut urls, mut eleitorado) = (HashMap::new(), HashMap::new());
         for (cargo, v) in &abrs {
             for abr in v {
                 let Some((e, _)) = cad.eleicao_de(*cargo, abr) else { continue };
+                if let Some(&x) = cad.eleitorado_abr.get(&(*cargo, abr.clone())) { eleitorado.insert(format!("{}-c{cargo:04}", abr.codigo()), x); }
                 let nome = format!("{}-c{cargo:04}-e{e:06}-u.json", abr.codigo());
                 let dir = match abr { Abrangencia::Brasil => "br".to_string(), Abrangencia::Uf(u) | Abrangencia::Municipio(u, _) => String::from_utf8_lossy(u).into_owned() };
                 urls.insert(format!("{}-c{cargo:04}", abr.codigo()), (format!("{}/{}/{}/{e}/dados/{dir}/{nome}", a.base, a.ambiente, a.ciclo), nome));
             }
         }
         t.definir_urls(urls);
+        t.definir_eleitorado(eleitorado);
     }
+    // B-051: todas as abrangências publicadas entram no fim da apuração, com o total de seções do catálogo; o s.ts
+    // pré-apuração (quando houver) fica como piso
     let mut esperado: BTreeMap<Abrangencia, u64> = BTreeMap::new();
     for (c, v) in &abrs {
-        for a in v { if let Some(&n) = cad.secoes_abr.get(&(*c, a.clone())) { let e = esperado.entry(a.clone()).or_default(); *e = (*e).max(n); } }
-    }
-    if esperado.is_empty() {
-        com.alerta("sem_secoes_esperadas", "candidatos.json sem o número de seções (s.ts) das abrangências: o fim da apuração só por comando (arquivo CONFERIR)");
+        for a in v {
+            let e = esperado.entry(a.clone()).or_default();
+            if let Some(&n) = cad.secoes_abr.get(&(*c, a.clone())) { *e = (*e).max(n); }
+        }
     }
     let mut secoes_muni = vec![vec![]; cat.muni_cod.len()];
     for &k in cat.secoes.keys() { if let Some(m) = cat.muni((k >> 32) as u32) { secoes_muni[m as usize].push(k); } }
     for v in secoes_muni.iter_mut() { v.sort_unstable(); }
-    // coerência do s.ts pré-apuração: Brasil = soma das UFs; nenhuma abrangência com mais seções que o cs.json lista
+    // s.ts pré-apuração × catálogo (listadas no cs.json menos as agregadas do candidatos.json; em 2024 e 2026 igual ao
+    // s.ts oficial final em todas as abrangências). s.ts menor (desatualizado: 3221 em 23/10, SP 33.403 × 103.904) não
+    // muda mais nada — o fim usa o catálogo — e fica só registrado. s.ts maior ainda segura o fim da abrangência à
+    // espera de seções que o cs.json não lista: esse é o alerta.
     {
-        let mut por_uf: HashMap<[u8; 2], u64> = HashMap::new();
-        for (m, v) in secoes_muni.iter().enumerate() { *por_uf.entry(cat.ufs[cat.muni_uf[m] as usize]).or_default() += v.len() as u64; }
-        let mut problemas = vec![];
-        for (c, v) in &abrs {
-            let br = cad.secoes_abr.get(&(*c, Abrangencia::Brasil)).copied();
-            let ufs: Vec<Option<u64>> = v.iter().filter(|a| matches!(a, Abrangencia::Uf(_))).map(|a| cad.secoes_abr.get(&(*c, a.clone())).copied()).collect();
-            if let Some(br) = br {
-                // compara mesmo com UFs sem s.ts: uma UF faltando não pode esconder outras parciais (3221 em 13/10: TO sem
-                // s.ts, e a soma das outras 358.396 × 494.864 no Brasil)
-                let soma: u64 = ufs.iter().flatten().sum();
-                let faltam = ufs.iter().filter(|x| x.is_none()).count();
-                if !ufs.is_empty() && soma != br {
-                    problemas.push(format!("cargo {c}: br {br} ≠ soma de {} UFs {soma}{}", ufs.len() - faltam, if faltam > 0 { format!(" ({faltam} UFs sem s.ts)") } else { String::new() }));
-                } else if faltam > 0 { problemas.push(format!("cargo {c}: {faltam} UFs sem s.ts")); }
+        let total_muni: Vec<u64> = secoes_muni.iter().map(|v| v.iter().filter(|k| !cad.agregadas.contains(k)).count() as u64).collect();
+        let total = |a: &Abrangencia| -> u64 {
+            match a {
+                Abrangencia::Brasil => total_muni.iter().sum(),
+                Abrangencia::Uf(u) => (0..total_muni.len()).filter(|&m| cat.ufs[cat.muni_uf[m] as usize] == *u).map(|m| total_muni[m]).sum(),
+                Abrangencia::Municipio(u, mu) => cat.muni(*mu).map(|m| m as usize).filter(|&m| cat.ufs[cat.muni_uf[m] as usize] == *u).map_or(0, |m| total_muni[m]),
             }
-            for a in v {
-                if let (Abrangencia::Uf(u), Some(&n)) = (a, cad.secoes_abr.get(&(*c, a.clone()))) {
-                    let lista = por_uf.get(u).copied().unwrap_or(0);
-                    if n > lista { problemas.push(format!("cargo {c} {}: s.ts {n} > {lista} seções no cs.json", a.codigo())); }
-                    // s.ts muito menor que a lista: a abrangência "completaria" cedo demais (seções agregadas explicam
-                    // poucos %: 1,5 % no 2º turno de 2024, 3,5 % no 1º turno de 2026). Fora o exterior, onde metade
-                    // das seções listadas é agregada (2026: 1.351 em s.ts de 2.715 no cs.json). Só Presidente e
-                    // Governador, que valem para a UF inteira (consultas e suplementares cobrem alguns municípios)
-                    if matches!(*c, 1 | 3) && u != b"zz" && lista > 0 && n < lista * 9 / 10 { problemas.push(format!("cargo {c} {}: s.ts {n} < 90 % das {lista} seções no cs.json (parcial?)", a.codigo())); }
-                }
-            }
+        };
+        let (mut acima, mut abaixo) = (vec![], vec![]);
+        for (a, &n) in &esperado {
+            if n == 0 { continue; }
+            let t = total(a);
+            if n > t { acima.push(format!("{}: s.ts {n} > {t} no catálogo", a.codigo())); }
+            else if n < t { abaixo.push(format!("{}: s.ts {n} < {t}", a.codigo())); }
         }
-        if !problemas.is_empty() {
-            com.alerta("secoes_esperadas_incoerentes", &format!("s.ts pré-apuração do candidatos.json incoerente (o fim automático da apuração pode vir cedo ou não vir; regere o candidatos.json perto da eleição): {}",
-                problemas.iter().take(30).cloned().collect::<Vec<_>>().join("; ")));
+        if !abaixo.is_empty() {
+            com.registrar("info", "sts_desatualizado", json!({"abrangencias": abaixo.len(), "exemplos": abaixo.iter().take(10).collect::<Vec<_>>(),
+                "texto": "s.ts pré-apuração do candidatos.json abaixo do catálogo: o fim da apuração usa o catálogo (B-051)"}));
+        }
+        if !acima.is_empty() {
+            com.alerta("secoes_esperadas_incoerentes", &format!("s.ts pré-apuração do candidatos.json acima das seções do catálogo: o fim automático dessas abrangências espera por seções que o cs.json não lista (regere o candidatos.json): {}",
+                acima.iter().take(30).cloned().collect::<Vec<_>>().join("; ")));
         }
     }
     let pub_dir = cfg.saida.join("publicacao");
@@ -1973,7 +2195,11 @@ fn rodar_motor(com: Arc<Comum>, rx: crossbeam_channel::Receiver<Msg>, pedidos: t
     let mut marcos = crate::marcos::Marcos::abrir(Some(&cfg.saida), nomes_mun, munis_circ, ac.circs.len())?;
     // B-009: a conta do faltam_para_mat na thread uv-faltam (fora da thread do motor, sem orçamento por rodada)
     marcos.contar_em_paralelo(&ac)?;
-    if let Some(h) = &com.difusao { h.definir_nomes(crate::difusao::montar_nomes(&arq)); }
+    if let Some(h) = &com.difusao {
+        h.definir_nomes(crate::difusao::montar_nomes(&arq));
+        // mapa das seções (crate::mapa): um índice para cada seção do catálogo
+        h.definir_mapa(crate::mapa::Mapa::novo(crate::mapa::chaves_do_catalogo(&cat, &cad)));
+    }
     // previsão (etapa 8): todos os tópicos publicados; roda na thread `uv-previsao` (abaixo, junto com o laço do motor)
     let (prev_tx, prev_rx) = crossbeam_channel::unbounded::<crate::previsao::Definicao>();
     let prev_saude: Arc<Mutex<Value>> = Arc::default();
@@ -1984,8 +2210,9 @@ fn rodar_motor(com: Arc<Comum>, rx: crossbeam_channel::Receiver<Msg>, pedidos: t
     });
     let mut m = Motor {
         com: &com, cat: &cat, cad: &cad, est: &est, ag: Agregador::novo(&cat, &est), pubr, ac,
-        secoes: HashMap::new(), pendentes: HashMap::new(), repedidas: 0, sondadas: HashMap::new(), sonda_recusada: HashSet::new(), esc: Escritor::novo(&cfg.dados)?, diario, eventos, n_eventos: 0,
-        pub_dir, abrs, esperado: esperado.into_iter().collect(), secoes_muni, munis_sujos: vec![false; nm], ufs_sujas: vec![false; nu], sujo: false,
+        secoes: HashMap::new(), pendentes: HashMap::new(), repedidas: 0, sondadas: HashMap::new(), sonda_recusada: HashSet::new(), calendario_zz: carregar_calendario_exterior(&cfg), esc: Escritor::novo(&cfg.dados)?, diario, eventos, n_eventos: 0,
+        pub_dir, abrs, esperado: esperado.into_iter().collect(), agregadas_ger_vista: 0, secoes_muni, munis_sujos: vec![false; nm], ufs_sujas: vec![false; nu], sujo: false,
+        retidos: Default::default(), travar: false,
         aguardando: vec![], ultimo_bu_site: None, ultimo_bu_sis: None, retotalizando: false, gravacao: grav_tx, sincronia: sinc_tx, custo_mat: Amostra::default(), custo_pub: Amostra::default(),
         custo_lote: Amostra::default(), custo_saude: Amostra::default(), custo_verif: Amostra::default(),
         ultima_pub: Instant::now(), encerrada: false, conferindo: false, conferencias: 0, tentativas_oficiais: 0, prox_oficiais: None,
@@ -2003,6 +2230,19 @@ fn rodar_motor(com: Arc<Comum>, rx: crossbeam_channel::Receiver<Msg>, pedidos: t
     }
     let t1 = Instant::now();
     let (aplicados, perdidos, orfaos) = retomar(&mut m, sit, &mut disp)?;
+    // B-058: o horário do último BU (estado, resultados, aviso M-019 da página) vem do diário, sem esperar o próximo BU
+    if m.ultimo_bu_site.is_none() { m.ultimo_bu_site = ultimo_bu_do_diario(&m.secoes, &disp); }
+    // M-020: a trava vale depois da retomada (o diário entra inteiro), só contra o site do TSE e com a comparação ligada
+    // (é dela a busca do br-c0001); a inscrição permanente faz a busca rodar sempre (combinado com o Luciano em 25/10)
+    m.travar = crate::trava::vale(&cfg.alvo.base, cfg.controle_replay, com.tse.is_some());
+    let _insc_trava = if m.travar { com.tse.as_ref().and_then(|t| t.inscrever(crate::trava::TOPICO).ok()) } else { None };
+    // mapa das seções: as do diário acendem de uma vez, com o horário da disponibilização
+    if let Some(h) = &com.difusao {
+        let agora = Some(com.relogio_site.load(Relaxed)).filter(|&t| t > 0).unwrap_or_else(crate::agora_brasilia);
+        let v: Vec<(u64, i64)> = m.secoes.iter().filter(|(_, x)| matches!(x, Situ::Bu { .. }))
+            .map(|(k, _)| (k.1, disp.get(k).copied().filter(|&t| t > 0).unwrap_or(agora))).collect();
+        if !v.is_empty() { h.entregar(crate::difusao::Entrada::Secoes(v)); }
+    }
     // replay (--controle-replay): ir a um instante já visto = retotalizar do disco até ele (crate::controle_replay)
     if cfg.controle_replay {
         if let Some(alvo) = crate::controle_replay::reconstrucao_pendente() { reconstruir(&mut m, alvo, &mut disp)?; }
@@ -2060,6 +2300,9 @@ fn rodar_motor(com: Arc<Comum>, rx: crossbeam_channel::Receiver<Msg>, pedidos: t
         let agora = Instant::now();
         if agora >= prox_verif {
             m.verificar()?;
+            // M-020: relê o limite e a % do TSE; solta os retidos que já cabem no teto
+            m.atualizar_trava();
+            if !m.retidos.is_empty() { m.lote(vec![])?; }
             m.custo_verif.por(agora.elapsed().as_secs_f64() * 1e3);
             prox_verif = agora + Duration::from_secs(1);
         }
@@ -2153,7 +2396,7 @@ pub fn executar(mut cfg: Config) -> anyhow::Result<()> {
     };
     let com = Arc::new(Comum {
         cfg: cfg.clone(), rede, parar: AtomicBool::new(false), cs_ocioso: AtomicBool::new(false), fila: AtomicI64::new(0), lat_aux: Mutex::default(), lat_bu: Mutex::default(),
-        cont: Contadores::default(), publicadas_cs: Mutex::default(), agregadas_cs: Mutex::default(), aplicados: Mutex::default(), cache: Mutex::default(), relogio_site: AtomicI64::new(0), relogio,
+        cont: Contadores::default(), publicadas_cs: Mutex::default(), agregadas_cs: Mutex::default(), agregadas_ger: Default::default(), aplicados: Mutex::default(), cache: Mutex::default(), relogio_site: AtomicI64::new(0), relogio,
         t0: Instant::now(), escala: AtomicU64::new(escala.to_bits()), tx_motor, lat_pub: Mutex::default(), custo_grav: Mutex::default(), custo_sync: Mutex::default(), difusao: difusao.clone(), federado: federado.clone(), tse: tse.clone(), log: Mutex::new(Some(log)), alertas_arq: Mutex::new(Some(alertas)), alertas: Mutex::default(),
     });
     com.registrar("info", "inicio", json!({"versao": urna_velox::VERSAO, "base": base, "ambiente": cfg.alvo.ambiente, "ciclo": cfg.alvo.ciclo, "pleito": cfg.alvo.pleito,
@@ -2352,6 +2595,163 @@ mod testes {
         // mesmo horário: pela UF
         let (a2, b2) = (sec(b"ba", 5, "04/10/2026 18:00:00"), sec(b"am", 9, "04/10/2026 18:00:00"));
         assert!(chave_ordem(&vazio, &b2) < chave_ordem(&vazio, &a2));
+    }
+    /// B-056 (25/10/2026, 2º turno, pleito 3221): às 06:07 UTC o `aux.json` de Wellington (ZZ 30805/0001/1088) já dizia
+    /// BU "Recebido" às 01:51:38 e o BU estava no ar, mas o `zz-p003221-cs.json` ainda era o de 09/10 (nenhuma das
+    /// 2.715 seções com disponibilização). O exterior tem de ser sondado já, sem esperar o `cs.json` nem um primeiro BU.
+    #[test]
+    fn exterior_sondado_antes_do_cs_json() {
+        let t = |s: &str| urna_velox::metricas::segundos(s).unwrap();
+        assert!(domingo(t("25/10/2026 03:07:00")) && domingo(t("04/10/2026 00:00:00")) && domingo(t("27/10/2024 23:59:59")));
+        assert!(!domingo(t("24/10/2026 23:59:59")) && !domingo(t("26/10/2026 00:00:00")));
+        // ZZ do 3221: 1.351 seções esperadas (2.715 − 1.364 agregadas), nada apurado, cs.json lido sem disponibilização
+        assert_eq!(quando_sondar(true, true, 1351, 0, Some(0), false, true), Sonda::Antecipada, "B-056: o exterior não é sondado antes do cs.json");
+        // achados os primeiros BUs pela sondagem, segue antecipada enquanto o cs.json não listar nada
+        assert_eq!(quando_sondar(true, true, 1351, 5, Some(0), true, true), Sonda::Antecipada);
+        // fora do domingo, sem o cs.json lido ou sem as agregadas (nsp) no cs.json: nada antecipado
+        assert_eq!(quando_sondar(true, true, 1351, 0, Some(0), false, false), Sonda::Nao);
+        assert_eq!(quando_sondar(true, true, 1351, 0, None, false, true), Sonda::Nao);
+        assert_eq!(quando_sondar(true, false, 1351, 0, Some(0), false, true), Sonda::Nao);
+        // UF do Brasil: nunca antecipada
+        assert_eq!(quando_sondar(false, true, 38738, 0, Some(0), false, true), Sonda::Nao);
+        // com o cs.json listando seções: no domingo o exterior segue antecipado (B-065); fora dele, a regra de 16/10
+        assert_eq!(quando_sondar(true, true, 1351, 5, Some(5), true, true), Sonda::Antecipada);
+        assert_eq!(quando_sondar(true, true, 1351, 5, Some(5), true, false), Sonda::Nao);
+        assert_eq!(quando_sondar(true, true, 1351, 1310, Some(1310), true, false), Sonda::SeResolvidas);
+        assert_eq!(quando_sondar(false, true, 38738, 38700, Some(38700), true, true), Sonda::SeResolvidas);
+        assert_eq!(quando_sondar(false, true, 38738, 38738, Some(38738), true, true), Sonda::Nao);
+    }
+    /// B-058 (25/10/2026): depois de um reinício, o `ultimo_bu` do estado e dos resultados ficava vazio até o próximo BU
+    /// (às 17h57, com o TSE parado desde 17:11:45, o aviso M-019 não tinha o horário). Na retomada, o horário vem do
+    /// diário: a maior disponibilização das seções com BU (não instaladas e seções sem BU não contam).
+    #[test]
+    fn ultimo_bu_vem_do_diario_na_retomada() {
+        let t = |s: &str| urna_velox::metricas::segundos(s).unwrap();
+        let k = |s: u16| (*b"sp", tse::chave(71072, 1, s));
+        let bu = Situ::Bu { imp: 0, sha: [0; 32], anulada: false, pos: 0, tam: 0 };
+        let sit: HashMap<ChaveUf, Situ> = [(k(1), bu.clone()), (k(2), bu.clone()), (k(3), Situ::NaoInstalada), (k(5), bu)].into_iter().collect();
+        let disp: HashMap<ChaveUf, i64> = [(k(1), t("25/10/2026 15:47:02")), (k(2), t("25/10/2026 17:11:45")), (k(3), t("25/10/2026 17:30:00")),
+            (k(4), t("25/10/2026 17:40:00")), (k(5), 0)].into_iter().collect();
+        assert_eq!(ultimo_bu_do_diario(&sit, &disp), Some(t("25/10/2026 17:11:45")), "B-058: o último BU do diário na retomada");
+        assert_eq!(ultimo_bu_do_diario(&HashMap::new(), &disp), None, "sem BU no diário: nada");
+    }
+    /// B-065 (25/10/2026, 16h40): o `cs.json` do ZZ passou a listar seções às 14h e parou em 708 às 15h46; o `aux.json` e
+    /// o BU de Londres (29971/0001/0985) estavam no ar desde 15:47:02 e o concorrente tinha 776 × 708. Com o `cs.json`
+    /// listando alguma seção a sondagem antecipada do exterior acabava (só voltava faltando 5 % ou 50): o exterior
+    /// ficava preso ao ritmo do `cs.json`. No domingo o exterior segue sondado enquanto faltar seção.
+    #[test]
+    fn exterior_sondado_com_o_cs_json_atrasado() {
+        assert_eq!(quando_sondar(true, true, 1351, 708, Some(708), true, true), Sonda::Antecipada, "B-065: o exterior segue sondado com o cs.json listando seções");
+        assert_eq!(quando_sondar(true, true, 1351, 1310, Some(1310), true, true), Sonda::Antecipada);
+        // tudo apurado, fora do domingo ou sem nsp: como antes
+        assert_eq!(quando_sondar(true, true, 1351, 1351, Some(1351), true, true), Sonda::Nao);
+        assert_eq!(quando_sondar(true, true, 1351, 708, Some(708), true, false), Sonda::Nao);
+        assert_eq!(quando_sondar(true, false, 1351, 708, Some(708), true, true), Sonda::Nao);
+        // Brasil: nada muda
+        assert_eq!(quando_sondar(false, true, 38738, 700, Some(700), true, true), Sonda::Nao);
+    }
+    /// B-057 (25/10/2026): o exterior era sondado a 2 req/s e cada seção a cada 300 s (uma volta em ~11 min), na ordem
+    /// do catálogo. Agora: o calendário do `cs.json` do turno anterior diz quando cada seção costuma chegar; as devidas
+    /// agora vão primeiro e a cada 20 s, com reforço de 8 req/s, e um 429 acaba com o reforço.
+    #[test]
+    fn exterior_sondado_pelo_calendario() {
+        let t = |s: &str| urna_velox::metricas::segundos(s).unwrap();
+        // Wellington (30805/0001/1088) em 04/10: 01:49:24; a seção 1089 é agregada (sem data) e fica fora
+        let cs = r#"{"dg":"05/10/2026","hg":"02:59:38","abr":[{"cd":"zz","mu":[{"cd":"30805","nm":"WELLINGTON","zon":[{"cd":"0001","sec":[{"ns":"1088","da":"04/10/2026","ha":"01:49:24"},{"ns":"1089","nsp":"1088"}]}]}]}]}"#;
+        let cal = calendario_de_cs(cs);
+        let esperado = 3600 + 49 * 60 + 24;
+        assert_eq!(cal.len(), 1);
+        assert_eq!(cal.get(&crate::tse::chave(30805, 1, 1088)), Some(&esperado), "B-057: calendário do turno anterior");
+        assert!(calendario_de_cs("não é json").is_empty());
+        let e = Some(esperado);
+        // devida: de 30 min antes a 2 h depois do horário esperado (B-059)
+        assert_eq!(faixa_calendario(e, t("25/10/2026 01:44:30")), (0, SONDA_REPETIR_DEVIDA_S), "B-057: seção devida agora");
+        assert_eq!(faixa_calendario(e, t("25/10/2026 04:53:00")), (1, SONDA_REPETIR_ATRASADA_S));
+        assert_eq!(faixa_calendario(e, t("25/10/2026 03:49:24")), (0, SONDA_REPETIR_DEVIDA_S));
+        assert_eq!(faixa_calendario(e, t("25/10/2026 03:49:25")), (1, SONDA_REPETIR_ATRASADA_S));
+        // atrasada: até 12 h; depois disso (ou ainda longe do horário) é futura, no ritmo de antes
+        assert_eq!(faixa_calendario(e, t("25/10/2026 13:00:00")), (1, SONDA_REPETIR_ATRASADA_S));
+        assert_eq!(faixa_calendario(e, t("25/10/2026 14:00:00")), (2, SONDA_REPETIR_S));
+        assert_eq!(faixa_calendario(e, t("25/10/2026 01:18:00")), (2, SONDA_REPETIR_S));
+        assert_eq!(faixa_calendario(None, t("25/10/2026 01:50:00")), (2, SONDA_REPETIR_S));
+        // virada da meia-noite: esperado 23:50, agora 00:10 do dia seguinte
+        assert_eq!(faixa_calendario(Some(23 * 3600 + 50 * 60), t("26/10/2026 00:10:00")), (0, SONDA_REPETIR_DEVIDA_S));
+        // ritmo: reforço só na antecipada, sem 429 e com a fila do Brasil quase vazia
+        assert_eq!(sondas_por_rodada(true, false, 0), SONDA_POR_RODADA_EXTERIOR, "B-057: reforço do exterior");
+        assert_eq!(sondas_por_rodada(true, false, SONDA_FILA_OCIOSA - 1), SONDA_POR_RODADA_EXTERIOR);
+        assert_eq!(sondas_por_rodada(true, false, SONDA_FILA_OCIOSA), SONDA_POR_RODADA);
+        assert_eq!(sondas_por_rodada(true, true, 0), SONDA_POR_RODADA, "B-057: depois de um 429 o reforço acaba");
+        assert_eq!(sondas_por_rodada(false, false, 0), SONDA_POR_RODADA);
+    }
+    /// B-059 (25/10/2026, 05h46): o concorrente tinha 13 seções de Nagoya e nós 3. Os BUs de Nagoya começaram a chegar
+    /// ~20 min antes do horário do 1º turno, fora da janela "devida" do calendário (B-057), e ficaram a 300 s por seção.
+    /// Vale para qualquer município: o que já tem BU é sondado inteiro a cada 20 s, e a janela abre 30 min antes.
+    #[test]
+    fn exterior_municipio_quente_sondado_a_cada_20s() {
+        let t = |s: &str| urna_velox::metricas::segundos(s).unwrap();
+        let e = Some(6 * 3600); // seção esperada às 06:00:00 pelo calendário do turno anterior
+        // município ainda sem BU e longe do horário (1 h antes): ritmo de antes
+        assert_eq!(faixa_secao(e, t("25/10/2026 05:00:00"), false), (2, SONDA_REPETIR_S));
+        // município com BU: todas as seções a cada 20 s, qualquer que seja o horário esperado (ou sem calendário)
+        assert_eq!(faixa_secao(e, t("25/10/2026 05:00:00"), true), (0, SONDA_REPETIR_DEVIDA_S), "B-059: município com BU não é sondado a cada 20 s");
+        assert_eq!(faixa_secao(None, t("25/10/2026 05:00:00"), true), (0, SONDA_REPETIR_DEVIDA_S));
+        assert_eq!(faixa_secao(e, t("25/10/2026 20:00:00"), true), (0, SONDA_REPETIR_DEVIDA_S));
+        // chegou 14 min antes do calendário (Nagoya): dentro da janela de 30 min
+        assert_eq!(faixa_secao(e, t("25/10/2026 05:46:00"), false), (0, SONDA_REPETIR_DEVIDA_S), "B-059: janela de 30 min antes do horário");
+        assert_eq!(faixa_secao(e, t("25/10/2026 05:30:00"), false), (0, SONDA_REPETIR_DEVIDA_S));
+        assert_eq!(faixa_secao(e, t("25/10/2026 05:29:59"), false), (2, SONDA_REPETIR_S));
+        // depois do horário: como no B-057
+        assert_eq!(faixa_secao(e, t("25/10/2026 08:00:01"), false), (1, SONDA_REPETIR_ATRASADA_S));
+    }
+    /// B-060 (25/10/2026, 13h05): os nós tinham 199 seções cada e `sondadas` parado em 1.170 de 1.351: ~180 seções do
+    /// exterior nunca foram consultadas. A faixa quente (140 seções a cada 20 s) enchia o orçamento da rodada e metade das
+    /// seleções eram do outro nó (descartadas sem requisição). Agora só as seções do nó disputam a rodada e uma cota dela
+    /// vai para as sondadas há mais tempo, qualquer que seja a faixa.
+    #[test]
+    fn sondagem_cobre_todas_as_secoes_do_no() {
+        let ku = |i: u64| -> ChaveUf { (*b"zz", i) };
+        // a seção está devida: nunca pedida, ou há `repetir` s
+        assert!(devida(None, 0, 300) && !devida(Some(0), 299, 300) && devida(Some(0), 300, 300));
+        // 1) a partição: só as seções do nó disputam o orçamento
+        let lista: Vec<Candidata> = (0..20).map(|i| (0u8, i64::MIN, ku(i))).collect();
+        let propria = so_do_no(lista, |k| k.1 % 2 == 0);
+        assert_eq!(propria.len(), 10, "B-060: a rodada devia disputar só as seções deste nó");
+        assert!(propria.iter().all(|c| c.2 .1 % 2 == 0));
+        // 2) a cota: com a faixa quente sozinha enchendo a rodada, as nunca sondadas ainda entram
+        let mut l: Vec<Candidata> = (0..50).map(|i| (0u8, 1000 + i as i64, ku(i))).collect();
+        l.extend((100..110).map(|i| (4u8, i64::MIN, ku(i))));
+        let esc = escolher_sondas(l.clone(), 12, 3);
+        assert_eq!(esc.len(), 12);
+        assert_eq!(esc.iter().filter(|k| k.1 >= 100).count(), 3, "B-060: a cota é das sondadas há mais tempo");
+        // as demais vão por prioridade (as mais antigas da faixa quente primeiro)
+        assert!(esc.iter().filter(|k| k.1 < 100).all(|k| k.1 < 9), "B-060: o resto por prioridade");
+        // sem reforço (rodada comum, cota 0): só por prioridade, como antes
+        assert!(escolher_sondas(l, SONDA_POR_RODADA, 0).iter().all(|k| k.1 < 50));
+        // 3) simulação de 7 min, uma rodada por segundo, com os números de produção: 2.000 seções, metade de cada nó; as
+        //    400 primeiras (200 deste nó) são quentes (a cada 20 s) e as outras, frias (a cada 300 s). Quente 200/20 = 10 req/s
+        //    + frio 800/300 = 2,7 req/s > 12: sem a cota, as frias passam fome
+        let mut sondadas: HashMap<ChaveUf, i64> = HashMap::new();
+        let mut vezes: HashMap<u64, u32> = HashMap::new();
+        let mut maior_intervalo_quente = 0;
+        for agora in 0..420i64 {
+            let mut lista: Vec<Candidata> = vec![];
+            for i in 0..2000u64 {
+                let (prio, rep) = if i < 400 { (0u8, SONDA_REPETIR_DEVIDA_S) } else { (4u8, SONDA_REPETIR_S) };
+                let ult = sondadas.get(&ku(i)).copied();
+                if devida(ult, agora, rep) { lista.push((prio, ult.unwrap_or(i64::MIN), ku(i))); }
+            }
+            let esc = escolher_sondas(so_do_no(lista, |k| k.1 % 2 == 0), SONDA_POR_RODADA_EXTERIOR, 3);
+            assert!(esc.len() <= SONDA_POR_RODADA_EXTERIOR);
+            for k in esc {
+                assert!(k.1 % 2 == 0, "B-060: pediu seção do outro nó");
+                if k.1 < 400 && agora > 100 { if let Some(&t) = sondadas.get(&k) { maior_intervalo_quente = maior_intervalo_quente.max(agora - t); } }
+                sondadas.insert(k, agora);
+                *vezes.entry(k.1).or_default() += 1;
+            }
+        }
+        let frias_sem_consulta = (400..2000u64).filter(|i| i % 2 == 0 && !vezes.contains_key(i)).count();
+        assert_eq!(frias_sem_consulta, 0, "B-060: seções frias deste nó nunca consultadas em 7 min");
+        assert!(maior_intervalo_quente <= 60, "B-060: a faixa quente passou de 60 s entre consultas ({maior_intervalo_quente} s)");
     }
     #[test]
     fn painel_desenha() {

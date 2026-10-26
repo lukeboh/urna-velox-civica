@@ -1,0 +1,78 @@
+/* Urna Velox — páginas de texto (/termos e /privacidade; molde documento.html). Texto corrido, sem animação: as cores
+ * e a fonte são as da página da apuração (estilo.css), o tema é o lembrado por ela (documento.js). */
+
+@font-face {
+  font-family: "Archivo UV";
+  src: url("/static/archivo.woff2") format("woff2-variations"), url("/static/archivo.woff2") format("woff2");
+  font-weight: 100 900;
+  font-stretch: 62% 125%;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --fundo: #0d1431;
+  --fundo-2: #141d45;
+  --vidro: rgba(255, 255, 255, 0.065);
+  --borda: rgba(255, 255, 255, 0.15);
+  --texto: #eef1ff;
+  --texto-2: #a8b2d8;
+  --texto-3: #7680a8;
+  --acento: #8fb4ff;
+  color-scheme: dark;
+}
+:root[data-tema="claro"] {
+  --fundo: #e9edf8;
+  --fundo-2: #f6f7fc;
+  --vidro: rgba(255, 255, 255, 0.7);
+  --borda: rgba(30, 40, 90, 0.12);
+  --texto: #121836;
+  --texto-2: #4a5378;
+  --texto-3: #7a83a6;
+  --acento: #2f55c8;
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+html { background: var(--fundo); }
+body {
+  margin: 0; min-height: 100vh; background: linear-gradient(180deg, var(--fundo-2), var(--fundo) 90vh) no-repeat;
+  color: var(--texto); font: 16px/1.6 "Archivo UV", system-ui, sans-serif;
+}
+a { color: var(--acento); }
+code { font-size: 0.9em; overflow-wrap: anywhere; }
+
+.topo {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  max-width: 860px; margin: 0 auto; padding: 18px 16px;
+}
+.marca { font-size: 22px; font-weight: 800; color: var(--texto); text-decoration: none; letter-spacing: -0.01em; }
+.marca span { font-weight: 300; color: var(--texto-2); }
+.voltar { font-size: 14px; color: var(--texto-2); text-decoration: none; }
+.voltar:hover, .voltar:focus-visible { color: var(--texto); text-decoration: underline; }
+
+.doc { max-width: 860px; margin: 0 auto; padding: 0 16px 32px; overflow-wrap: break-word; }
+.doc p, .doc li, .doc td { overflow-wrap: anywhere; }
+h1 { font-size: clamp(26px, 5vw, 36px); line-height: 1.2; margin: 8px 0 4px; }
+h2 { font-size: 20px; margin: 32px 0 8px; }
+.versao { color: var(--texto-3); font-size: 14px; margin: 0 0 20px; }
+ul { padding-left: 1.2em; }
+li { margin: 6px 0; }
+
+.resumo {
+  background: var(--vidro); border: 1px solid var(--borda); border-radius: 16px; padding: 4px 20px 8px;
+}
+.resumo h2 { margin-top: 14px; }
+
+.tabela { overflow-x: auto; border: 1px solid var(--borda); border-radius: 12px; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; line-height: 1.5; min-width: 640px; }
+th, td { text-align: left; vertical-align: top; padding: 10px 12px; border-bottom: 1px solid var(--borda); }
+th { color: var(--texto-2); font-weight: 600; background: var(--vidro); }
+tbody tr:last-child td { border-bottom: 0; }
+
+.pe { max-width: 860px; margin: 0 auto; padding: 16px; color: var(--texto-3); font-size: 13px; border-top: 1px solid var(--borda); }
+h3 { font-size: 17px; margin: 24px 0 6px; }
+section + section { margin-top: 48px; padding-top: 8px; border-top: 1px solid var(--borda); }
+blockquote { margin: 16px 0; padding: 4px 16px; border-left: 3px solid var(--acento); background: var(--vidro); border-radius: 0 12px 12px 0; }
+.aviso-req { font-family: ui-monospace, monospace; font-size: 13px; color: var(--texto-2); overflow-wrap: anywhere; }
+.pe a { color: inherit; }

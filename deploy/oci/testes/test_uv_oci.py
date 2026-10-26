@@ -91,5 +91,35 @@ class SaidaAtrasada(unittest.TestCase):
         self.assertEqual((rc, out), (0, b"ok\n"))
 
 
+class LimiteDoTexto(unittest.TestCase):
+    """B-063: o Run Command da OCI recusa texto com mais de 4.096 caracteres (`content.source.text size must be between
+    1 and 4096`). O script em linha vai em base64 (4/3) dentro do wrapper: com o limite em bytes do script (3.500) o
+    30_verificar.sh (~2.500 bytes) passava disso e o comando nem era criado."""
+    def test_comando_cabe_no_limite_da_oci(self):
+        textos, objetos = [], []
+
+        class Ia(IaFalso):
+            def create_instance_agent_command(self, wrapper):
+                textos.append(wrapper)
+                return super().create_instance_agent_command(wrapper)
+
+        class Os(OsFalso):
+            def put_object(self, ns_, bucket, nome, dados): objetos.append(nome)
+
+        uv_oci.os_client, uv_oci.ESPERA = Os(), 0
+        uv_oci.ns, uv_oci.bucket = "ns", "balde"
+        uv_oci.detalhes_comando = lambda inst, wrapper, t, tok: wrapper
+        uv_oci.ia_client = Ia(lambda s: [("SUCCEEDED", res(0, b"ok\n"))])
+        for n in (100, 2000, 2600, 3000, 3500, 6000):
+            antes = len(objetos)
+            rc, out, _ = uv_oci.rodar_remoto("inst", b"#" * (n - 1) + b"\n")
+            self.assertEqual((rc, out), (0, b"ok\n"), n)
+            self.assertLessEqual(len(textos[-1]), 4096, f"script de {n} bytes: comando com {len(textos[-1])} caracteres")
+            if n == 100:
+                self.assertEqual(len(objetos), antes, "script pequeno vai em linha, sem bucket")
+            if n == 6000:
+                self.assertEqual(len(objetos), antes + 1, "script grande vai pelo bucket")
+
+
 if __name__ == "__main__":
     unittest.main()

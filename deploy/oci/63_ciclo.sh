@@ -105,10 +105,14 @@ EOF
   for N in A B; do
     if [ "$N" = A ]; then URL=http://127.0.0.1:8090/api/v1/playlist; else URL="https://$DOM/api/v1/playlist"; fi
     PAR=$(no_var "$(outro_de "$N")" IP_PRIVADO)
+    # M-005: o 301 do endereço antigo só no nó A (o mesmo do 02_configurar_borda.sh)
+    ANT=""; [ "$N" = A ] && ANT="${DOMINIO_ANTIGO-urnavelox.duckdns.org}"
+    # B-024: a playlist só roda no A; o Caddy do B a leva ao HTTPS do A, e o do A confia no B para o IP do visitante
+    if [ "$N" = A ]; then PLR="local:$(no_var B IP_PUBLICO),$(no_var B IP_PRIVADO)"; else PLR="remoto:$(no_var A IP_PUBLICO)"; fi
     msg "nó $N: playlist ($URL; eleições oficiais $ELEI)"
     T=$(mktemp -d)
     cp "$G/playlist.segredo" "$S/uv-playlist.py" "$S/uv-playlist.html" "$S/uv-playlist.service" "$S/Caddyfile.template" \
-       "$S/uv-ciclo-vigia.py" "$S/uv-ciclo.sh" "$T/"
+       "$S/gerar_caddyfile.sh" "$S/uv-ciclo-vigia.py" "$S/uv-ciclo.sh" "$T/"
     # o instalador roda como root no nó (uv-operar.sh, como o 02_configurar_borda.sh); valores já substituídos aqui
     cat > "$T/instalar_playlist.sh" <<EOF
 set -e
@@ -124,7 +128,7 @@ if [ "$N" = A ]; then
   sleep 2; curl -s --max-time 5 http://127.0.0.1:8090/api/v1/playlist/saude && echo ' (uv-playlist no ar)'
 fi
 if command -v caddy >/dev/null; then
-  sed -e 's/{\\\$DOMINIO:localhost}/$DOM/g' -e 's/{\\\$PAR_IP:127.0.0.1}/$PAR/g' \$D/Caddyfile.template > /etc/caddy/Caddyfile.novo
+  bash \$D/gerar_caddyfile.sh \$D/Caddyfile.template '$DOM' '$PAR' '$ANT' '$PLR' '${DOMINIO_DADOS:-}' > /etc/caddy/Caddyfile.novo
   if caddy validate --config /etc/caddy/Caddyfile.novo --adapter caddyfile >/dev/null 2>&1; then
     cp /etc/caddy/Caddyfile /etc/caddy/Caddyfile.antes-playlist 2>/dev/null || true
     mv /etc/caddy/Caddyfile.novo /etc/caddy/Caddyfile
@@ -140,7 +144,7 @@ systemctl restart uv-ciclo-vigia 2>/dev/null || true
 echo "nó $N: playlist instalada"
 EOF
     tar -C "$T" -czf "$T/playlist.tar.gz" playlist.segredo uv-playlist.py uv-playlist.html uv-playlist.service \
-        Caddyfile.template uv-ciclo-vigia.py uv-ciclo.sh instalar_playlist.sh
+        Caddyfile.template gerar_caddyfile.sh uv-ciclo-vigia.py uv-ciclo.sh instalar_playlist.sh
     para "$N" "$T/playlist.tar.gz" /tmp/uv-implantar/uv-playlist.tar.gz
     rm -rf "$T"
     em "$N" "rm -rf /tmp/uv-pl && mkdir -p /tmp/uv-pl && tar -xzf /tmp/uv-implantar/uv-playlist.tar.gz -C /tmp/uv-pl \

@@ -46,6 +46,10 @@ struct Cli {
     /// Disponibilizações depois deste horário entram nele ("dd/mm/aaaa hh:mm:ss")
     #[arg(long)]
     corte: Option<String>,
+    /// Piso: seções publicadas (ou recebidas) antes dele entram nele ("hh:mm:ss" no dia da eleição, ou "dd/mm/aaaa
+    /// hh:mm:ss"; "" desliga). Padrão: 17:00:00 — os BUs do exterior da madrugada entram juntos às 17h
+    #[arg(long, default_value = "17:00:00")]
+    piso: String,
     /// Horário de cada seção: "disponivel" (disponivel_cs das métricas, ou o recebimento quando ela não é da noite) ou
     /// "recebido" (recebido_tse; para cs.json coletados depois da noite, como o de 2026)
     #[arg(long, default_value = "disponivel", value_parser = ["disponivel", "recebido"])]
@@ -106,6 +110,7 @@ fn main() -> anyhow::Result<()> {
         acelerar: a.acelerar,
         inicio: a.inicio,
         corte: a.corte,
+        piso: Some(a.piso).filter(|x| !x.trim().is_empty()),
         horario_recebido: a.horario == "recebido",
         log: a.log.clone(),
         falhas: Falhas { rajadas_429: a.rajada_429, latencia_ms: a.latencia_ms, erros_5xx: a.erros_5xx, semente: a.semente,

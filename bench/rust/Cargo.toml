@@ -1,6 +1,6 @@
 [package]
 name = "urnabench"
-version = "0.8.38"
+version = "1.0.10"
 edition = "2021"
 license = "PolyForm-Noncommercial-1.0.0"
 

@@ -109,8 +109,8 @@ uv-coletor preparar --pleito 3221 --saida /home/dev/uvreal/2026-2t/preparo --fon
 
 Fontes (todas publicadas antes da apuração), com cache em `--fontes` (`<fontes>/<sub>/<nome>` ou `<fontes>/<nome>`):
 `ele-c.json`; `mun-e<eleição>-cm.json` (`cm/`); `<abr>-c<cargo>-e<eleição>-u.json` de cada abrangência (`u/`);
-`<uf>-p<pleito>-cs.json` (`cs/`). O que está no cache não é baixado de novo (`--atualizar` força `ele-c.json` e
-`cs.json`, que mudam até a eleição; `--offline` não usa a rede). Rede: 1 conexão, ≤ 5 req/s, para no primeiro HTTP 429.
+`<uf>-p<pleito>-cs.json` (`cs/`). O que está no cache não é baixado de novo (`--atualizar` baixa tudo de novo,
+porque mudam até a eleição, inclusive o eleitorado dos `-u.json` (B-055); `--offline` não usa a rede). Rede: 1 conexão, ≤ 5 req/s, para no primeiro HTTP 429.
 `--cargos 1,3,5` restringe os cargos; `--ignorar-destinacao` presume "Válido" para todos (simulação com arquivos já
 apurados, como nos conjuntos de 2024 e de 2026 1º turno).
 

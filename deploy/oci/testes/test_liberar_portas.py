@@ -82,6 +82,50 @@ class LiberarPortas(unittest.TestCase):
         rc, _ = self.rodar({}, [], "sub-rede", [8095], ["A"])
         self.assertNotEqual(rc, 0)
 
+    # B-025: uma regra pública (0.0.0.0/0 → 8080, criada à mão) "cobria" a da sub-rede, que nunca foi criada; tirar a
+    # pública derrubaria o balanceamento entre os nós. A da sub-rede tem de existir por conta própria.
+    def test_b025_sub_rede_nao_conta_com_regra_publica(self):
+        rc, rede = self.rodar({"sl1": [regra("0.0.0.0/0", 8080), regra("10.0.1.0/24", 8095)]}, ["sl1"],
+                              "sub-rede", [8080, 8095], ["A", "B"])
+        self.assertEqual(rc, 0)
+        self.assertEqual(self.portas(rede, "sl1", "10.0.1.0/24"), [8080, 8095])
+
+
+class FecharPortas(unittest.TestCase):
+    """B-025: `uv_oci.py fechar-portas 0.0.0.0/0 8080 …` tira da Security List as regras públicas dessas portas (e só
+    elas); uma regra ampla (todo protocolo, faixa de portas) não é retalhada: falha alto para o operador decidir."""
+    def setUp(self):
+        uv_oci.comp = "comp"
+        uv_oci._modelos = lambda: (lambda **k: ns(**k), lambda **k: ns(**k), lambda **k: ns(**k), lambda **k: ns(**k))
+
+    def rodar(self, regras, *args):
+        rede = Rede({"sl1": regras}, ["sl1"])
+        rc = uv_oci.fechar_portas(Computa({"A": ["v1"], "B": ["v2"]}), rede, *args)
+        return rc, rede
+
+    def test_b025_tira_so_a_publica(self):
+        regras = [regra("0.0.0.0/0", 22), regra("0.0.0.0/0", 8080), regra("10.0.1.0/24", 8080), regra("0.0.0.0/0", 443)]
+        rc, rede = self.rodar(regras, "0.0.0.0/0", [8080, 8095], ["A", "B"])
+        self.assertEqual(rc, 0)
+        fica = sorted((r.source, r.tcp_options.destination_port_range.min) for r in rede.listas["sl1"])
+        self.assertEqual(fica, [("0.0.0.0/0", 22), ("0.0.0.0/0", 443), ("10.0.1.0/24", 8080)])
+        self.assertEqual(len(rede.atualizacoes), 1)
+
+    def test_b025_idempotente(self):
+        rc, rede = self.rodar([regra("10.0.1.0/24", 8080)], "0.0.0.0/0", [8080], ["A", "B"])
+        self.assertEqual((rc, rede.atualizacoes), (0, []))
+
+    def test_b025_regra_ampla_falha_alto(self):
+        rc, rede = self.rodar([regra("0.0.0.0/0", proto="all")], "0.0.0.0/0", [8080], ["A"])
+        self.assertNotEqual(rc, 0)
+        self.assertEqual(rede.atualizacoes, [])
+
+    def test_b025_borda_libera_a_sub_rede_e_fecha_a_internet(self):
+        s = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "02_configurar_borda.sh"), encoding="utf-8").read()
+        self.assertIn("fechar-portas 0.0.0.0/0", s)
+        i, j = s.index("sl sub-rede"), s.index("fechar-portas 0.0.0.0/0")
+        self.assertLess(i, j, "a regra da sub-rede tem de vir antes de fechar a pública")
+
 
 if __name__ == "__main__":
     unittest.main()

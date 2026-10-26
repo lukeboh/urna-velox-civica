@@ -154,7 +154,7 @@ function cartaoNo(id, n) {
     h('span', {}, 'servidor ', h('b', {}, sv.base || '—')),
     h('span', {}, 'no ar há ', h('b', {}, duracao(sv.ativo_s))),
     h('span', {}, 'relógio do site ', h('b', {}, sv.relogio_site || '—')),
-    sv.simulacao ? h('span', {}, 'simulação ', h('b', {}, sv.simulacao.rotulo || 'sim')) : null,
+    sv.simulacao ? h('span', {}, 'replay ', h('b', {}, sv.simulacao.rotulo || 'sim')) : null,
     h('span', {}, 'máquina ', h('b', {}, sis.hostname || '—')));
   const teto = v('teto_req_s');
   const reqNivel = teto && v('req_s') > teto * 1.02 ? 'critico' : '';
@@ -344,8 +344,8 @@ async function carregarConfig() {
 function avisoCiclo(c) {
   const estado = (u) => ((c.servicos || []).find((x) => x.unidade === u) || {}).estado;
   if (estado('uv-ciclo-no.service') !== 'active' || estado('urna-velox.service') === 'active') return null;
-  return h('p', { class: 'aviso-ciclo' }, h('b', {}, 'Este nó está no ciclo de simulados'), ' (uv-ciclo-no). O que a visão geral mostra ',
-    '(pleito, servidor, versão) é do simulado em andamento. Esta configuração é a do urna-velox.service, parado durante o ciclo: ',
+  return h('p', { class: 'aviso-ciclo' }, h('b', {}, 'Este nó está no ciclo de replays'), ' (uv-ciclo-no). O que a visão geral mostra ',
+    '(pleito, servidor, versão) é do replay em andamento. Esta configuração é a do urna-velox.service, parado durante o ciclo: ',
     'o que for gravado aqui vale quando o nó voltar ao serviço normal.');
 }
 

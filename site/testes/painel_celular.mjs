@@ -139,7 +139,7 @@ for (const [nome, vp] of [['360', { width: 360, height: 780 }], ['390', { width:
       const pequenos = await pg.$$eval('#config input:not([type=checkbox]), #config select', (l) => l.filter((e) => parseFloat(getComputedStyle(e).fontSize) < 16).length);
       conferir(pequenos === 0, `390 px · config: campos com letra de 16 px ou mais (o Safari do iPhone não aproxima ao tocar) — ${pequenos} abaixo`);
       const txt = await pg.textContent('#config');
-      conferir(/ciclo de simulados/i.test(txt), '390 px · config: avisa que o nó está no ciclo de simulados (uv-ciclo-no ativo, urna-velox parado)');
+      conferir(/ciclo de replays/i.test(txt), '390 px · config: avisa que o nó está no ciclo de replays (uv-ciclo-no ativo, urna-velox parado)');
     }
     await ctx.close();
   }

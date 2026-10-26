@@ -54,6 +54,7 @@ Mensagens de texto JSON, **no máximo 4 KB** cada:
 {"op":"cancelar","topicos":["sp-c0001"]}
 {"op":"eventos"}
 {"op":"marcos"}
+{"op":"mapa","desde":182345,"epoca":1793037600123}
 ```
 
 * `inscrever`: passa a receber os tópicos (e os eventos das circunscrições deles). Para cada tópico novo, o servidor
@@ -72,6 +73,10 @@ Mensagens de texto JSON, **no máximo 4 KB** cada:
   municipais só chegam para os tópicos inscritos. É o que a página usa (celular). Sem `escopo`, todos, como antes.
 * `tse:<tópico>` em `inscrever`/`cancelar` (desde a `0.6.11`): a comparação com o TSE (§4.6). A inscrição liga a
   busca do arquivo de resultado do TSE desse tópico no servidor; conta no limite de tópicos.
+* `mapa` (desde a `0.9.19`): as seções que acenderam no mapa das seções (§4.8) depois de `desde` (quantas o cliente
+  já tem, do `GET /api/v1/mapa/estado` ou das mensagens anteriores), e depois cada lote novo. `epoca` diferente da do
+  processo → uma mensagem `{"tipo":"mapa","epoca":…,"reiniciar":true}` (o cliente busca a fotografia de novo e pede
+  outra vez). Servidor sem o mapa → `erro` `mapa_indisponivel`. Pedir de novo troca o `desde`.
 * Nada além disso: o cliente não muda estado, não força conferência, não lê arquivo.
 
 Limites (por conexão; padrão, ajustáveis na linha de comando do serviço): até **200 tópicos**; até **20 mensagens/s**
@@ -254,10 +259,10 @@ Quem está inscrito no tópico (§3) recebe, sem pedir nada: na inscrição, a �
 ```json
 {"tipo":"previsao","instantaneo":false,"topico":"br-c0001","abrangencia":"br","cargo":1,"circunscricao":true,"estimativa":true,
  "instante":"2026-10-25 18:44:00","situacao":"prevista","base":{"apurado":0.4691,"secoes":0.4853,"aptos_min":1410273},
- "mat":{"tipo":"matematicamente_eleito","p10":"2026-10-25 19:31:12","p50":"2026-10-25 19:52:40","p90":"2026-10-25 20:21:05","incerta":false,
+ "mat":{"tipo":"matematicamente_eleito","p10":"2026-10-25 19:31:12","p50":"2026-10-25 19:52:40","p90":"2026-10-25 20:21:05","incerta":false,"eta":"2026-10-25 19:49:30",
    "prob_antes_fim":1.0,"apurado_p50":0.951},
- "fim99":{"p10":"2026-10-25 20:20:31","p50":"2026-10-25 20:52:06","p90":"2026-10-25 21:31:44","incerta":false},
- "fim100":{"p10":"…","p50":"…","p90":"…","incerta":true},
+ "fim99":{"p10":"2026-10-25 20:20:31","p50":"2026-10-25 20:52:06","p90":"2026-10-25 21:31:44","incerta":false,"eta":"2026-10-25 20:47:10"},
+ "fim100":{"p10":"…","p50":"…","p90":"…","incerta":true,"eta":"…"},
  "chegou":{"fim99":null,"fim100":null},"definida":null,"confirmacao":null,"t_envio":1792975440123456}
 ```
 
@@ -267,8 +272,8 @@ Quem está inscrito no tópico (§3) recebe, sem pedir nada: na inscrição, a �
 | `situacao` | `prevista`; `suspensa` (desde a `0.7.8`: a chegada dos BUs parou no país, ver `parada`); ou `definida` (o "matematicamente" já saiu: `mat` vem `null` e `confirmacao` diz como a previsão se saiu) |
 | `parada` | desde a `0.7.8`, só com `situacao` = `suspensa`: `{"desde":"aaaa-mm-dd hh:mm:ss","minutos":n}`. A parada começa quando o ritmo de chegada dos BUs no país nos últimos 5 min cai abaixo de 10 % do ritmo dos 30 min anteriores (entre 5 % e 97 % apurado) e termina quando volta a 30 % dele. Enquanto dura, nenhuma previsão nova é calculada: `mat`, `fim99` e `fim100` são os da última previsão normal, **adiados** pelo tempo parado (são o mais cedo possível, se a chegada voltasse agora). Mostre algo como "chegada de BUs parada desde hh:mm — previsão adiada". Com a volta, a previsão é recalculada e `parada` some |
 | `base` | o que a previsão usou: fração dos aptos (`apurado`) e das seções (`secoes`) já apurados, e a velocidade em aptos por minuto (média móvel, meia-vida de 10 min) |
-| `mat` | só na circunscrição ainda em aberto: `tipo` (`matematicamente_eleito` ou `matematicamente_2t`), a faixa `p10`–`p90` com a mediana `p50`, `incerta` (faixa maior que 3 h: mostre "ainda incerto"), `prob_antes_fim` (probabilidade de sair com pelo menos 1 % dos aptos ainda por apurar; perto de 0 = "deve ir até o fim") e `apurado_p50` (fração dos aptos com que deve sair) |
-| `fim99`, `fim100` | horário (faixa) em que as seções apuradas chegam a 99 % e a 100 % das esperadas (sem agregadas); `null` quando já chegou (ver `chegou`). O 100 % depende das últimas seções (exterior, locais remotos): no Brasil costuma ficar `incerta` |
+| `mat` | só na circunscrição ainda em aberto: `tipo` (`matematicamente_eleito` ou `matematicamente_2t`), a faixa `p10`–`p90` com a mediana `p50`, `incerta` (faixa maior que 3 h da noite), `eta` (B-052: horário pelo ritmo atual — o que falta até `apurado_p50` ÷ a velocidade média móvel —, como o ETA de um navegador de trânsito; com a faixa `incerta`, mostre ele: "por volta de …"; `null` só sem ritmo nenhum), `prob_antes_fim` (probabilidade de sair com pelo menos 1 % dos aptos ainda por apurar; perto de 0 = "deve ir até o fim") e `apurado_p50` (fração dos aptos com que deve sair) |
+| `fim99`, `fim100` | horário (faixa) em que as seções apuradas chegam a 99 % e a 100 % das esperadas (sem agregadas); `null` quando já chegou (ver `chegou`). O 100 % depende das últimas seções (exterior, locais remotos): no Brasil costuma ficar `incerta`. Cada uma traz também o `eta` (horário pelo ritmo atual das seções) |
 | `chegou` | quando o tópico chegou a 99 % e a 100 % das seções (`null` = ainda não) |
 | `definida` | quando saiu o "matematicamente" da circunscrição (horário do BU, como nos eventos) |
 | `confirmacao` | depois de `definida`: `saiu`, a última faixa prevista antes (`faixa`: `p10`, `p90`), se o horário real caiu nela (`dentro`) e `desde` quando todas as faixas previstas o continham (`null` se a última não continha) |
@@ -277,6 +282,30 @@ Quem está inscrito no tópico (§3) recebe, sem pedir nada: na inscrição, a �
 Horários em `"aaaa-mm-dd hh:mm:ss"` (Brasília, como `horario` dos eventos). A previsão é guardada só na memória do
 serviço: depois de um reinício, recomeça (precisa de 10 min de série de novo). O registro de cada rodada fica em
 `<saida>/previsoes.csv`; a saúde (`saude.json`) tem o bloco `previsao` (tópicos, rodadas, custo em ms).
+
+### 4.8. `mapa` — mapa das seções (desde a `0.9.19`)
+
+O servidor não sabe de geografia: dá a cada seção do catálogo um **índice** (a posição na lista ordenada pela chave
+`município << 32 | zona << 16 | seção`, a mesma do `GET /api/v1/mapa/secoes`) e conta quais já foram aplicadas, na ordem
+em que acenderam. A seção acende na **primeira** aplicação do BU (substituição e anulação não mudam o ponto); na
+retomada, as seções do diário acendem de uma vez, com a faixa da disponibilização. Seção fora do catálogo (descoberta
+na noite) não tem índice: fica de fora (contada em `fora`). A página põe cada índice no mapa com a geografia de
+`/static/mapa.json` (`site/geo/README.md`).
+
+```json
+{"tipo":"mapa","epoca":1793037600123,"de":182345,"n":182351,"s":[40211,171,40212,171,301877,172,12,58,13,58,90001,172]}
+```
+
+| campo | significado |
+|---|---|
+| `epoca` | identifica o processo (ms da partida): outro processo, outra numeração das seções acesas |
+| `de`, `n` | as seções acesas de `de` (inclusive) a `n` (exclusive) na ordem em que acenderam |
+| `s` | pares `[índice, faixa]`; `faixa` = horário do BU no TSE em faixas de 6 min do dia (1 = 00:00–00:06, 171 = 17:00–17:06, 240 = 23:54–24:00) |
+| `total` | (desde a `1.0.2`, B-064) seções do mapa, o mesmo total da página: a lista não tem as agregadas do `candidatos.json`, e as que se revelam agregadas na noite saem do total (índices em `ret` no `GET /api/v1/mapa/estado`). Mudou: o cliente relê a fotografia |
+
+No máximo uma mensagem a cada 250 ms por conexão (juntando os lotes) e até 8.192 pares por mensagem (o histórico de
+quem pede atrasado vai em várias, em ordem). `de` maior que o que o cliente tem = lacuna: busque a fotografia de novo.
+A saúde (`saude.json`, bloco `difusao`) tem `mapa`: `secoes`, `acesas`, `fora_do_catalogo` e `fotografias`.
 
 ## 5. Vivacidade e reconexão
 
@@ -302,6 +331,8 @@ serviço: depois de um reinício, recomeça (precisa de 10 min de série de novo
 | `GET /api/v1/marcos` | (desde a `0.4.1`) os marcos com histórico e o último `faltam_para_mat` de cada circunscrição (os objetos da §4.5, sem `tipo`/`t_envio`), `no-cache` |
 | `GET /api/v1/nomes` | (desde a `0.4.1`) nomes para exibir, do `candidatos.json` (arquivos públicos do TSE, sem requisição nova): `{"pleito", "ufs": {"sp": "SÃO PAULO", "zz": "EXTERIOR"…}, "municipios": {"sp71072": "SÃO PAULO"…}, "eleicoes": [{"codigo", "turno", "cargos": [{"cargo", "vagas", "consulta", "abrangencias": [...], "circunscricoes": [{"abr", "eleitorado", "candidatos": [{"n", "nome_urna", "nome", "partido", "vices": [{"tp", "nome_urna", "partido"}]}]}]}]}]}`; `ETag` fixo por processo (304 com `If-None-Match`), `Cache-Control: public, max-age=60`. `tp` dos vices como no `-u.json`: `v` = vice, `1`/`2` = suplentes |
 | `GET /api/v1/curva/<topico>` | (desde a `0.4.10`) a curva da apuração do tópico desde o começo da noite (ou do último reinício do processo), para a página desenhar o gráfico inteiro ao abrir ou recarregar: `{"topico", "passo_s", "relogio", "pontos": [[t, apuradas, total, [[n, pct], …]], …]}`. `t` = desde a `0.8.28` (M-003) o `totalizado_em` do resultado (relógio do sistema), em segundos civis de Brasília com fração (como `Date.UTC` da hora local; antes, o horário do último BU no TSE); `passo_s` = 60 s da noite no relógio do sistema (60 / aceleração), `apuradas`/`total` = `secoes`, e o `pct` de **todos** os candidatos (uma virada não troca as linhas de dono). Um ponto por 60 s de noite (o último é provisório e anda até completar o passo), amostrado a cada publicação do tópico; só memória, nada em disco. Tópico ainda sem publicação (ou inexistente) → 404 `{"erro":"topico_desconhecido"}`; `no-cache` |
+| `GET /api/v1/mapa/secoes` | (desde a `0.9.19`) a lista das seções do catálogo do mapa (§4.8), fixa por processo: `{"v":1,"n":N,"ufs":["ac",…],"m":[município, uf, nº de zonas, zona, nº de seções, 1ª seção, diferença, diferença, …, zona, …, município, …]}` (`uf` = posição em `ufs`; seções de cada zona em ordem, a primeira inteira e as outras como diferença da anterior); o índice de uma seção é a posição dela nessa sequência. `ETag` (304 com `If-None-Match`), `Cache-Control: public, max-age=300`; sem o mapa → 503 |
+| `GET /api/v1/mapa/estado` | (desde a `0.9.19`) fotografia do mapa das seções: `{"v":1,"epoca","total","n","fora","ret","h"}`, com `h` = um byte por índice em base64 (0 = apagada; senão a faixa da §4.8), `total` = seções do mapa sem as agregadas e `ret` = índices que saíram do total por se revelarem agregadas na noite (desde a `1.0.2`, B-064) e `n` = quantas acenderam (o `desde` do `op: mapa`); refeita no máximo 1×/s, `Cache-Control: public, max-age=5`; sem o mapa → 503 |
 | `GET /api/v1/previsao/<topico>` | (desde a `0.7.7`) a última previsão do tópico com o histórico (o objeto da §4.7, sem `tipo`/`t_envio`/`instantaneo`); sem previsão ainda (pouco apurado, serviço com `--previsao-intervalo 0`) ou tópico inexistente → 404 `{"erro":"sem_previsao"}`; `no-cache` |
 
 Nada mais: fora o controle de velocidade do replay (§11, que só existe contra o site simulado), nenhuma rota escreve, lista pastas ou usa caminho vindo do cliente (`<topico>` só é procurado na tabela
@@ -376,8 +407,10 @@ disco; fora da tabela → 404). Cabeçalhos: `Content-Security-Policy: default-s
 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`, `X-Content-Type-Options: nosniff`,
 `Referrer-Policy: no-referrer`; `index.html` com `no-cache`, estáticos com `public, max-age=31536000, immutable`
 (o `index.html` os cita com `?v=<versão>`). A página só usa o que está neste documento (`/ws`, `/api/v1/nomes`,
-`/api/v1/topicos`) e serve de modelo para integrar: fontes em `/mnt/d/git/lukeboh/urna-velox/site/`
-(`site/README.md`).
+`/api/v1/topicos`; desde a `0.8.44`, B-026, também `/api/v1/resultado/<topico>` e `/api/v1/estado`: com o `/ws`
+recusado ou caindo 3 vezes seguidas, consulta a cada ~60 s o tópico da tela e o estado, com `If-None-Match`, e tenta
+o WebSocket de novo a cada ~2 min; `?modo=http` na URL força esse modo, para conferir) e serve de modelo para integrar: fontes em
+`/mnt/d/git/lukeboh/urna-velox/site/` (`site/README.md`).
 
 ## 11. Controle do replay: velocidade e posição na noite (desde a `0.4.8`; só contra o site simulado)
 

@@ -5,7 +5,65 @@
 
 {
     admin off
+# B-024: no nó A, o IP do visitante que chega pelo Caddy do B vem no X-Forwarded-For (um voto por IP na playlist)
+# PROXIES_CONFIAVEIS:inicio
+    servers {
+        trusted_proxies static __PROXIES_CONFIAVEIS__
+    }
+# PROXIES_CONFIAVEIS:fim
 }
+
+# 0. Endereço antigo (M-005): tudo o que chegar pelo DuckDNS, inclusive /robots.txt e /sitemap.xml, recebe 301
+#    (Moved Permanently) para o mesmo caminho no domínio oficial: o Google transfere a indexação. Só no nó para onde o
+#    DNS antigo aponta (o A); nos outros o gerar_caddyfile.sh tira o bloco (lá o Caddy nunca obteria o certificado).
+#    O Caddy responde o desafio do Let's Encrypt (/.well-known/acme-challenge) antes do redirecionamento.
+# DOMINIO_ANTIGO:inicio
+__DOMINIO_ANTIGO__ {
+    redir https://{$DOMINIO:localhost}{uri} permanent
+}
+# DOMINIO_ANTIGO:fim
+
+# 0b. Subdomínio de dados (passo 3 do plano de borda; B-026): o modo HTTP da página (WebSocket recusado, consulta a
+#     cada ~60 s) lê daqui, atrás da Cloudflare (nuvem laranja só neste nome; o domínio principal fica direto nos nós).
+#     Só a leitura do resultado e do estado, com cache de 30 s na borda (de volta a 30 s em 24/10/2026; da 0.8.48 à 0.9.17 foi 120-150 s; o max-age=1/no-cache da origem é trocado);
+#     o resto 404, e erro do serviço em JSON com no-store (não fica no cache). Sem DOMINIO_DADOS no nos.env, o
+#     gerar_caddyfile.sh tira o bloco (o Caddy não tentaria o certificado de um nome fora do DNS).
+# DADOS:inicio
+__DOMINIO_DADOS__ {
+    log {
+        output file /var/log/caddy/urna-velox-dados.log {
+            roll_size 20mb
+            roll_keep 3
+        }
+    }
+    header X-Content-Type-Options "nosniff"
+    @leitura {
+        method GET HEAD
+        path /api/v1/resultado/* /api/v1/estado
+    }
+    handle @leitura {
+        reverse_proxy 127.0.0.1:8080 {$PAR_IP:127.0.0.1}:8080 {
+            lb_policy round_robin
+            health_uri /api/v1/estado
+            health_interval 5s
+            header_down Cache-Control "public, max-age=30, s-maxage=30"
+        }
+    }
+    handle {
+        header Content-Type "application/json; charset=utf-8"
+        header Cache-Control "public, max-age=300"
+        header Access-Control-Allow-Origin "*"
+        respond `{"erro":"nao_encontrado"}` 404
+    }
+    handle_errors 502 503 504 {
+        header Cache-Control "no-store"
+        header Retry-After "10"
+        header Content-Type "application/json; charset=utf-8"
+        header Access-Control-Allow-Origin "*"
+        respond `{"erro":"servico_indisponivel","tentar_em_s":10}` 503
+    }
+}
+# DADOS:fim
 
 {$DOMINIO:localhost}, www.{$DOMINIO:localhost} {
     log {
@@ -37,15 +95,29 @@
         }
     }
 
-    # 1b. Playlist de simulados (uv-playlist.py, só no nó A, 127.0.0.1:8090): página /playlist e API /api/v1/playlist.
-    # O IP do visitante (um voto por IP) segue no X-Real-IP. No nó B não há playlist: a rota responde o 503 abaixo
-    # (o DNS aponta para o A, então o público só passa pelo Caddy do A).
+    # 1b. Playlist de replays (uv-playlist.py, só no nó A, 127.0.0.1:8090): página /playlist e API /api/v1/playlist.
+    # O IP do visitante (um voto por IP) segue no X-Real-IP. B-024: o domínio aponta para os dois nós, então o Caddy
+    # do B leva a playlist ao A (pelo HTTPS público do A: a sub-rede só abre 7700–7701, 8080 e 8095 entre os nós), e o
+    # do A confia no B para o IP do visitante (trusted_proxies, acima). Antes o B respondia 503 e a página ficava sem a
+    # contagem para a próxima eleição ao vivo e sem o "▶". O gerar_caddyfile.sh deixa só o bloco do papel do nó.
     @playlist path /playlist /playlist/* /api/v1/playlist /api/v1/playlist/*
+# PLAYLIST_LOCAL:inicio
     handle @playlist {
         reverse_proxy 127.0.0.1:8090 {
-            header_up X-Real-IP {remote_host}
+            header_up X-Real-IP {client_ip}
         }
     }
+# PLAYLIST_LOCAL:fim
+# PLAYLIST_REMOTO:inicio
+    handle @playlist {
+        reverse_proxy https://__PLAYLIST_NO_A__ {
+            header_up Host {$DOMINIO:localhost}
+            transport http {
+                tls_server_name {$DOMINIO:localhost}
+            }
+        }
+    }
+# PLAYLIST_REMOTO:fim
 
     # 2. Painel dos nós (uv-painel, docs/PAINEL.md): sempre o deste nó (o painel mostra os dois e fala com o do par
     # pela rede privada). Login com o Google; sem sessão, só a página de entrada.

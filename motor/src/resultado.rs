@@ -135,6 +135,9 @@ pub struct Publicador<'a> {
     pub cad: Option<&'a Candidatos>,
     /// seções por município: do catálogo, mais as não instaladas que o catálogo não tem
     secoes_total: Vec<u64>,
+    /// seções do catálogo que já estão fora de `secoes_total` por serem agregadas (as do `candidatos.json` e as
+    /// descobertas na apuração, [`Publicador::agregada`]): para nenhuma ser descontada duas vezes
+    agregadas_fora: std::collections::HashSet<u64>,
     /// seções não instaladas por município (contam como totalizadas, como em `s.st`)
     nao_inst: Vec<u64>,
     /// não instaladas em municípios fora do catálogo (sem nenhum BU), por UF: entram nos totais da UF e do Brasil
@@ -154,10 +157,14 @@ impl<'a> Publicador<'a> {
         let mut secoes_total: Vec<u64> = cat.secoes_por_municipio().into_iter().map(u64::from).collect();
         // seções agregadas: sem urna nem BU próprio (os votos vêm no BU da principal); o TSE não as conta em `s.ts`.
         // Ficam fora do total — se uma vier com BU, `secoes` a conta (total nunca abaixo das apuradas)
+        let mut agregadas_fora = std::collections::HashSet::new();
         if let Some(cad) = cad {
             for &k in &cad.agregadas {
                 if !cat.secoes.contains_key(&k) { continue; }
-                if let Some(m) = cat.muni((k >> 32) as u32) { secoes_total[m as usize] = secoes_total[m as usize].saturating_sub(1); }
+                if let Some(m) = cat.muni((k >> 32) as u32) {
+                    secoes_total[m as usize] = secoes_total[m as usize].saturating_sub(1);
+                    agregadas_fora.insert(k);
+                }
             }
         }
         let mut nao_inst = vec![0u64; cat.muni_cod.len()];
@@ -172,7 +179,19 @@ impl<'a> Publicador<'a> {
         }
         let mut munis_uf = vec![vec![]; cat.ufs.len()];
         for m in 0..cat.muni_cod.len() { munis_uf[cat.muni_uf[m] as usize].push(m); }
-        Publicador { cat, cad, secoes_total, nao_inst, nao_inst_fora, munis_uf, cache: RefCell::new(HashMap::new()), cache_uf: None }
+        Publicador { cat, cad, secoes_total, agregadas_fora, nao_inst, nao_inst_fora, munis_uf, cache: RefCell::new(HashMap::new()), cache_uf: None }
+    }
+
+    /// Uma seção do catálogo que se revelou agregada durante a apuração (`nsp` no `cs.json` lido na noite, ou sondada
+    /// sem `aux.json`; B-051): sai do total de seções, como no `s.ts` do TSE. Devolve o município quando o total mudou
+    /// (quem chama republica a UF); `None` se a seção já estava fora, não é do catálogo ou não é da UF.
+    pub fn agregada(&mut self, uf: [u8; 2], k: u64) -> Option<usize> {
+        let cat = self.cat;
+        if !cat.secoes.contains_key(&k) || self.agregadas_fora.contains(&k) { return None; }
+        let m = cat.muni((k >> 32) as u32).filter(|&m| cat.ufs[cat.muni_uf[m as usize] as usize] == uf)? as usize;
+        self.agregadas_fora.insert(k);
+        self.secoes_total[m] = self.secoes_total[m].saturating_sub(1);
+        Some(m)
     }
 
     /// Guarda os totais de cada (UF, cargo) entre publicações. Quem ativa **tem de** chamar

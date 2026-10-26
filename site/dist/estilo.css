@@ -181,30 +181,107 @@ button, select { font: inherit; color: inherit; }
   white-space: nowrap;
   overflow: hidden;
 }
+.conexao[hidden] { display: none; }   /* M-012: selo escondido até o fim da totalização do 2º turno */
+/* M-018 (25/10): sem o chip "Anuncie Aqui" do M-011. Com o selo escondido (M-012) sobram marca, navegação e tema: a
+   grade perde a coluna do selo e o tema fica no fim da linha; com o selo de volta, vale a grade de sempre */
+.topo:has(> #conexao[hidden]) { grid-template-columns: auto 1fr auto; }
 .conexao .ponto { width: 9px; height: 9px; border-radius: 50%; background: var(--texto-3); flex: none; }
 .conexao[data-estado="vivo"] .ponto { background: var(--ok); animation: pulso 2.4s ease-in-out infinite; }
 .conexao[data-estado="caiu"] .ponto, .conexao[data-estado="pausa"] .ponto { background: var(--alerta); }
 .conexao[data-estado="encerrada"] .ponto { background: #9db7ff; }
-/* simulação com dados reais (ciclo diário): o selo ganha o complemento "simulação" */
-.conexao.sim { width: auto; min-width: 210px; border-color: rgba(157, 183, 255, 0.55); }
-.conexao .comp {
-  font-size: 11px; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; color: var(--texto);
-  padding: 2px 7px; border-radius: 999px; background: rgba(157, 183, 255, 0.22); flex: none;
+.conexao[data-estado="http"] .ponto { background: var(--ok); }
+/* M-004: o selo é um botão (abre o aviso: o modo, a próxima eleição ao vivo e a playlist) e diz o modo */
+button.conexao { font: inherit; font-size: 14px; cursor: pointer; text-align: left; }
+button.conexao:hover { border-color: var(--borda-luz); }
+.conexao .txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.conexao .pl { margin-left: auto; flex: none; font-size: 11px; font-weight: 700; letter-spacing: 0.02em; opacity: 0.85; }
+.conexao .pl.oculto { display: none; }
+/* REPLAY: âmbar, como a reprise de um jogo (os dados são reais; a apuração passa de novo) */
+.conexao[data-modo="replay"] {
+  background-color: #ffb01f; border-color: #ffc95e; color: #2b1a00; font-weight: 800; letter-spacing: 0.08em;
+  box-shadow: 0 0 0 3px rgba(255, 176, 31, 0.18), 0 6px 18px rgba(255, 150, 0, 0.25);
 }
-.faixa .chip.sim { border-color: rgba(157, 183, 255, 0.55); background: rgba(157, 183, 255, 0.14); color: var(--texto); }
-/* o chip da simulação é um botão (abre a explicação: dados reais, retotalização, auditoria) */
+.conexao[data-modo="replay"] .ponto { background: #2b1a00; }
+.conexao[data-modo="replay"][data-estado="vivo"] .ponto { background: #2b1a00; animation: pulso 2.4s ease-in-out infinite; }
+.conexao[data-modo="replay"][data-estado="caiu"] .ponto, .conexao[data-modo="replay"][data-estado="pausa"] .ponto { background: #b3261e; }
+.conexao[data-modo="replay"] .pl { letter-spacing: 0.02em; padding: 2px 7px; border-radius: 999px; background: rgba(43, 26, 0, 0.14); }
+/* AO VIVO: o vermelho da TV */
+.conexao[data-modo="ao_vivo"] { background-color: #e0213a; border-color: #ff6b7e; color: #fff; font-weight: 800; letter-spacing: 0.08em; }
+.conexao[data-modo="ao_vivo"] .ponto, .conexao[data-modo="ao_vivo"][data-estado="vivo"] .ponto { background: #fff; }
+.conexao[data-modo="ao_vivo"][data-estado="caiu"] .ponto, .conexao[data-modo="ao_vivo"][data-estado="pausa"] .ponto { background: var(--alerta); }
+.conexao[data-modo="ao_vivo"][data-estado="encerrada"] { background-color: var(--vidro); border-color: var(--borda); color: var(--texto-2); letter-spacing: 0; font-weight: 400; }
+.conexao[data-modo="ao_vivo"][data-estado="encerrada"] .ponto { background: #9db7ff; }
+.conexao[data-modo="espera"] { color: var(--texto); font-weight: 700; letter-spacing: 0.06em; font-size: 13px; }
+.conexao[data-modo="espera"] .ponto { background: var(--alerta); }
+/* a próxima eleição ao vivo, com contagem regressiva: a "propaganda" da noite oficial (chip da faixa) */
 .faixa button.chip { font: inherit; cursor: pointer; }
-.faixa .chip.sim b { font-weight: 650; }
-.faixa button.chip.sim:hover, .faixa .chip.playlist:hover { border-color: var(--borda-luz); }
 .faixa .chip.oculto { pointer-events: none; }
-/* playlist de simulados (página /playlist, servida pelo uv-playlist do ciclo) */
-.faixa .chip.playlist {
-  flex: none; color: var(--texto); text-decoration: none; font-weight: 650;
-  border-color: rgba(255, 95, 210, 0.5); background: linear-gradient(90deg, rgba(79, 195, 255, 0.16), rgba(140, 107, 255, 0.16), rgba(255, 95, 210, 0.16));
+.faixa .chip.promo {
+  flex: none; gap: 8px; height: 26px; padding: 0 12px 0 4px; color: var(--texto); font-weight: 600;
+  border-color: rgba(224, 33, 58, 0.6);
+  background: linear-gradient(90deg, rgba(224, 33, 58, 0.24), rgba(255, 176, 31, 0.18));
+  box-shadow: 0 0 0 2px rgba(224, 33, 58, 0.10);
 }
-.faixa .chip.playlist.oculto { display: none; }
+/* 0.9.19: o chip encolhe até o espaço que sobra na faixa (o BUs/min e os avisos não encolhem); o selo AO VIVO fica
+   parado e o resto vai numa janela: se não couber, roda como um letreiro (a cópia emendada atrás fecha a volta) */
+.faixa .chip.promo { flex: 0 1 auto; min-width: 116px; overflow: hidden; }   /* (116 px: o selo AO VIVO sempre inteiro) */
+.faixa .chip.ritmo { flex: none; }
+/* os avisos ainda ocultos (opacidade 0, lugar guardado: CLS 0) cedem o espaço antes de todo mundo */
+.faixa .chip.alerta.oculto { flex-shrink: 1000; min-width: 0; }
+.faixa .chip.promo .vivo { flex: none; }
+.faixa .chip.promo .promo-janela { display: block; flex: 0 1 auto; min-width: 0; overflow: hidden; }
+.faixa .chip.promo .promo-trilho { display: inline-flex; vertical-align: middle; will-change: transform; }
+.faixa .chip.promo .promo-a, .faixa .chip.promo .promo-b { display: inline-flex; align-items: center; gap: 8px; flex: none;
+  font-variant-numeric: tabular-nums; }
+.faixa .chip.promo .promo-b { margin-left: 40px; }
+.faixa .chip.promo .promo-b:empty { display: none; }
+.faixa .chip.promo .ext { font-weight: 700; color: var(--texto); }
+.faixa .chip.promo.rolando .promo-janela {
+  /* as pontas esmaecem: o texto entra e sai sem corte seco */
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 10px, #000 calc(100% - 14px), transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 10px, #000 calc(100% - 14px), transparent);
+}
+.faixa .chip.promo.rolando .promo-trilho { animation: promo-letreiro var(--dur, 12s) linear infinite; }
+@keyframes promo-letreiro { from { transform: translateX(0); } to { transform: translateX(calc(-1 * var(--passo, 0px))); } }
+@media (prefers-reduced-motion: reduce) {
+  .faixa .chip.promo.rolando .promo-trilho { animation: none; }
+  .faixa .chip.promo .promo-janela { text-overflow: ellipsis; }
+}
+.faixa .chip.promo:hover { border-color: #ff6b7e; }
+.faixa .chip.promo.oculto { display: none; }
+/* totalização antes das 17h (BUs do exterior): botão discreto que abre a explicação */
+.faixa .chip.cedo { flex: none; gap: 6px; height: 26px; padding: 0 12px 0 4px; font: inherit; font-size: 13px; font-weight: 600; color: var(--texto); cursor: pointer;
+  border-color: color-mix(in srgb, var(--alerta) 55%, transparent); background: color-mix(in srgb, var(--alerta) 12%, var(--vidro)); }
+.faixa .chip.cedo.oculto { display: none; }
+.faixa .chip.cedo .ic { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--alerta); color: var(--fundo);
+  font-size: 11px; font-weight: 800; font-style: italic; font-family: Georgia, serif; }
+.faixa .chip.cedo .longo { font-weight: 450; color: var(--texto-2); }
+@media (max-width: 640px) { .faixa .chip.cedo .longo { display: none; } .faixa .chip.cedo { font-size: 12px; } }
+/* M-019: TSE sem novos BUs (some sozinho no primeiro BU novo) */
+.faixa .chip.parado { flex: none; gap: 6px; height: 26px; padding: 0 12px 0 4px; font-size: 13px; font-weight: 650; color: var(--texto);
+  border-color: var(--alerta); background: color-mix(in srgb, var(--alerta) 22%, var(--vidro)); }
+.faixa .chip.parado.oculto { display: none; }
+.faixa .chip.parado .ic { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--alerta); color: var(--fundo);
+  font-size: 12px; font-weight: 800; }
+.faixa .chip.parado .longo { font-weight: 450; color: var(--texto-2); }
+@media (max-width: 640px) { .faixa .chip.parado .longo { display: none; } .faixa .chip.parado { font-size: 12px; }
+  /* no celular o aviso toma o lugar do ritmo (que está em 0 com o TSE parado): nada sai da tela */
+  .faixa:has(.chip.parado:not(.oculto)) .chip.ritmo { display: none; } }
+.faixa .chip.promo .vivo {
+  display: inline-flex; align-items: center; gap: 5px; height: 18px; padding: 0 8px; border-radius: 999px;
+  background: #e0213a; color: #fff; font-size: 10.5px; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase;
+}
+.faixa .chip.promo .vivo .longo { margin-right: 0.3em; }
+.faixa .chip.promo .vivo .pt { width: 6px; height: 6px; border-radius: 50%; background: #fff; animation: pulso 1.6s ease-in-out infinite; }
+.faixa .chip.promo .quando .dia { margin-right: 0.3em; }
+.faixa .chip.promo .cont { display: inline-flex; gap: 0.3em; }
+.faixa .chip.promo .cont b { font-weight: 800; }
+.faixa .chip.promo .cont .seg:empty { display: none; }
 .faixa .chip:focus-visible { outline: 2px solid #4fc3ff; outline-offset: 2px; }
 .folha dd a { color: inherit; font-weight: 650; }
+.folha .aviso-vivo { display: block; font-weight: 700; }
+.folha .aviso-selo { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #e0213a; color: #fff;
+  font-size: 11px; font-weight: 800; letter-spacing: 0.07em; white-space: nowrap; }
 @keyframes pulso { 50% { opacity: 0.35; } }
 
 .icone-btn {
@@ -230,6 +307,11 @@ button, select { font: inherit; color: inherit; }
 }
 .faixa .chip.alerta { border-color: rgba(255, 194, 75, 0.45); color: var(--alerta); }
 .faixa .chip.oculto { opacity: 0; }
+/* B-026: WebSocket recusado (muitos acessos): aviso discreto no lugar do BUs/min */
+.faixa .chip.http { flex: none; color: var(--texto-2); }
+.faixa .chip.ritmo { justify-content: center; }
+.faixa .chip.ritmo .ritmo-in { display: inline-flex; align-items: baseline; white-space: nowrap; transition: transform 0.35s var(--mola); }
+.faixa .chip.http.oculto, .faixa .chip.ritmo.com-http { display: none; }
 
 /* cargos */
 .cargos {
@@ -264,7 +346,9 @@ button, select { font: inherit; color: inherit; }
   align-items: start;
   min-height: 560px;
 }
-.lado { display: grid; gap: 18px; }
+/* B-045: sem min-width 0 a coluna cresce até o texto mais largo de um cartão ("último BU no TSE: … de 04/10") e os
+   cartões passam da margem direita */
+.lado { display: grid; gap: 18px; min-width: 0; }
 
 .carregando { grid-column: 1 / -1; height: 520px; display: grid; place-items: center; color: var(--texto-2); }
 
@@ -341,7 +425,7 @@ button, select { font: inherit; color: inherit; }
 }
 .cand .cor { grid-row: 1 / span 2; width: 6px; height: 46px; border-radius: 3px; background: var(--c); }
 .cand .num { font-size: 22px; font-weight: 700; font-stretch: 112%; color: var(--texto-2); }
-.cand .quem { min-width: 0; }
+.cand .quem { min-width: 0; container: quem / inline-size; }
 .cand .nome { font-size: 19px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 8px; }
 .cand .nome b { font-weight: inherit; overflow: hidden; text-overflow: ellipsis; }
 .cand .detalhe { font-size: 13px; color: var(--texto-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -361,6 +445,12 @@ button, select { font: inherit; color: inherit; }
 .cand .pilula:not(.ligado) { display: none; }
 .cand .pilula.ligado { opacity: 1; }
 @starting-style { .cand .pilula.ligado { opacity: 0; } }
+/* B-043: linha estreita (celular, comparação "Ambos"): a pílula fica curta ("eleito", "2º turno"; o horário vai para o
+   title) e o nome continua à vista. A largura depende só da largura da linha, nunca do texto: nada se desloca. */
+@container quem (max-width: 300px) {
+  .cand .quem .pilula { width: 64px; padding: 0 4px; }
+  .cand .quem .pilula .pl-hora { display: none; }
+}
 .cand.nao-apto { opacity: 0.6; }
 
 /* hodômetro: cada dígito é uma coluna 0–9 que rola por translateY; separadores fixos; largura reservada */
@@ -371,7 +461,13 @@ button, select { font: inherit; color: inherit; }
 .hod .sp { display: inline-block; transition: opacity 0.35s; }
 .hod .vazio { opacity: 0; }
 .hod.nulo .dg, .hod.nulo .sp { opacity: 0.22; }
+/* B-047: sem valor, os zeros à esquerda continuam invisíveis (no enxuto eles ficam fora da caixa, à esquerda) */
+.hod.nulo .vazio { opacity: 0; }
 .hod .suf { margin-left: 0.18em; font-size: 0.62em; color: var(--texto-2); }
+/* B-029/B-030: os dígitos e os separadores como itens flex alinhados pela linha de base do texto. Em linha comum, o
+   dígito (inline-block com overflow: hidden) se alinha pela borda de baixo da caixa, e o "." / "," / ":" ficavam ~16% da
+   fonte abaixo dos dígitos (bem visível no Safari do iPhone). */
+.hod .vis { display: inline-flex; align-items: baseline; }
 /* hodômetro "enxuto": número sozinho na linha, alinhado ao rótulo. A largura reservada não muda (os dígitos vazios à
    esquerda continuam ocupando o lugar); o número todo desliza para a esquerda por transform o tanto dos vazios
    (hodometro.js, #deslizar). Antes (até a 0.6.x) a coluna vazia tinha largura 0 e, quando um dígito aparecia ou sumia,
@@ -379,7 +475,7 @@ button, select { font: inherit; color: inherit; }
 .hod.enxuto .vis { display: inline-flex; align-items: baseline; transition: transform 0.35s var(--mola); will-change: transform; }
 
 /* apuração */
-.apuracao { padding: 20px 22px; height: 300px; display: grid; grid-template-columns: 132px 1fr; grid-template-rows: auto 1fr; column-gap: 18px; row-gap: 10px; }
+.apuracao { padding: 20px 22px; height: 300px; display: grid; grid-template-columns: 132px minmax(0, 1fr); grid-template-rows: auto 1fr; column-gap: 18px; row-gap: 10px; }
 .apuracao .cartao-titulo { grid-column: 1 / -1; }
 .anel { width: 132px; height: 132px; position: relative; }
 .anel svg { width: 100%; height: 100%; transform: rotate(-90deg); }
@@ -388,7 +484,8 @@ button, select { font: inherit; color: inherit; }
 .anel .centro { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; }
 .anel .centro .hod { font-size: 24px; font-weight: 750; font-stretch: 108%; }
 .anel .centro small { display: block; font-size: 12px; color: var(--texto-2); margin-top: 4px; }
-.numeros { display: grid; gap: 12px; align-content: start; }
+.numeros { display: grid; gap: 12px; align-content: start; min-width: 0; }
+.numeros > * { min-width: 0; }
 .numeros .rot { font-size: 13px; color: var(--texto-2); }
 .numeros .val { font-size: 19px; font-weight: 650; }
 .numeros .val .de { color: var(--texto-3); font-weight: 450; font-size: 14px; }
@@ -430,7 +527,12 @@ button, select { font: inherit; color: inherit; }
 .previsao .pv-nota, .previsao .pv-fim { color: var(--texto-3); }
 .previsao .pv-nota.alerta { color: var(--alerta); }
 .previsao .pv-faixa { font-size: 18px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 24px; }
-.previsao .pv-hod { text-align: right; font-size: 26px; font-weight: 700; line-height: 1; width: 88px; }
+/* relógio "mais provável": a largura acompanha o molde (hh:mm ou, no simulado acelerado, hh:mm:ss; com 88 px fixos o
+   "hh:mm:ss" passava da borda, B-044/B-054); com segundos, fonte menor para caber ao lado do texto; sem horário,
+   nenhum "00:00:00" esmaecido (B-054) */
+.previsao .pv-hod { text-align: right; font-size: 26px; font-weight: 700; line-height: 1; min-width: 88px; }
+.previsao .pv-hod.seg { font-size: 21px; }
+.previsao .pv-hod.vazio { visibility: hidden; }
 .previsao .pv-hod small { display: block; font-size: 10.5px; font-weight: 400; color: var(--texto-3); margin-top: 4px; }
 .previsao .pv-graf { position: relative; min-height: 0; }
 .previsao .pv-graf svg { width: 100%; height: 100%; display: block; overflow: visible; }
@@ -485,6 +587,8 @@ button, select { font: inherit; color: inherit; }
 .feed .trilho { position: absolute; inset: 0 0 0 60px; overflow: hidden; }
 /* botão do histórico, à esquerda do letreiro (os itens passam por trás dele e somem na borda do trilho) */
 .feed .hist-btn { position: absolute; left: 9px; top: calc((var(--feed-h) - 44px) / 2); width: 44px; height: 44px; z-index: 2; font-size: 17px; }
+/* B-033: ícone desenhado (o caractere ☰ dependia da fonte do sistema: pequeno e fora do centro no iPhone) */
+.feed .hist-btn .ic-menu { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
 .feed .hist-btn[aria-expanded="true"] { background: var(--vidro-forte); border-color: var(--borda-luz); }
 .feed .item {
   position: absolute;
@@ -511,8 +615,15 @@ button, select { font: inherit; color: inherit; }
 .feed .item.fixo { width: 470px; }
 .feed .item.fixo .txt { overflow: hidden; text-overflow: ellipsis; }
 .feed .item .hod { font-weight: 700; }
+/* M-004: a próxima eleição ao vivo no letreiro (item fixo, destacado; a contagem com largura reservada) */
+.feed .item.promo { width: auto; font-weight: 650; border-color: rgba(224, 33, 58, 0.55);
+  background: linear-gradient(90deg, rgba(224, 33, 58, 0.22), rgba(255, 176, 31, 0.14)); }
+.feed .item.promo .ic { background: #e0213a; color: #fff; font-size: 10px; }
+.feed .item.promo .t { color: var(--texto); font-weight: 800; font-size: 13px; min-width: 20ch; }
 .feed .pausa { position: absolute; right: 12px; top: 20px; font-size: 12px; color: var(--texto-3); opacity: 0; transition: opacity 0.3s; pointer-events: none; }
 .feed[data-pausado="1"] .pausa { opacity: 1; }
+/* B-038: pausado, os itens param antes do rótulo (só o recorte do trilho muda; nada se desloca) */
+.feed[data-pausado="1"] .trilho { right: 76px; }
 .feed .vazio-feed { position: absolute; left: 72px; top: 22px; font-size: 14px; color: var(--texto-3); transition: opacity 0.4s; }
 
 /* detalhe de um marco (folha que sobe; só transform) */
@@ -655,14 +766,53 @@ button, select { font: inherit; color: inherit; }
 /* ---------------------------------------------------------------- comparação com o TSE (etapa 7, comparacao.js)
    Linha das fontes sempre presente (altura fixa); as células do TSE e da diferença existem em toda linha desde a
    montagem e só aparecem no modo "Ambos" (trocar de modo é um clique: não conta no CLS). */
-.fontes { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; column-gap: 12px; height: 40px; margin: 4px 0 6px; }
+/* M-015 (melhoria do seletor de fonte, mobile primeiro): linha de altura fixa em três partes — rótulo "De onde vêm os
+   números" com o ⓘ (e, à direita, o estado da fonte), o controle e três linhas de texto (a frase do modo, o % das seções
+   e o arquivo do TSE). Tudo com altura reservada e sem quebra de linha: trocar de modo ou chegar texto novo não move nada.
+   De 1200 px para cima o texto fica ao lado do controle (79 px); abaixo disso, empilhado (117 px). */
+.fontes { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: 20px 38px 51px; row-gap: 4px; align-items: center;
+  height: 117px; margin: 2px 0 4px; }
+.f-cab { grid-column: 1; grid-row: 1; display: flex; align-items: center; gap: 6px; min-width: 0; }
+.f-rot { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--texto-2); white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; }
+.f-info { position: relative; flex: none; width: 20px; height: 20px; padding: 0; border-radius: 50%; border: 1px solid var(--borda); background: var(--vidro);
+  color: var(--texto-2); font: italic 700 12px/1 Georgia, serif; cursor: pointer; display: grid; place-items: center; }
+.f-info::after { content: ''; position: absolute; inset: -12px; } /* alvo de toque de 44 px */
+.f-info:hover { color: var(--texto); border-color: var(--borda-luz); }
+.f-info:focus-visible { outline: 2px solid var(--borda-luz); outline-offset: 2px; }
+.fontes .comparar { grid-column: 1 / -1; grid-row: 2; display: flex; width: 100%; max-width: 460px; height: 38px; }
+.fontes .comparar button { flex: 1; height: 30px; padding: 0 8px; }
+.fontes .f-txt { grid-column: 1 / -1; grid-row: 3; height: 51px; align-self: start; }
+.fontes .f-est { grid-column: 2; grid-row: 1; width: auto; max-width: 62vw; justify-self: end; font-size: 11px; }
+@media (min-width: 1200px) {
+  .fontes { grid-template-columns: 300px minmax(0, 1fr); grid-template-rows: 20px 34px 17px; column-gap: 12px; height: 79px; }
+  .fontes .f-est { grid-column: 2; grid-row: 1; justify-self: end; width: auto; max-width: none; font-size: 12px; }
+  .fontes .comparar { grid-column: 1; grid-row: 2; display: inline-flex; justify-self: start; width: auto; max-width: none; height: 34px; }
+  .fontes .comparar button { flex: none; height: 26px; padding: 0 12px; }
+  /* as três linhas de texto viram células da grade: a frase do modo ao lado do controle, o % das seções e o arquivo do TSE embaixo */
+  .fontes .f-txt { display: contents; }
+  .fontes .f-x { grid-column: 2; grid-row: 2; align-self: center; }
+  .fontes .f-a { grid-column: 1; grid-row: 3; }
+  .fontes .f-b { grid-column: 2; grid-row: 3; }
+}
+/* dica da primeira visita: só sombra (não mexe no layout); sem animação para quem prefere menos movimento */
+.comparar.dica { animation: dica-anel 1.7s ease-in-out 3; }
+@keyframes dica-anel { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 176, 31, 0); } 50% { box-shadow: 0 0 0 5px rgba(255, 176, 31, 0.5); } }
+@media (prefers-reduced-motion: reduce) { .comparar.dica { animation: none; box-shadow: 0 0 0 3px rgba(255, 176, 31, 0.55); } }
+.folha-acoes { display: flex; gap: 8px; margin-top: 14px; }
+.folha-acoes[hidden] { display: none; }
+.folha-acoes button { flex: 1; height: 40px; border-radius: var(--raio-p); border: 1px solid var(--borda); background: var(--vidro); color: var(--texto);
+  font: inherit; font-size: 13px; font-weight: 650; cursor: pointer; }
+.folha-acoes button.ativo { background: var(--vidro-forte); box-shadow: inset 0 0 0 1px var(--borda-luz); }
+.folha-acoes button:focus-visible { outline: 2px solid var(--borda-luz); outline-offset: 2px; }
 .comparar { display: inline-flex; gap: 2px; padding: 3px; height: 34px; border-radius: var(--raio-p); background: var(--vidro); border: 1px solid var(--borda); }
 .comparar button { height: 26px; padding: 0 12px; border: 0; border-radius: var(--raio-p); background: transparent; color: var(--texto-2);
   font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: background 0.3s, color 0.3s; }
 .comparar button[aria-checked="true"] { background: var(--vidro-forte); color: var(--texto); box-shadow: inset 0 0 0 1px var(--borda); }
 .comparar button:focus-visible { outline: 2px solid var(--borda-luz); outline-offset: 1px; }
-.f-txt { min-width: 0; display: flex; flex-direction: column; font-size: 12.5px; line-height: 1.3; color: var(--texto-2); }
-.f-txt span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 16px; }
+.f-txt { min-width: 0; display: flex; flex-direction: column; font-size: 12.5px; line-height: 17px; color: var(--texto-2); }
+.f-txt span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; height: 17px; }
+.f-txt .f-x { color: var(--texto); font-weight: 600; }
 .f-est { width: 220px; text-align: right; font-size: 12px; font-weight: 600; color: var(--alerta); white-space: nowrap; overflow: hidden;
   text-overflow: ellipsis; opacity: 0; transition: opacity 0.4s; }
 .f-est.ligado { opacity: 1; }
@@ -698,9 +848,12 @@ button, select { font: inherit; color: inherit; }
 .cand.diverge { background-color: color-mix(in srgb, var(--alerta) 11%, transparent); }
 .cand .dif-rot { font-size: 10px; color: var(--texto-3); letter-spacing: 0.04em; }
 .cand .dif-val { display: inline-flex; align-items: baseline; font-size: 14px; font-weight: 650; }
-.cand .sinal { display: inline-block; width: 0.7em; text-align: right; }
+/* B-031: o sinal é o prefixo do hodômetro da diferença e desliza até o primeiro dígito à vista (hodometro.js) */
+.hod .pre { display: inline-block; width: 0.7em; text-align: right; transition: transform 0.35s var(--mola); }
 
-@media (max-width: 960px) {
+/* B-034/B-035/B-045: abaixo de 1200 px a coluna da direita (~1/3) não cabe a apuração nem deixa espaço para o título
+   ao lado do selo; uma coluna só, como no tablet */
+@media (max-width: 1199px) {
   .painel { grid-template-columns: minmax(0, 1fr); }
 }
 
@@ -710,6 +863,8 @@ button, select { font: inherit; color: inherit; }
   .rota { grid-column: 1 / -1; grid-row: 2; overflow: hidden; }
   .rota .passo { max-width: 46vw; }
   .conexao { width: 136px; font-size: 12px; }
+  /* celular: a navegação está na 2ª linha; na 1ª, a marca e o botão do tema no fim (M-018) */
+  .topo:has(> #conexao[hidden]) { grid-template-columns: 1fr auto; }
   .faixa, .cargos { padding: 0 16px; }
 }
 
@@ -723,22 +878,32 @@ button, select { font: inherit; color: inherit; }
 @media (max-width: 640px) {
   .painel { padding: 8px 16px 0; gap: 14px; }
   .corrida { padding: 16px 14px 12px; }
-  .corrida-cab { grid-template-columns: 1fr; height: 124px; gap: 8px; }
+  /* B-039: o selo no lugar do subtítulo (que some quando ele aparece), sem a faixa vazia reservada embaixo; a altura
+     segue o título (uma ou duas linhas), que não muda depois de montada a tela */
+  .corrida-cab { grid-template-columns: 1fr; grid-template-rows: auto 34px; height: auto; gap: 6px; margin-bottom: 6px; }
+  .corrida-cab > div:not(.selo) { display: contents; }
+  .corrida-cab .sub { grid-row: 2; grid-column: 1; align-self: center; margin: 0; transition: opacity 0.4s; }
+  .corrida-cab .selo { grid-row: 2; grid-column: 1; }
+  .corrida-cab:has(.selo.ligado) .sub { opacity: 0; }
   /* título mais estreito (eixo de largura da Archivo) e em até duas linhas: "Governador — Mato Grosso do Sul" cabe */
   .corrida h1 { font-size: 22px; font-stretch: 88%; line-height: 1.12; white-space: normal;
     display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
   /* avisos da faixa numa linha com reticência (o texto inteiro fica no title) */
   .faixa .chip.alerta { display: block; min-width: 0; max-width: calc(100vw - 32px - 160px); overflow: hidden;
     text-overflow: ellipsis; line-height: 22px; }
-  .faixa .chip.sim { display: block; flex: 0 1 auto; min-width: 0; max-width: calc(100vw - 32px - 160px); overflow: hidden;
-    text-overflow: ellipsis; line-height: 22px; }
-  /* simulação no celular: "Dados reais", "▶ Playlist" e o ritmo (BUs/min) cabem inteiros numa linha a 360 px
-     (B-018: a 0.8.29 escondia o ritmo para caber a playlist) */
-  .faixa .chip.playlist .longo, .faixa .chip.sim .resto, .faixa .chip.sim .tse { display: none; }
-  .faixa .chip.sim, .faixa .chip.ritmo { flex: none; }
+  /* no celular: a contagem ("AO VIVO (25/10), 17h · 4d 02h") e o ritmo (BUs/min) cabem inteiros numa linha a 360 px
+     (B-018: o ritmo nunca some); o nome da eleição, o dia da semana e os minutos ficam no aviso e no letreiro */
+  .faixa .chip.promo { gap: 5px; padding: 0 8px 0 3px; font-size: 11.5px; }
+  .faixa .chip.promo .longo, .faixa .chip.promo .nome, .faixa .chip.promo .dia, .faixa .chip.promo .seg,
+  .faixa .chip.promo .vivo .pt { display: none; }
+  .faixa .chip.promo .vivo { padding: 0 6px; font-size: 10px; letter-spacing: 0.05em; }
+  .faixa .chip.ritmo { flex: none; }
   .faixa .chip.ritmo { width: auto !important; }   /* os 150 px fixos do desktop não cabem com a margem a 360 px */
-  .conexao.sim { min-width: 0; max-width: 58vw; }
-  .conexao .txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .conexao .pl-longo { display: none; }
+  button.conexao { font-size: 12px; }
+  /* o selo do modo inteiro nos 136 px do celular ("EM BREVE ▶", "REPLAY ▶", "AO VIVO ▶") */
+  .conexao[data-modo="replay"], .conexao[data-modo="ao_vivo"], .conexao[data-modo="espera"] {
+    font-size: 12px; letter-spacing: 0.03em; gap: 6px; padding: 0 10px; }
   .selo { width: 100%; height: 34px; font-size: 13px; }
   .cand { grid-template-columns: 5px 26px minmax(0, 1fr) 80px; grid-template-rows: auto auto 6px; column-gap: 8px; row-gap: 2px; padding: 6px 2px 8px; }
   .cand .num { font-size: 15px; grid-row: 1 / span 2; }
@@ -759,7 +924,10 @@ button, select { font: inherit; color: inherit; }
   .player .pl-ini, .player .pl-fim { display: none; }
   .player .pl-hora { font-size: 15px; }
   .player .pl-vel { height: 28px; }
-  .apuracao { grid-template-columns: 112px 1fr; height: 300px; }
+  /* B-034: a 360 px os rótulos quebram em duas linhas; menos espaço entre as colunas e um pouco mais de altura para a
+     caixa dos eleitores que faltam caber inteira no cartão */
+  .apuracao { grid-template-columns: 112px minmax(0, 1fr); height: 316px; column-gap: 14px; padding: 18px 18px; }
+  .numeros { gap: 8px; }
   .anel { width: 112px; height: 112px; }
   .anel .centro .hod { font-size: 19px; }
   /* o rótulo quebra em duas linhas no celular: caixa mais alta para o número não encostar na borda */
@@ -769,32 +937,39 @@ button, select { font: inherit; color: inherit; }
   .feed .item.fixo { width: min(330px, calc(100vw - 76px)); padding: 0 12px; }
   .feed .item.fixo .txt { min-width: 0; }
   .feed .item.fixo .t { display: none; }
+  /* a próxima eleição ao vivo passa inteira pelo letreiro (mais larga que a tela, como num letreiro de TV) */
+  .feed .item.promo.fixo { width: auto; }
+  .feed .item.promo.fixo .txt { overflow: visible; }
+  .feed .item.promo.fixo .t { display: inline; flex: none; font-size: 12px; }
   .hist { left: 8px; width: calc(100vw - 16px); height: min(64vh, 560px); padding: 14px 12px 10px; }
   .hist .h-cab { font-size: 13px; }
   /* menos desfoque no celular (pesa na GPU) */
   .vidro { -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
   /* comparação no celular: controle em cima, texto das fontes embaixo (altura fixa); em "Ambos", nome e diferença à
      esquerda, Urna Velox e TSE à direita, sem o "votos" (o rótulo das colunas diz) */
-  .fontes { grid-template-columns: auto minmax(0, 1fr); grid-template-rows: 34px 34px; height: 72px; row-gap: 4px; margin: 2px 0 4px; }
-  .fontes .comparar { grid-column: 1; grid-row: 1; }
-  .fontes .f-est { grid-column: 2; grid-row: 1; width: auto; font-size: 11px; }
-  .fontes .f-txt { grid-column: 1 / -1; grid-row: 2; font-size: 11.5px; }
+  .fontes .f-txt { font-size: 11.5px; }
   .comparar button { padding: 0 10px; font-size: 12.5px; }
-  .corrida.m-ambos .colunas { grid-template-columns: 5px 22px minmax(0, 1fr) 70px 78px; column-gap: 6px; padding: 0 2px; font-size: 10px; }
+  /* B-031/B-032/B-036/B-043: em "Ambos", o nome numa linha inteira em cima; embaixo, a diferença (rótulo sobre o valor),
+     o Urna Velox (% sobre votos) e o TSE (posição e % sobre votos), cada um na sua coluna, sem nada por cima de nada */
+  .corrida.m-ambos .colunas { grid-template-columns: 5px 22px minmax(0, 1fr) 64px 94px; column-gap: 6px; padding: 0 2px; font-size: 10px; }
   .corrida.m-ambos .colunas .c-dif { display: none; }
   .colunas .uv-longo { display: none; }
   .colunas .uv-curto { display: inline; }
   .corrida.m-ambos .colunas .c-uv { white-space: nowrap; }
-  .lista.m-ambos .cand { grid-template-columns: 5px 22px minmax(0, 1fr) 70px 78px; grid-template-rows: auto auto 6px; column-gap: 6px; row-gap: 2px; }
+  .lista.m-ambos .cand { grid-template-columns: 5px 22px minmax(0, 1fr) 64px 94px; grid-template-rows: 18px 17px 12px 6px; column-gap: 6px; row-gap: 2px; padding: 5px 2px 6px; }
+  .lista.m-ambos .cand .cor { grid-row: 1 / span 4; height: 60px; }
   .lista.m-ambos .cand .num { grid-row: 1; font-size: 13px; }
-  .lista.m-ambos .cand .quem { grid-column: 3; grid-row: 1; }
-  .lista.m-ambos .cand .nome { font-size: 14px; }
+  .lista.m-ambos .cand .quem { grid-column: 3 / -1; grid-row: 1; }
+  .lista.m-ambos .cand .nome { font-size: 15px; line-height: 18px; }
+  .lista.m-ambos .cand .pilula { height: 16px; }
   .lista.m-ambos .cand .detalhe { display: none; }
-  .lista.m-ambos .cand .dif { grid-column: 2 / 4; grid-row: 2; flex-direction: row; align-items: baseline; justify-content: flex-start; gap: 4px; }
+  .lista.m-ambos .cand .dif { grid-column: 2 / 4; grid-row: 2 / span 2; flex-direction: column; align-items: flex-start; justify-content: center; }
+  .lista.m-ambos .cand .dif-rot { white-space: nowrap; }
   .lista.m-ambos .cand .dif-val { font-size: 12px; }
-  .lista.m-ambos .cand .pct { grid-column: 4; grid-row: 1; font-size: 15px; }
-  .lista.m-ambos .cand .qtd { grid-column: 4; grid-row: 2; font-size: 10px; }
-  .lista.m-ambos .cand .tse { grid-column: 5; grid-row: 1 / span 2; }
+  .lista.m-ambos .cand .pct { grid-column: 4; grid-row: 2; font-size: 15px; align-self: end; }
+  .lista.m-ambos .cand .qtd { grid-column: 4; grid-row: 3; font-size: 10px; align-self: start; }
+  .lista.m-ambos .cand .tse { grid-column: 5; grid-row: 2 / span 2; }
+  .lista.m-ambos .cand .barra { grid-column: 3 / -1; grid-row: 4; }
   .lista.m-ambos .cand .qtd .suf, .lista.m-ambos .cand .tse-qtd .suf { display: none; }
   .cand .tse-l1 { font-size: 15px; gap: 3px; }
   .cand .pos-tse { width: 24px; height: 16px; font-size: 10px; }
@@ -845,6 +1020,10 @@ button, select { font: inherit; color: inherit; }
   transform: translateY(-64px); opacity: 0; visibility: hidden; transition: transform 0.2s, opacity 0.2s, visibility 0.2s;
 }
 .ident.preso .ident-barra { transform: none; opacity: 1; visibility: visible; }
+/* B-040: a faixa acima da barra presa (e a área do relógio do iPhone) cobre o que rola por baixo */
+.ident::before { content: ""; position: fixed; left: 0; right: 0; top: 0; height: calc(28px + env(safe-area-inset-top, 0px)); z-index: 29;
+  pointer-events: none; background: linear-gradient(var(--fundo) 60%, transparent); opacity: 0; transition: opacity 0.2s; }
+.ident.preso::before { opacity: 1; }
 .ident-barra { background: color-mix(in srgb, var(--fundo-2) 93%, transparent); }
 .ident-barra .id-eleicao { font-size: 14px; }
 .ident-barra .id-seg i { padding: 0 8px; font-size: 13px; }
@@ -867,18 +1046,141 @@ button, select { font: inherit; color: inherit; }
 }
 @media (prefers-reduced-motion: reduce) { .ident-barra { transition: none; } }
 
-/* ---------------------------------------------------------------- termos de uso
-   Linha fixa e discreta à direita, logo acima do letreiro (e do player do replay, quando há): sempre à vista,
-   inclusive numa captura de tela, sem empurrar nada (fora do fluxo, no espaço que o padding-bottom do body já reserva). */
+/* ---------------------------------------------------------------- termos de uso e privacidade
+   No fim da página (até a 0.9.18 era uma linha fixa à direita, logo acima do letreiro, sempre à vista). */
 .termos {
-  position: fixed; right: 18px; bottom: calc(var(--feed-h) + 14px); z-index: 9; margin: 0;
-  max-width: calc(100vw - 36px); font-size: 11px; line-height: 16px; color: var(--texto-3);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none;
+  /* 0.9.19 (Luciano, 24/10): "Pode ficar sempre ao fundo, não precisa ficar sempre visível. Atrapalha a visualização.
+     Deixe para ser visível só quando o usuário rolar até lá embaixo. E aí pode estar centralizado." — no fluxo, depois
+     do painel: aparece só no fim da rolagem, centralizada, acima do letreiro (o padding-bottom do body reserva o
+     espaço do letreiro e do player) */
+  position: static; margin: 28px auto 6px; padding: 0 16px; text-align: center;
+  font-size: 11px; line-height: 18px; color: var(--texto-3);
 }
-:root.com-replay .termos { bottom: calc(var(--feed-h) + var(--player-h) + 22px); }
-.termos a {
-  pointer-events: auto; color: inherit; text-decoration: none; padding: 0 8px; border-radius: var(--raio-p);
-  background: color-mix(in srgb, var(--fundo) 72%, transparent);
+/* termos de uso e privacidade na mesma caixa, numa linha só */
+.termos-caixa {
+  display: inline-block; max-width: 100%; padding: 2px 10px; border-radius: var(--raio-p);
+  /* B-037: opaca (o texto que rola por baixo não se mistura com o dela) */
+  background: color-mix(in srgb, var(--fundo) 94%, transparent); border: 1px solid var(--borda);
 }
+.termos a { color: inherit; text-decoration: none; }
 .termos a:hover, .termos a:focus-visible { color: var(--texto-2); text-decoration: underline; }
 @media (max-width: 640px) { .termos-longo { display: none; } }
+
+/* M-016: aviso de versão nova (app.js, verificarVersao): fixo, fora do fluxo (nada se move), acima da barra do feed */
+.nova-versao { position: fixed; left: 50%; bottom: calc(var(--feed-h) + var(--player-h, 0px) + 12px); transform: translateX(-50%); z-index: 45;
+  display: flex; align-items: center; gap: 8px; max-width: calc(100vw - 24px); padding: 6px 6px 6px 14px; border-radius: 999px;
+  background: var(--vidro-forte); border: 1px solid var(--borda-luz); box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); font-size: 13px; font-weight: 600; color: var(--texto); }
+.nova-versao[hidden] { display: none; }
+.nova-versao .nv-txt { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nova-versao button { flex: none; height: 32px; border: 0; border-radius: 999px; font: inherit; cursor: pointer; }
+.nova-versao .atualizar { padding: 0 14px; background: var(--alerta); color: #2b1a00; font-weight: 700; }
+.nova-versao .fechar { width: 32px; background: transparent; color: var(--texto-2); font-size: 14px; }
+.nova-versao button:focus-visible { outline: 2px solid var(--borda-luz); outline-offset: 2px; }
+
+/* ---------------------------------------------------------------- cartões que se maximizam e se reorganizam
+   (cartoes.js) Alça e maximizar no canto de cada cartão, à vista no hover/foco (sempre no toque). Arrastar e maximizar
+   andam por `translate`/`scale` (a `transform` é da inclinação tátil); a vaga do cartão segura o lugar dele. */
+.principal { display: grid; gap: 18px; min-width: 0; align-content: start; }
+.coluna-cartoes { min-height: 120px; }
+.cartao-mov { transition: transform 0.5s var(--mola), translate 0.38s var(--mola), box-shadow 0.3s; }
+.cartao-ferr { position: absolute; top: 12px; right: 12px; z-index: 3; display: flex; gap: 2px; opacity: 0; transition: opacity 0.25s; }
+.cartao-mov:hover > .cartao-ferr, .cartao-mov:focus-within > .cartao-ferr, .cartao-mov.max > .cartao-ferr { opacity: 1; }
+@media (hover: none) { .cartao-ferr { opacity: 0.75; } }
+.cartao-ferr button { width: 30px; height: 30px; padding: 0; display: grid; place-items: center; border-radius: 10px; border: 1px solid transparent;
+  background: transparent; color: var(--texto-2); cursor: pointer; }
+.cartao-ferr button:hover { background: var(--vidro-forte); border-color: var(--borda); color: var(--texto); }
+.cartao-ferr svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.cartao-ferr .cf-alca { cursor: grab; touch-action: none; }
+.cartao-ferr .cf-alca svg { fill: currentColor; stroke: none; }
+.cartao-ferr .ic-min, .cartao-mov.max .cartao-ferr .ic-max { display: none; }
+.cartao-mov.max .cartao-ferr .ic-min { display: block; }
+/* na corrida as ferramentas ficam por cima da ponta do selo (só no hover): fundo próprio para ler sobre ele */
+.corrida > .cartao-ferr { top: 8px; right: 8px; padding: 2px; border-radius: 12px; background: var(--vidro-forte); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+.cartao-mov.arrastando { position: fixed; z-index: 50; margin: 0; cursor: grabbing; scale: 1.025;
+  box-shadow: 0 30px 70px rgba(2, 5, 22, 0.5), inset 0 1px 0 var(--borda-luz); transition: scale 0.25s, box-shadow 0.25s; }
+.cartao-mov.arrastando .cf-alca { cursor: grabbing; }
+body.arrastando-cartao { user-select: none; cursor: grabbing; }
+.cartao-vaga { border-radius: var(--raio-g); border: 1.5px dashed color-mix(in srgb, var(--texto-3) 60%, transparent);
+  background: color-mix(in srgb, var(--vidro) 50%, transparent); transition: translate 0.38s var(--mola); }
+.cartao-vaga-max { visibility: hidden; }
+.cartao-veu { position: fixed; inset: 0; z-index: 55; background: color-mix(in srgb, var(--fundo) 62%, transparent);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); opacity: 0; pointer-events: none; transition: opacity 0.4s; }
+.cartao-veu.ligado { opacity: 1; pointer-events: auto; }
+.cartao-mov.max { position: fixed; z-index: 60; margin: 0; overflow: auto; height: auto !important;
+  top: max(20px, env(safe-area-inset-top, 0px)); bottom: max(20px, env(safe-area-inset-bottom, 0px));
+  left: max(16px, env(safe-area-inset-left, 0px)); right: max(16px, env(safe-area-inset-right, 0px));
+  background: color-mix(in srgb, var(--fundo-2) 76%, var(--vidro)); }
+@media (min-width: 900px) { .cartao-mov.max { top: 32px; bottom: calc(var(--feed-h) + 36px); left: 48px; right: 48px; } }
+.cartao-mov.anim-max { transition: translate 0.32s var(--mola), scale 0.32s var(--mola); }
+body.cartao-maximizado { overflow: hidden; }
+
+/* ---------------------------------------------------------------- mapa das seções (mapa.js)
+   Só o Brasil escuro, com um halo da aurora; o cartão é o vidro do portal. Proporção fixa do palco: nada pula. */
+.mapa { padding: 18px 20px 18px; }
+.mp-corpo { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; margin-top: 8px; }
+.mp-topo { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px 16px; flex-wrap: wrap; }
+.mp-rot { font-size: 12px; color: var(--texto-3); letter-spacing: 0.05em; text-transform: uppercase; font-weight: 600; }
+.mp-val { font-size: 28px; font-weight: 750; font-stretch: 112%; line-height: 1.1; height: 32px; display: flex; align-items: baseline; gap: 6px; white-space: nowrap; }
+.mp-val small { font-size: 14px; font-weight: 500; color: var(--texto-2); font-stretch: 100%; }
+.mp-ext { font-size: 12.5px; color: var(--texto-2); height: 18px; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mp-ptx { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #ff7fdc; box-shadow: 0 0 8px #ff5fd2; margin-right: 6px; vertical-align: 1px; }
+.mp-ctl { display: flex; gap: 8px; flex-wrap: wrap; }
+.mp-modo { display: inline-flex; gap: 2px; padding: 3px; height: 34px; border-radius: var(--raio-p); background: var(--vidro); border: 1px solid var(--borda); }
+.mp-modo button { height: 26px; padding: 0 12px; border: 0; border-radius: var(--raio-p); background: transparent; color: var(--texto-2);
+  font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: background 0.3s, color 0.3s; }
+.mp-modo button[aria-pressed="true"] { background: var(--vidro-forte); color: var(--texto); box-shadow: inset 0 0 0 1px var(--borda); }
+.mp-palco { position: relative; aspect-ratio: 1000 / 866; max-width: 100%; overflow: hidden; border-radius: 18px; }
+.mp-palco canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.mp-palco .mp-base, .mp-palco .mp-acc, .mp-palco .mp-globo { transition: opacity 0.6s; }
+.mp-palco .mp-globo { opacity: 0; }
+.mp-palco.globo .mp-base, .mp-palco.globo .mp-acc { opacity: 0; }
+.mp-palco.globo .mp-globo { opacity: 1; }
+.mp-palco .mp-brilho { filter: blur(7px) saturate(1.3); mix-blend-mode: screen; opacity: 0.9; pointer-events: none; }
+.mp-palco.globo .mp-fx { cursor: grab; touch-action: pan-y; }
+.mp-palco.globo.girando .mp-fx { cursor: grabbing; }
+.cartao-mov.max .mp-palco.globo .mp-fx { touch-action: none; }
+.mp-legenda { position: absolute; right: 14px; bottom: 12px; display: grid; gap: 4px; justify-items: end; font-size: 11px; color: var(--texto-3);
+  pointer-events: none; opacity: 0; transition: opacity 0.4s; }
+.mp-legenda.ligado { opacity: 1; }
+.mp-palco.globo .mp-legenda { opacity: 0; }
+.mp-legenda i { display: block; width: 150px; height: 6px; border-radius: 3px; background: linear-gradient(90deg, #4fc3ff, #8c6bff, #ff5fd2); }
+.mp-legenda span { display: flex; justify-content: space-between; width: 150px; }
+.mp-legenda em { font-style: normal; }
+.mp-marco { position: absolute; left: 0; top: 0; padding: 6px 12px; border-radius: var(--raio-p); font-size: 12.5px; font-weight: 650; white-space: nowrap;
+  max-width: calc(100% - 16px); overflow: hidden; text-overflow: ellipsis;
+  background: color-mix(in srgb, var(--fundo-2) 72%, transparent); border: 1px solid var(--borda-luz); color: var(--texto);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); opacity: 0; pointer-events: none; transition: opacity 0.5s, transform 0.6s var(--mola); }
+.mp-marco.ligado { opacity: 1; }
+.mp-dica { position: absolute; left: 14px; bottom: 10px; font-size: 11.5px; color: var(--texto-3); pointer-events: none; opacity: 0; transition: opacity 0.5s; }
+.mp-palco.globo .mp-dica { opacity: 1; }
+.mp-aviso { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 16px; font-size: 14px; color: var(--texto-2);
+  transition: opacity 0.4s; pointer-events: none; }
+.mp-aviso.oculto { opacity: 0; }
+.mp-ultimo { display: flex; gap: 8px; align-items: center; height: 20px; font-size: 13px; color: var(--texto-2); white-space: nowrap; overflow: hidden; }
+.mp-pt { width: 8px; height: 8px; border-radius: 50%; background: #8fdcff; box-shadow: 0 0 10px #4fc3ff; flex: none; }
+.mp-ult-txt { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.mp-ult-txt b { color: var(--texto); font-weight: 600; }
+.mp-ufs { display: none; }
+.mapa.max .mp-corpo { grid-template-columns: minmax(0, 1fr) 280px; align-items: start; }
+.mapa.max .mp-corpo > :not(.mp-ufs) { grid-column: 1; }
+.mapa.max .mp-palco { aspect-ratio: auto; width: 100%; height: min(calc(100vh - 260px), calc((100vw - 440px) * 0.866)); min-height: 280px; }
+.mapa.max .mp-ufs { display: grid; gap: 6px; align-content: start; grid-column: 2; grid-row: 1 / span 3; }
+.mp-ufs h3 { margin: 0 0 4px; font-size: 13px; font-weight: 600; color: var(--texto-2); grid-column: 1 / -1; }
+.mp-uf { display: grid; grid-template-columns: 30px minmax(0, 1fr) 46px; gap: 8px; align-items: center; font-size: 12.5px; }
+.mp-uf b { font-weight: 700; color: var(--texto); }
+.mp-uf .t { height: 6px; border-radius: 3px; background: var(--trilho); overflow: hidden; }
+.mp-uf .t i { display: block; height: 100%; border-radius: 3px; background: linear-gradient(90deg, #4fc3ff, #8c6bff); transform-origin: left; transform: scaleX(0); transition: transform 0.6s var(--mola); }
+.mp-uf .v { text-align: right; color: var(--texto-2); }
+@media (max-width: 899px) {
+  .mapa.max .mp-corpo { grid-template-columns: minmax(0, 1fr); }
+  .mapa.max .mp-palco { height: auto; aspect-ratio: 1000 / 866; }
+  .mapa.max .mp-ufs { grid-column: 1; grid-row: auto; grid-template-columns: 1fr 1fr; column-gap: 16px; }
+}
+@media (max-width: 640px) {
+  .mapa { padding: 16px 14px 14px; }
+  .mp-val { font-size: 24px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cartao-mov, .cartao-vaga, .cartao-veu, .mp-palco canvas, .mp-uf .t i { transition: none !important; }
+}

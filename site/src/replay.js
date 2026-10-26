@@ -48,7 +48,7 @@ export class Player {
     this.estado = el('span', 'pl-estado', '');
     this.estado.setAttribute('aria-live', 'polite');
     this.el = el('section', 'player vidro', [this.play, this.hora, this.ini, linha, this.fim, this.vel, this.estado]);
-    this.el.setAttribute('aria-label', 'Controle da simulação');
+    this.el.setAttribute('aria-label', 'Controle do replay');
     this.veu = el('div', 'pl-veu', [el('div', 'pl-veu-txt', '')]);
     this.veu.hidden = true;
     // marcas de hora na linha do tempo
@@ -91,7 +91,7 @@ export class Player {
     if (info.acelerar > 0) this.ultima = info.acelerar;
     const pausado = info.acelerar === 0;
     this.play.textContent = pausado ? '▶' : '❚❚';
-    this.play.setAttribute('aria-label', pausado ? 'Continuar a simulação' : 'Pausar a simulação');
+    this.play.setAttribute('aria-label', pausado ? 'Continuar o replay' : 'Pausar o replay');
     this.el.classList.toggle('pausado', pausado && !info.busca);
     if (document.activeElement !== this.vel) this.vel.value = String(VELOCIDADES.includes(info.acelerar) ? info.acelerar : this.ultima);
     this.el.classList.toggle('buscando', !!info.busca);

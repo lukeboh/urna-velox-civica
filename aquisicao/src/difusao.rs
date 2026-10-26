@@ -68,7 +68,7 @@ pub struct Opcoes {
 impl Opcoes {
     pub fn padrao(endereco: &str) -> Opcoes {
         Opcoes {
-            endereco: endereco.to_string(), max_clientes: 5000, threads: 4, max_topicos: 200, msgs_s: 20.0, rajada: 40.0, excessos: 40,
+            endereco: endereco.to_string(), max_clientes: 7500, threads: 4, max_topicos: 200, msgs_s: 20.0, rajada: 40.0, excessos: 40,
             max_msg: 4096, buffer_escrita: 4 << 20, ping: Duration::from_secs(20), sem_pong: Duration::from_secs(60),
             lento: Duration::from_secs(30), handshake: Duration::from_secs(10), estado_max: Duration::from_secs(10),
         }
@@ -206,6 +206,9 @@ pub enum Entrada {
     /// previsões do "matematicamente" e do fim da apuração (etapa 8, `crate::previsao::mensagem`): guarda só a última
     /// de cada tópico; o `historico` vai só na mensagem da inscrição
     Previsoes(Vec<Value>),
+    /// seções aplicadas (chave `município << 32 | zona << 16 | seção`, horário do BU) para o mapa das seções
+    /// (`crate::mapa`): as do lote e, na partida, as do diário
+    Secoes(Vec<(u64, i64)>),
 }
 
 /// Última previsão de um tópico: versão (global, crescente), a mensagem das atualizações (sem o histórico), a da
@@ -298,6 +301,8 @@ pub struct Hub {
     prev_ver: watch::Sender<u64>,
     /// relógio do sistema do serviço (M-003): a curva anda por ele, com o passo de um minuto da noite
     relogio: OnceLock<Arc<crate::relogio::Relogio>>,
+    /// mapa das seções (`crate::mapa`): índices do catálogo e seções acesas; definido na partida do motor
+    mapa: OnceLock<Arc<crate::mapa::Mapa>>,
     pub med: Medidas,
 }
 
@@ -309,7 +314,7 @@ impl Hub {
             desligar: watch::Sender::new(false), desligando: AtomicBool::new(false), escuta: Mutex::default(),
             saude: Mutex::new(Value::Null), saude_pedida: AtomicBool::new(false), marcos: RwLock::default(), n_marcos: watch::Sender::new(0),
             faltam: RwLock::default(), faltam_ver: watch::Sender::new(0), nomes: RwLock::new(None), replay: OnceLock::new(), curvas: Mutex::default(), tse: OnceLock::new(), med: Medidas::default(),
-            previsoes: RwLock::default(), prev_ver: watch::Sender::new(0), relogio: OnceLock::new(),
+            previsoes: RwLock::default(), prev_ver: watch::Sender::new(0), relogio: OnceLock::new(), mapa: OnceLock::new(),
         };
         (Arc::new(h), rx)
     }
@@ -324,6 +329,11 @@ impl Hub {
     }
 
     pub fn n_marcos(&self) -> usize { self.marcos.read().unwrap().len() }
+
+    /// O mapa das seções (`crate::mapa`), com as seções do catálogo; uma vez por processo (antes das conexões).
+    pub fn definir_mapa(&self, m: crate::mapa::Mapa) { let _ = self.mapa.set(Arc::new(m)); }
+    /// O mapa das seções, se já definido (para tirar do total as agregadas da noite, B-064).
+    pub fn mapa(&self) -> Option<&Arc<crate::mapa::Mapa>> { self.mapa.get() }
 
     /// Um arquivo publicado entra na curva do tópico: o último ponto acompanha a publicação; um ponto novo a cada
     /// [`CURVA_PASSO_S`] da noite. Publicação com horário anterior ao último ponto (não acontece numa sessão) é ignorada.
@@ -428,6 +438,7 @@ impl Hub {
             "rest": m.rest.load(Relaxed), "rest_304": m.rest_304.load(Relaxed),
             "desconexoes": m.desconexoes.lock().unwrap().clone(), "topicos": self.n_topicos(), "eventos": self.eventos.read().unwrap().len(),
             "marcos": self.n_marcos(), "faltam_circunscricoes": self.faltam.read().unwrap().len(),
+            "mapa": self.mapa.get().map(|mp| { let (n, fora) = mp.contagem(); json!({"secoes": mp.total(), "acesas": n, "fora_do_catalogo": fora, "fotografias": mp.fotos.load(Relaxed)}) }),
             "latencias_ms": {"bu_envio": m.lat_envio.lock().unwrap().json(), "bu_difusao": m.lat_difusao.lock().unwrap().json()}})
     }
 }
@@ -554,6 +565,7 @@ pub fn difundir(h: Arc<Hub>, rx: crossbeam_channel::Receiver<Entrada>) {
                 drop(ps);
                 h.prev_ver.send_replace(ver);
             }
+            Entrada::Secoes(v) => { if let Some(m) = h.mapa.get() { m.aplicar(&v); } }
         } }
         if !lat.is_empty() { let mut l = h.med.lat_difusao.lock().unwrap(); for x in lat { l.por(x); } }
         // o bloco `difusao` da saúde é calculado aqui (percentis de janelas de até 50 mil amostras), não na thread do
@@ -579,6 +591,8 @@ pub async fn servir(h: Arc<Hub>, pronto: impl FnOnce(std::net::SocketAddr)) -> a
         .route("/api/v1/nomes", get(rest_nomes))
         .route("/api/v1/curva/{topico}", get(rest_curva))
         .route("/api/v1/previsao/{topico}", get(rest_previsao))
+        .route("/api/v1/mapa/secoes", get(rest_mapa_secoes))
+        .route("/api/v1/mapa/estado", get(rest_mapa_estado))
         // controle de velocidade do replay (só com --controle-replay; 404 sem ele)
         .route("/api/v1/replay", get(rest_replay))
         .route("/api/v1/replay/velocidade", post(rest_replay_velocidade))
@@ -586,6 +600,8 @@ pub async fn servir(h: Arc<Hub>, pronto: impl FnOnce(std::net::SocketAddr)) -> a
         // página de resultados embutida (etapa 5): tabela fixa, nada do cliente chega ao disco
         .route("/", get(pagina_index))
         .route("/static/{arquivo}", get(pagina_estatico))
+        .route("/termos", get(pagina_termos))
+        .route("/privacidade", get(pagina_privacidade))
         .route("/robots.txt", get(pagina_robots))
         .route("/sitemap.xml", get(pagina_sitemap))
         .fallback(|| async { (StatusCode::NOT_FOUND, cors(), "rota desconhecida\n") })
@@ -687,6 +703,26 @@ async fn rest_nomes(State(h): State<Arc<Hub>>, cab: HeaderMap) -> Response {
     (cors(), [(header::ETAG, etag_v), cache], corpo).into_response()
 }
 
+/// `GET /api/v1/mapa/secoes` (mapa das seções, `crate::mapa`): a lista das seções do catálogo, fixa por processo.
+async fn rest_mapa_secoes(State(h): State<Arc<Hub>>, cab: HeaderMap) -> Response {
+    h.med.rest.fetch_add(1, Relaxed);
+    let Some(m) = h.mapa.get() else { return (StatusCode::SERVICE_UNAVAILABLE, cors(), "{\"erro\":\"mapa indisponível\"}").into_response() };
+    let etag_v = HeaderValue::from_str(&m.etag).unwrap_or(HeaderValue::from_static("\"0\""));
+    let cache = (header::CACHE_CONTROL, HeaderValue::from_static("public, max-age=300"));
+    if cab.get(header::IF_NONE_MATCH).and_then(|v| v.to_str().ok()).is_some_and(|v| v.split(',').any(|x| x.trim() == m.etag)) {
+        h.med.rest_304.fetch_add(1, Relaxed);
+        return (StatusCode::NOT_MODIFIED, cors(), [(header::ETAG, etag_v), cache]).into_response();
+    }
+    (cors(), [(header::ETAG, etag_v), cache], m.secoes.clone()).into_response()
+}
+
+/// `GET /api/v1/mapa/estado`: fotografia das seções acesas (`{"epoca", "total", "n", "fora", "h"}`, `crate::mapa`).
+async fn rest_mapa_estado(State(h): State<Arc<Hub>>) -> Response {
+    h.med.rest.fetch_add(1, Relaxed);
+    let Some(m) = h.mapa.get() else { return (StatusCode::SERVICE_UNAVAILABLE, cors(), "{\"erro\":\"mapa indisponível\"}").into_response() };
+    (cors(), [(header::CACHE_CONTROL, HeaderValue::from_static("public, max-age=5"))], m.estado()).into_response()
+}
+
 /// `GET /api/v1/curva/<topico>`: `{"topico", "passo_s", "relogio", "pontos": [[t, apuradas, total, [[n, pct], …]], …]}`
 /// (t em segundos, com fração, na hora de Brasília; desde a M-003 no relógio do sistema — `relogio: "sistema"` —, com
 /// `passo_s` = um minuto da noite nesse relógio); tópico sem publicação → 404.
@@ -786,13 +822,30 @@ async fn pagina_index(State(h): State<Arc<Hub>>) -> Response {
     (cab_pagina("text/html; charset=utf-8", "no-cache"), crate::pagina::index()).into_response()
 }
 
-async fn pagina_estatico(State(h): State<Arc<Hub>>, Path(a): Path<String>) -> Response {
+async fn pagina_termos(State(h): State<Arc<Hub>>) -> Response {
+    h.med.rest.fetch_add(1, Relaxed);
+    (cab_pagina("text/html; charset=utf-8", "no-cache"), crate::pagina::termos()).into_response()
+}
+
+async fn pagina_privacidade(State(h): State<Arc<Hub>>) -> Response {
+    h.med.rest.fetch_add(1, Relaxed);
+    (cab_pagina("text/html; charset=utf-8", "no-cache"), crate::pagina::privacidade()).into_response()
+}
+
+async fn pagina_estatico(State(h): State<Arc<Hub>>, Path(a): Path<String>, cab: HeaderMap) -> Response {
     h.med.rest.fetch_add(1, Relaxed);
     // só um nome exato da tabela embutida
-    match crate::pagina::estatico(&format!("/static/{a}")) {
-        Some(r) => (cab_pagina(r.tipo, "public, max-age=31536000, immutable"), Bytes::from_static(r.corpo)).into_response(),
-        None => (StatusCode::NOT_FOUND, cors(), "rota desconhecida\n").into_response(),
+    let Some(r) = crate::pagina::estatico(&format!("/static/{a}")) else {
+        return (StatusCode::NOT_FOUND, cors(), "rota desconhecida\n").into_response();
+    };
+    let vary = (header::VARY, HeaderValue::from_static("Accept-Encoding"));
+    // gzip quando o navegador aceita (M-017: o mapa.json tem ~3 MB; o app.js também ganha)
+    if crate::pagina::aceita_gzip(cab.get(header::ACCEPT_ENCODING).and_then(|v| v.to_str().ok())) {
+        if let Some(z) = crate::pagina::gzip(r) {
+            return (cab_pagina(r.tipo, "public, max-age=31536000, immutable"), [vary, (header::CONTENT_ENCODING, HeaderValue::from_static("gzip"))], z).into_response();
+        }
     }
+    (cab_pagina(r.tipo, "public, max-age=31536000, immutable"), [vary], Bytes::from_static(r.corpo)).into_response()
 }
 
 async fn pagina_robots(State(h): State<Arc<Hub>>) -> Response {
@@ -943,6 +996,12 @@ async fn conexao_laco(h: &Arc<Hub>, tx: &mut futures::stream::SplitSink<WebSocke
     // previsão (etapa 8): versão da última mensagem `previsao` mandada por tópico inscrito
     let mut pv_rx = h.prev_ver.subscribe();
     let mut pv_env: HashMap<Arc<str>, u64> = HashMap::new();
+    // mapa das seções (`op: mapa`, `crate::mapa`): nº de seções acesas já mandadas, mensagem pendente e o instante a
+    // partir do qual pode sair a próxima (no máximo uma a cada `INTERVALO_MS`)
+    let mut mp_rx: Option<watch::Receiver<usize>> = None;
+    let mut mp_prox = 0usize;
+    let mut mp_pend = false;
+    let mut mp_pode = tokio::time::Instant::now();
     let mut des = h.desligar.subscribe();
     let mut ping = tokio::time::interval_at(tokio::time::Instant::now() + h.op.ping, h.op.ping);
     ping.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -1073,7 +1132,29 @@ async fn conexao_laco(h: &Arc<Hub>, tx: &mut futures::stream::SplitSink<WebSocke
                                 .map(|(_, f)| (f.ver, f.msg.clone())).collect();
                             for (v, m) in fs { fa_ver = fa_ver.max(v); enviar!(Message::Text(m)); }
                         }
-                        _ => { h.med.erros_cliente.fetch_add(1, Relaxed); enviar!(Message::Text(msg_erro("op_desconhecida", "ops: inscrever, cancelar, eventos, marcos"))); }
+                        Some("mapa") => {
+                            // `desde`: quantas seções acesas o cliente já tem (do `GET /api/v1/mapa/estado` ou das mensagens);
+                            // `epoca` de outro processo: a numeração mudou, o cliente busca a fotografia de novo
+                            let Some(m) = h.mapa.get().cloned() else {
+                                h.med.erros_cliente.fetch_add(1, Relaxed);
+                                enviar!(Message::Text(msg_erro("mapa_indisponivel", "este servidor não tem o mapa das seções")));
+                                continue;
+                            };
+                            let mut rx = m.n.subscribe();
+                            let _ = rx.borrow_and_update();
+                            mp_rx = Some(rx);
+                            mp_pend = false;
+                            if v["epoca"].as_u64().is_some_and(|e| e != m.epoca) {
+                                mp_prox = usize::MAX;
+                                enviar!(Message::Text(Utf8Bytes::from(json!({"tipo": "mapa", "epoca": m.epoca, "reiniciar": true}).to_string())));
+                                continue;
+                            }
+                            let (n, msgs) = m.mensagens(v["desde"].as_u64().unwrap_or(0) as usize);
+                            mp_prox = n;
+                            for x in msgs { enviar!(Message::Text(Utf8Bytes::from(x))); }
+                            mp_pode = tokio::time::Instant::now() + Duration::from_millis(crate::mapa::INTERVALO_MS);
+                        }
+                        _ => { h.med.erros_cliente.fetch_add(1, Relaxed); enviar!(Message::Text(msg_erro("op_desconhecida", "ops: inscrever, cancelar, eventos, marcos, mapa"))); }
                     }
                 }
             },
@@ -1130,6 +1211,16 @@ async fn conexao_laco(h: &Arc<Hub>, tx: &mut futures::stream::SplitSink<WebSocke
                 fa_ver = fa_ver.max(ver_agora);
                 fs.sort_by_key(|x| x.0);
                 for (v, m) in fs { fa_ver = fa_ver.max(v); enviar!(Message::Text(m)); }
+            }
+            Ok(()) = async { mp_rx.as_mut().expect("mapa").changed().await }, if mp_rx.is_some() && !mp_pend && mp_prox != usize::MAX => {
+                if let Some(rx) = mp_rx.as_mut() { let _ = rx.borrow_and_update(); }
+                mp_pend = true;
+            }
+            _ = tokio::time::sleep_until(mp_pode), if mp_pend => {
+                mp_pend = false;
+                let msgs = match h.mapa.get() { Some(m) => { let (n, v) = m.mensagens(mp_prox); mp_prox = n; v } None => vec![] };
+                for x in msgs { enviar!(Message::Text(Utf8Bytes::from(x))); }
+                mp_pode = tokio::time::Instant::now() + Duration::from_millis(crate::mapa::INTERVALO_MS);
             }
             Ok(()) = est_rx.changed() => {
                 let e = est_rx.borrow_and_update().clone();
@@ -1280,6 +1371,101 @@ mod testes {
         }
     }
     fn resultado(bruto: &str) -> &str { let i = bruto.find("\"resultado\":").unwrap() + 12; &bruto[i..bruto.len() - 1] }
+
+    /// Estáticos da página em gzip (M-017: o `mapa.json` com os locais de votação tem ~3 MB; nem o Caddy nem o
+    /// serviço comprimiam): com `Accept-Encoding: gzip` vem `Content-Encoding: gzip` e o corpo descomprime no original;
+    /// sem ele, o corpo de sempre; fonte (`woff2`, já comprimida) nunca; `Vary: Accept-Encoding` nos dois casos.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn estaticos_em_gzip() {
+        use std::io::Read as _;
+        let (h, rx) = Hub::novo(Opcoes::padrao("127.0.0.1:0"));
+        { let h = h.clone(); std::thread::spawn(move || difundir(h, rx)); }
+        let (atx, arx) = tokio::sync::oneshot::channel();
+        let srv = tokio::spawn(servir(h.clone(), move |a| { let _ = atx.send(a); }));
+        let end = arx.await.unwrap().to_string();
+        let c = reqwest::Client::builder().no_gzip().build().unwrap();
+        for caminho in ["/static/mapa.json", "/static/app.js"] {
+            let orig = crate::pagina::estatico(caminho).unwrap().corpo;
+            let r = c.get(format!("http://{end}{caminho}")).header("Accept-Encoding", "gzip, deflate, br").send().await.unwrap();
+            assert_eq!(r.status().as_u16(), 200);
+            assert_eq!(r.headers().get("content-encoding").map(|v| v.to_str().unwrap()), Some("gzip"), "{caminho} sem gzip");
+            assert_eq!(r.headers().get("vary").map(|v| v.to_str().unwrap()), Some("Accept-Encoding"), "{caminho}: vary");
+            let z = r.bytes().await.unwrap();
+            assert!(z.len() * 2 < orig.len(), "{caminho}: {} → {} bytes", orig.len(), z.len());
+            let mut d = vec![];
+            flate2::read::GzDecoder::new(&z[..]).read_to_end(&mut d).unwrap();
+            assert!(d == orig, "{caminho}: o gzip descomprime no original");
+            let r = c.get(format!("http://{end}{caminho}")).send().await.unwrap();
+            assert!(r.headers().get("content-encoding").is_none(), "{caminho}: sem Accept-Encoding, sem gzip");
+            assert_eq!(r.headers().get("vary").map(|v| v.to_str().unwrap()), Some("Accept-Encoding"));
+            assert!(r.bytes().await.unwrap() == orig);
+            let r = c.get(format!("http://{end}{caminho}")).header("Accept-Encoding", "gzip;q=0, identity").send().await.unwrap();
+            assert!(r.headers().get("content-encoding").is_none(), "{caminho}: gzip;q=0 recusa o gzip");
+        }
+        let r = c.get(format!("http://{end}/static/archivo.woff2")).header("Accept-Encoding", "gzip").send().await.unwrap();
+        assert!(r.headers().get("content-encoding").is_none(), "woff2 já é comprimido");
+        h.desligar();
+        let _ = tokio::time::timeout(Duration::from_secs(5), srv).await;
+    }
+
+    /// Mapa das seções (`crate::mapa`, protocolo §4.8) num servidor de verdade: lista com ETag/304, fotografia, `op: mapa`
+    /// com o histórico a partir de `desde`, atualização ao vivo, outra época (reinício) e servidor sem mapa.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn mapa_das_secoes_ponta_a_ponta() {
+        use base64::Engine as _;
+        let k = |mu: u64, z: u64, s: u64| mu << 32 | z << 16 | s;
+        let (h, rx) = Hub::novo(Opcoes::padrao("127.0.0.1:0"));
+        { let h = h.clone(); std::thread::spawn(move || difundir(h, rx)); }
+        h.definir_mapa(crate::mapa::Mapa::novo(vec![(*b"sp", k(71072, 1, 10)), (*b"sp", k(71072, 1, 11)), (*b"rj", k(60011, 4, 2)), (*b"zz", k(29629, 1, 3014))]));
+        let t17 = urna_velox::metricas::segundos("25/10/2026 17:01:00").unwrap();
+        h.entregar(Entrada::Secoes(vec![(k(29629, 1, 3014), t17 - 12 * 3600), (k(71072, 1, 11), t17)]));
+        let t = Instant::now();
+        while h.mapa().unwrap().contagem().0 < 2 { assert!(t.elapsed() < Duration::from_secs(5)); tokio::time::sleep(Duration::from_millis(5)).await; }
+        let (atx, arx) = tokio::sync::oneshot::channel();
+        let srv = tokio::spawn(servir(h.clone(), move |a| { let _ = atx.send(a); }));
+        let end = arx.await.unwrap().to_string();
+        let c = reqwest::Client::new();
+        let r = c.get(format!("http://{end}/api/v1/mapa/secoes")).send().await.unwrap();
+        let etag = r.headers()["etag"].to_str().unwrap().to_string();
+        let lista: Value = serde_json::from_str(&r.text().await.unwrap()).unwrap();
+        assert_eq!(lista["n"], 4);
+        assert_eq!(lista["m"], json!([29629, 2, 1, 1, 1, 3014, 60011, 0, 1, 4, 1, 2, 71072, 1, 1, 1, 2, 10, 1]));
+        assert_eq!(c.get(format!("http://{end}/api/v1/mapa/secoes")).header("If-None-Match", &etag).send().await.unwrap().status().as_u16(), 304);
+        let e: Value = serde_json::from_str(&c.get(format!("http://{end}/api/v1/mapa/estado")).send().await.unwrap().text().await.unwrap()).unwrap();
+        assert_eq!((e["n"].as_u64(), e["total"].as_u64()), (Some(2), Some(4)));
+        let hs = base64::engine::general_purpose::STANDARD.decode(e["h"].as_str().unwrap()).unwrap();
+        assert_eq!(hs, vec![crate::mapa::faixa(t17 - 12 * 3600), 0, 0, 171]);
+        let epoca = e["epoca"].as_u64().unwrap();
+        // WebSocket: o que acendeu depois de `desde` e, ao vivo, o resto
+        let (mut ws, _) = tokio_tungstenite::connect_async(format!("ws://{end}/ws")).await.unwrap();
+        ws.send(M::text(format!(r#"{{"op":"mapa","desde":1,"epoca":{epoca}}}"#))).await.unwrap();
+        let (v, _) = prox(&mut ws, "mapa").await;
+        assert_eq!((v["de"].as_u64(), v["n"].as_u64()), (Some(1), Some(2)));
+        assert_eq!(v["s"], json!([3, 171]));
+        h.entregar(Entrada::Secoes(vec![(k(60011, 4, 2), t17 + 600), (k(71072, 1, 11), t17 + 900), (k(1, 1, 1), t17)]));
+        let (v, _) = prox(&mut ws, "mapa").await;
+        assert_eq!((v["de"].as_u64(), v["n"].as_u64()), (Some(2), Some(3)));
+        assert_eq!(v["s"], json!([1, 172]));
+        assert_eq!(h.mapa().unwrap().contagem(), (3, 1), "a seção fora do catálogo é contada à parte");
+        // outra época: o cliente é avisado para buscar a fotografia de novo
+        ws.send(M::text(r#"{"op":"mapa","desde":3,"epoca":1}"#)).await.unwrap();
+        let (v, _) = prox(&mut ws, "mapa").await;
+        assert_eq!(v["reiniciar"], true);
+        // sem mapa definido: erro e 503
+        let (h2, rx2) = Hub::novo(Opcoes::padrao("127.0.0.1:0"));
+        { let h2 = h2.clone(); std::thread::spawn(move || difundir(h2, rx2)); }
+        let (atx2, arx2) = tokio::sync::oneshot::channel();
+        let srv2 = tokio::spawn(servir(h2.clone(), move |a| { let _ = atx2.send(a); }));
+        let end2 = arx2.await.unwrap().to_string();
+        assert_eq!(c.get(format!("http://{end2}/api/v1/mapa/estado")).send().await.unwrap().status().as_u16(), 503);
+        let (mut ws2, _) = tokio_tungstenite::connect_async(format!("ws://{end2}/ws")).await.unwrap();
+        ws2.send(M::text(r#"{"op":"mapa","desde":0}"#)).await.unwrap();
+        assert_eq!(prox(&mut ws2, "erro").await.0["motivo"], "mapa_indisponivel");
+        h.desligar();
+        h2.desligar();
+        let _ = tokio::time::timeout(Duration::from_secs(5), srv).await;
+        let _ = tokio::time::timeout(Duration::from_secs(5), srv2).await;
+    }
 
     /// Protocolo de ponta a ponta num servidor de verdade (porta livre): REST com ETag/304, inscrição → instantâneo,
     /// atualização byte a byte, seq que só sobe, eventos, erros e limites (tópicos, taxa, clientes) e o desligamento.

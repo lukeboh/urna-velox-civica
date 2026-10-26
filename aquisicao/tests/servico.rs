@@ -177,6 +177,48 @@ fn criterio_a_reduzido() {
     assert_eq!(s["rede"]["aux"].as_u64(), Some(5102));
 }
 
+/// B-051: com o `s.ts` pré-apuração do `candidatos.json` desatualizado para baixo (3221 em 23/10: SP 33.403 contra
+/// 103.904 seções no `cs.json`), a apuração não pode encerrar antes da hora. O 2º turno de 2024 (AM e RO) roda com o
+/// `s.ts` de todas as abrangências cortado para 30 %: tem de encerrar uma vez só, com os 5.102 BUs aplicados, sem
+/// reabrir, e a conferência sair idêntica.
+#[test]
+#[ignore]
+fn sts_desatualizado_nao_encerra_cedo() {
+    let mut c = conj("2024-2t");
+    let d = pasta("b051");
+    let mut j = json(&c.candidatos);
+    let mut cortados = 0;
+    for e in j["eleicoes"].as_array_mut().unwrap() {
+        for cg in e["cargos"].as_array_mut().unwrap() {
+            for campo in ["circunscricoes", "abrangencias"] {
+                let Some(v) = cg.get_mut(campo).and_then(|x| x.as_array_mut()) else { continue };
+                for a in v {
+                    if let Some(n) = a.get("secoes").and_then(|x| x.as_u64()) {
+                        if n > 0 { a["secoes"] = Value::from((n * 3 / 10).max(1)); cortados += 1; }
+                    }
+                }
+            }
+        }
+    }
+    assert!(cortados > 0, "nenhum s.ts no candidatos.json do 2º turno de 2024");
+    let cand = d.join("candidatos-sts-30.json");
+    std::fs::write(&cand, serde_json::to_vec(&j).unwrap()).unwrap();
+    c.candidatos = cand;
+    let sim = simulador(&d, &c, UFS, ACEL, &[]);
+    esperar(servico(&d, &c, UFS, sim.porta, ACEL), 400);
+    let log = std::fs::read_to_string(d.join("saida/servico.log")).unwrap_or_default();
+    let encerramentos: Vec<Value> = log.lines().filter_map(|l| serde_json::from_str::<Value>(l).ok())
+        .filter(|v| v["evento"] == "apuracao_encerrada").collect();
+    let reaberturas = log.lines().filter(|l| l.contains("\"apuracao_reaberta\"")).count();
+    let s = json(&d.join("saida/saude.json"));
+    eprintln!("sts_desatualizado_nao_encerra_cedo: {cortados} s.ts cortados; encerramentos (seq): {:?}; reaberturas: {reaberturas}; aplicadas {}",
+        encerramentos.iter().map(|v| v["seq"].as_u64().unwrap_or(0)).collect::<Vec<_>>(), s["secoes"]["aplicadas"]);
+    assert_eq!(reaberturas, 0, "a apuração encerrou cedo e foi reaberta");
+    assert_eq!(encerramentos.len(), 1, "encerramentos: {encerramentos:?}");
+    assert_eq!(encerramentos[0]["seq"].as_u64(), Some(5102), "encerrou antes do último BU: {}", encerramentos[0]);
+    conferido(&d, 2);
+}
+
 /// C(1): três `kill -9` em pontos diferentes, reinício, e o mesmo resultado final de uma execução sem queda.
 #[test]
 #[ignore]

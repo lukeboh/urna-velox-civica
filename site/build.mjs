@@ -6,6 +6,7 @@ import { build } from 'esbuild';
 import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { paginas } from './documentos.mjs';
 
 const raiz = fileURLToPath(new URL('.', import.meta.url));
 const dist = path.join(raiz, 'dist');
@@ -26,6 +27,11 @@ await build({
 copyFileSync(path.join(raiz, 'src', 'index.html'), path.join(dist, 'index.html'));
 copyFileSync(path.join(raiz, 'src', 'estilo.css'), path.join(dist, 'estilo.css'));
 copyFileSync(path.join(raiz, 'src', 'icone.svg'), path.join(dist, 'icone.svg'));
+// geografia do mapa das seções (gerada por site/geo/gerar_mapa.py; a página só busca quando o cartão aparece)
+copyFileSync(path.join(raiz, 'src', 'mapa.json'), path.join(dist, 'mapa.json'));
+for (const f of ['documento.css', 'documento.js']) copyFileSync(path.join(raiz, 'src', f), path.join(dist, f));
+// /termos e /privacidade a partir dos arquivos do repositório (licença, licenciamento, privacidade): documentos.mjs
+for (const [f, html] of Object.entries(paginas(path.join(raiz, '..'), readFileSync(path.join(raiz, 'src', 'documento.html'), 'utf8')))) writeFileSync(path.join(dist, f), html);
 copyFileSync(path.join(raiz, 'src', 'robots.txt'), path.join(dist, 'robots.txt'));
 copyFileSync(path.join(raiz, 'src', 'sitemap.xml'), path.join(dist, 'sitemap.xml'));
 copyFileSync(path.join(raiz, 'node_modules', '@fontsource-variable', 'archivo', 'files', 'archivo-latin-wdth-normal.woff2'), path.join(dist, 'archivo.woff2'));

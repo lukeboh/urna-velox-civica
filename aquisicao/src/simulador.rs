@@ -76,6 +76,9 @@ pub struct Config {
     pub inicio: Option<String>,
     /// disponibilizações depois deste horário entram nele (BUs reenviados dias depois)
     pub corte: Option<String>,
+    /// piso dos replays ("hh:mm:ss" no dia da eleição, ou "dd/mm/aaaa hh:mm:ss"): o que saiu antes dele entra nele
+    /// ([`com_piso`]: os BUs do exterior da madrugada entram juntos às 17h)
+    pub piso: Option<String>,
     /// horário de cada seção = recebimento no TSE (`recebido_tse`), mesmo quando há `disponivel_cs` da noite: para
     /// conjuntos cujo `cs.json` foi coletado depois da noite (2026, 1º turno: disponibilização 4,5 h depois do
     /// recebimento na mediana, UFs republicadas inteiras)
@@ -272,6 +275,18 @@ pub fn hora(s: &str, dia_ref: i64) -> Option<i64> {
     Some(dia_ref.div_euclid(86400) * 86400 + h * 3600 + m * 60 + x)
 }
 
+/// Piso dos replays (pedido do Luciano em 23/10/2026): o horário de uma seção publicada (ou recebida) antes do piso — os
+/// BUs do exterior, que o TSE publica a partir de ~1h da madrugada — passa a ser o piso, e todas entram juntas no
+/// começo da noite, em vez de uma madrugada em tempo real. `horario`: o escolhido para a seção (disponibilização ou
+/// recebimento); `disponivel_cs`: a disponibilização no `cs.json` (o recebimento do `aux.json` dessas seções vem
+/// agrupado às 17:08, B-049).
+pub fn com_piso(horario: Option<i64>, disponivel_cs: Option<i64>, piso: Option<i64>) -> Option<i64> {
+    match (horario, piso) {
+        (Some(h), Some(p)) if h < p || disponivel_cs.is_some_and(|d| d < p) => Some(p),
+        _ => horario,
+    }
+}
+
 /// "uf:município/zona/seção" → chave
 pub fn secao_de_texto(s: &str) -> Option<ChaveUf> {
     let (uf, r) = s.trim().split_once(':')?;
@@ -309,6 +324,7 @@ impl Sim {
         let mut arqs: Vec<PathBuf> = std::fs::read_dir(&cfg.cs)?.flatten().map(|e| e.path())
             .filter(|p| p.file_name().and_then(|x| x.to_str()).is_some_and(|n| n.ends_with(&format!("-p{:06}-cs.json", cfg.pleito)))).collect();
         arqs.sort();
+        let piso = match cfg.piso.as_deref() { Some(x) => Some(hora(x, dia0).ok_or_else(|| anyhow::anyhow!("--piso inválido: {x}"))?), None => None };
         let (mut secs, mut idx, mut ufs) = (vec![], HashMap::new(), HashMap::new());
         let (mut republicadas, mut so_receb) = (0usize, 0usize);
         for p in arqs {
@@ -332,6 +348,7 @@ impl Sim {
                             if idx.contains_key(&ku) { continue; }
                             let bu = bu_de.get(&ku).copied();
                             let receb = met.recebido.get(&ku).copied();
+                            let disp_cs = met.disponivel.get(&ku).copied().filter(|&t| valida(t));
                             let disp = match bu {
                                 Some(_) if cfg.horario_recebido && receb.is_some() => receb,
                                 Some(_) => match met.disponivel.get(&ku).copied() {
@@ -341,6 +358,7 @@ impl Sim {
                                 },
                                 None => None,
                             };
+                            let disp = com_piso(disp, disp_cs, piso);
                             let (hash, situacao) = match bu {
                                 Some(i) => {
                                     let r = &mem.itens[i as usize].0;
@@ -855,6 +873,23 @@ mod testes {
         assert_eq!(secao_de_texto("ma:7315/23"), None);
         assert_ne!(hash_reenvio("abc", 1), hash_reenvio("abc", 2));
         assert_eq!(tse::sha256_do_hash_dir(&hash_reenvio("abc", 1)) == [0; 32], false);
+    }
+    /// Os BUs publicados antes das 17h (exterior, 1º turno de 2026) entram juntos às 17h; os outros não mudam.
+    #[test]
+    fn piso_das_17h() {
+        let h = |x: &str| segundos(&format!("04/10/2026 {x}"));
+        let piso = h("17:00:00");
+        // Wellington: publicada 01:49:24, "recebida" 17:08:44 (o lote do aux.json)
+        assert_eq!(com_piso(h("17:08:44"), h("01:49:24"), piso), piso, "recebimento agrupado às 17:08");
+        assert_eq!(com_piso(h("01:49:24"), h("01:49:24"), piso), piso, "pela disponibilização");
+        // Budapeste, só com o horário escolhido (13:44)
+        assert_eq!(com_piso(h("13:44:27"), None, piso), piso);
+        // Brasil e Miami: depois das 17h, como estão
+        assert_eq!(com_piso(h("17:00:31"), h("17:01:02"), piso), h("17:00:31"));
+        assert_eq!(com_piso(h("20:57:03"), h("20:57:04"), piso), h("20:57:03"));
+        // sem horário continua sem; sem piso, nada muda
+        assert_eq!(com_piso(None, h("01:49:24"), piso), None);
+        assert_eq!(com_piso(h("17:08:44"), h("01:49:24"), None), h("17:08:44"));
     }
     #[test]
     fn relogio_para_no_alvo() {

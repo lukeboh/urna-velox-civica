@@ -1,9 +1,9 @@
-// Aviso de "dados reais" e playlist de simulados (ciclo diário), com Playwright/Chromium:
+// Selo REPLAY, aviso do dia e Playlist de Replays (ciclo diário), com Playwright/Chromium:
 //   node testes/playlist_pagina.mjs --url http://127.0.0.1:18088/ --saida /tmp/uv-playlist-fotos
-// Espera um uv-servico com --simulacao atrás do Caddy do ciclo (rota /playlist para o uv-playlist). Confere: o chip
-// da simulação diz "Dados reais do TSE · retotalização", a explicação abre sozinha na primeira visita do dia (e não
-// na segunda), o link da playlist leva à página, a página mostra no ar / a seguir / opções, e um voto é registrado e
-// pode ser trocado. Fotos em desktop e celular.
+// Espera um uv-servico com --simulacao (um replay) atrás do Caddy do ciclo (rota /playlist para o uv-playlist).
+// Confere: o selo do topo diz REPLAY, o aviso abre sozinho na primeira visita do dia (e não na segunda), o selo abre o
+// aviso e o link dele leva à playlist, a página mostra no ar / a seguir / opções, e um voto é registrado e pode ser
+// trocado. Fotos em desktop e celular. (Os mesmos casos sem servidor nenhum: testes/modo_pagina.mjs.)
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
 
@@ -23,35 +23,34 @@ for (const largura of [1366, 390, 360]) {
   const p = await ctx.newPage();
   const tag = movel ? `celular-${largura}` : 'desktop';
   await p.goto(url);
-  await p.waitForSelector('.faixa .chip.sim:not(.oculto)', { timeout: 20000 });
-  const chip = await p.textContent('.faixa .chip.sim');
-  conferir(/Dados reais do TSE · retotalização/.test(chip), `${tag}: chip "${chip.slice(0, 60)}…"`);
+  // M-004: o selo do topo diz REPLAY e é o acesso à playlist (antes: chip "Dados reais" + botão "▶ Playlist" na faixa)
+  await p.waitForSelector('#conexao[data-modo="replay"]', { timeout: 20000 });
+  const chip = await p.textContent('#conexao');
+  conferir(/REPLAY/.test(chip), `${tag}: selo "${chip.slice(0, 60)}"`);
   await p.waitForSelector('#folha.aberta', { timeout: 5000 }).catch(() => null);
   await p.waitForTimeout(700);   // fim da transição da folha
   const caixa = await p.locator('#folha').boundingBox();
-  conferir(caixa && caixa.y >= 0, `${tag}: a explicação cabe na tela (topo em ${Math.round(caixa?.y)} px)`);
-  conferir(await p.isVisible('#folha.aberta'), `${tag}: explicação aberta na primeira visita`);
-  conferir(/retotalização/.test(await p.textContent('#folha-titulo')), `${tag}: título da explicação`);
+  conferir(caixa && caixa.y >= 0, `${tag}: o aviso cabe na tela (topo em ${Math.round(caixa?.y)} px)`);
+  conferir(await p.isVisible('#folha.aberta'), `${tag}: aviso aberto na primeira visita`);
+  conferir(/REPLAY/.test(await p.textContent('#folha-titulo')), `${tag}: título do aviso`);
   await p.screenshot({ path: `${saida}/apuracao-explicacao-${tag}.png` });
   await p.click('#folha-fechar');
-  conferir(await p.isVisible('.faixa .chip.playlist'), `${tag}: link da playlist visível`);
-  // B-018: dados reais, playlist e ritmo (BUs/min) inteiros na faixa, sem corte nem sumiço
+  // B-018: selo, contagem da próxima eleição ao vivo e ritmo (BUs/min) inteiros, sem corte nem sumiço
   const larg = p.viewportSize().width;
-  for (const [sel, nome] of [['.faixa .chip.sim', 'dados reais'], ['.faixa .chip.playlist', 'playlist'], ['.faixa .chip.ritmo', 'BUs/min']]) {
+  for (const [sel, nome] of [['#conexao', 'selo REPLAY'], ['.faixa .chip.promo', 'próxima eleição ao vivo'], ['.faixa .chip.ritmo', 'BUs/min']]) {
     const c = await p.locator(sel).boundingBox();
     const cortado = await p.locator(sel).evaluate((e) => e.scrollWidth > e.clientWidth + 1);
     conferir(!!c && c.width > 0 && c.x >= 16 && c.x + c.width <= larg - 16 && !cortado,   // com a margem lateral
-      `${tag}: chip ${nome} inteiro à vista (${c ? `${Math.round(c.x)}–${Math.round(c.x + c.width)} de ${larg} px` : 'oculto'}${cortado ? ', texto cortado' : ''})`);
+      `${tag}: ${nome} inteiro à vista (${c ? `${Math.round(c.x)}–${Math.round(c.x + c.width)} de ${larg} px` : 'oculto'}${cortado ? ', texto cortado' : ''})`);
   }
   await p.screenshot({ path: `${saida}/apuracao-faixa-${tag}.png` });
   await p.reload();
-  await p.waitForSelector('.faixa .chip.sim:not(.oculto)');
+  await p.waitForSelector('#conexao[data-modo="replay"]');
   await p.waitForTimeout(1500);
-  conferir(!(await p.isVisible('#folha.aberta')), `${tag}: na segunda visita do dia a explicação não abre sozinha`);
-  await p.click('.faixa .chip.sim');
-  conferir(await p.isVisible('#folha.aberta'), `${tag}: o chip abre a explicação`);
-  await p.click('#folha-fechar');
-  await p.click('.faixa .chip.playlist');
+  conferir(!(await p.isVisible('#folha.aberta')), `${tag}: na segunda visita do dia o aviso não abre sozinho`);
+  await p.click('#conexao');
+  conferir(await p.isVisible('#folha.aberta'), `${tag}: o selo abre o aviso`);
+  await p.click('#folha a[href="/playlist"]');
   await p.waitForSelector('#opcoes .op');
   conferir(new URL(p.url()).pathname === '/playlist', `${tag}: link leva a /playlist`);
   conferir((await p.locator('#opcoes .op').count()) === 6, `${tag}: seis opções votáveis`);
@@ -64,7 +63,7 @@ for (const largura of [1366, 390, 360]) {
     await p.waitForSelector('#opcoes .op.meu');
     conferir((await p.locator('#opcoes .op.meu').textContent()).includes('2º turno · 2024'), 'voto registrado no 2º turno de 2024, acelerado');
     const noAr = p.locator('#opcoes .op').filter({ hasText: '2º turno · 2024' }).filter({ hasText: 'Tempo real' }).locator('button');
-    conferir(await noAr.isDisabled(), 'o simulado no ar não pode ser votado');
+    conferir(await noAr.isDisabled(), 'o replay no ar não pode ser votado');
     await p.screenshot({ path: `${saida}/playlist-votado-${tag}.png`, fullPage: true });
     await p.locator('#opcoes .op.meu button').click();
     await p.waitForFunction(() => !document.querySelector('#opcoes .op.meu'));

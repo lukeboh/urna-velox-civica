@@ -2,7 +2,7 @@
 // CDP) numa disputa e mede, durante a apuração, o que chega pelo WebSocket (mensagens e bytes por minuto, por tipo e
 // os tópicos de resultado distintos) e o tempo da thread principal em tarefas longas (> 50 ms).
 //   node testes/carga_pagina.mjs --url http://127.0.0.1:18080/ --hash '#/sp71072/c0011' --saida /tmp/x [--limite 900]
-//        [--teto-kb-min 1500] [--teto-topicos 3] [--teto-ocupado 0.25]
+//        [--teto-kb-min 1500] [--teto-topicos 3] [--teto-ocupado 0.25] [--mapa]   (--mapa: com o cartão do mapa à vista)
 // Sai quando a apuração da tela encerra (ou no limite, em segundos). Falha (código 1) se a página recebe resultado de
 // mais tópicos que o teto (a tela e a circunscrição dela), se algum minuto passa do teto de KB, ou se a thread
 // principal fica ocupada em tarefas longas mais que a fração do teto. Grava <saida>/carga.json.
@@ -47,6 +47,12 @@ await pag.addInitScript(() => {
   try { new PerformanceObserver((l) => { for (const e of l.getEntries()) window.__ocupado += e.duration; }).observe({ type: 'longtask', buffered: true }); } catch { /* sem longtask */ }
 });
 await pag.goto(url + hash);
+// --mapa (M-017): com o cartão do mapa das seções à vista (ele só pede as mensagens `mapa` e desenha quando aparece)
+if (process.argv.includes('--mapa')) {
+  await pag.waitForFunction(() => window.__uv?.mapa?.el?.isConnected, null, { timeout: 60_000 });
+  await pag.evaluate(() => window.__uv.mapa.el.scrollIntoView({ block: 'center' }));
+  await pag.waitForFunction(() => window.__uv.mapa.resumo().carregado, null, { timeout: 120_000 }).catch(() => {});
+}
 let encerrada = false;
 while ((Date.now() - t0) / 1000 < limite) {
   await pag.waitForTimeout(2000);

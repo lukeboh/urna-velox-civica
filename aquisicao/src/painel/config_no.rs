@@ -41,6 +41,8 @@ pub const CAMPOS: &[Campo] = &[
     c("ACESSO", "Acesso ao servidor", Tipo::Opcao(&["borda", "interno"]), true, true, true,
         "borda = borda pública do TSE (limite de 100 req/s, sempre); interno = servidor espelho dos arquivos, fora da borda pública (teto abaixo); vazio = borda"),
     c("TETO_RPS_INTERNO", "Teto no modo espelho", Tipo::Numero, true, true, true, "req/s; 0 ou vazio = sem limite (só com ACESSO=interno)"),
+    c("TRAVA_PP", "Trava: máximo à frente do TSE", Tipo::Numero, true, false, true,
+        "pontos percentuais de seções totalizadas à frente do TSE (Presidente, Brasil): 0 = nunca à frente, 100 = sem limite; vazio = desligada; vale sem reiniciar (M-020)"),
     c("UFS", "Só estas UFs", Tipo::Ufs, true, false, true, "por vírgula (vazio = todas)"),
     c("ACELERACAO", "Aceleração local", Tipo::Numero, true, false, true, "só com servidor local (simulador); vazio = 1×"),
     c("CANDIDATOS", "candidatos.json", Tipo::Caminho, true, false, true, "vazio = /srv/urna-velox/preparo/candidatos.json"),
@@ -91,9 +93,10 @@ pub fn validar(chave: &str, valor: &str) -> Result<()> {
     match c.tipo {
         Tipo::Numero => {
             let n: f64 = valor.parse().map_err(|_| anyhow::anyhow!("{chave}: número inválido"))?;
-            if !n.is_finite() || n < 0.0 || (n == 0.0 && chave != "TETO_RPS_INTERNO") { bail!("{chave}: tem de ser maior que zero"); }
+            if !n.is_finite() || n < 0.0 || (n == 0.0 && chave != "TETO_RPS_INTERNO" && chave != "TRAVA_PP") { bail!("{chave}: tem de ser maior que zero"); }
             if n > crate::coletor::SEM_LIMITE_RPS { bail!("{chave}: no máximo {} req/s", crate::coletor::SEM_LIMITE_RPS); }
             if chave == "ACELERACAO" && !(1.0..=1000.0).contains(&n) { bail!("ACELERACAO: de 1 a 1000"); }
+            if chave == "TRAVA_PP" && n > 100.0 { bail!("TRAVA_PP: de 0 (nunca à frente do TSE) a 100 (sem limite)"); }
         }
         Tipo::Ufs => {
             for u in valor.split(',') {
@@ -230,6 +233,10 @@ NO_ID=no-a\nFED_PORTA=7700\nUFS=\"sp,rj\"\nEXTRA='--aceitar-incompleto --x 1'\nO
         assert!(validar("RPS", "100").is_ok());
         assert!(validar("RPS", "101").is_ok(), "campo sozinho: o teto depende do acesso (validar_conjunto)");
         assert!(validar("TETO_RPS_INTERNO", "0").is_ok(), "0 = sem limite");
+        // M-020: trava de 0 (nunca à frente do TSE) a 100 (sem limite); vazio = desligada; não pede CONFIRMO
+        for ok in ["0", "10", "2.5", "100", ""] { assert!(validar("TRAVA_PP", ok).is_ok(), "TRAVA_PP={ok}"); }
+        for ruim in ["101", "-1", "dez", "1e9"] { assert!(validar("TRAVA_PP", ruim).is_err(), "TRAVA_PP={ruim}"); }
+        assert!(campo("TRAVA_PP").is_some_and(|c| c.editavel && !c.sensivel && c.opcional));
         assert!(validar("ACESSO", "qualquer").is_err());
         assert!(validar("RPS", "0").is_err());
         assert!(validar("RPS", "abc").is_err());

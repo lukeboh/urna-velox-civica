@@ -200,5 +200,32 @@ class TestHttp(unittest.TestCase):
             urllib.request.urlopen(r)
 
 
+class TestProximaAoVivo(unittest.TestCase):
+    """M-004: a contagem da página para a próxima eleição ao vivo (2º turno de 2026, domingo 25/10, 17h)."""
+    ELEI = [date(2026, 10, 25)]
+
+    def test_antes_durante_e_depois(self):
+        p = up.proxima_ao_vivo(datetime(2026, 10, 20, 15, 0, tzinfo=BR), self.ELEI, (17, 0))
+        self.assertEqual(p['inicio'], '2026-10-25T17:00:00-03:00')
+        self.assertEqual(p['nome'], '2º turno das Eleições Gerais 2026')
+        self.assertFalse(p['ao_vivo'])
+        p = up.proxima_ao_vivo(datetime(2026, 10, 25, 18, 0, tzinfo=BR), self.ELEI, (17, 0))
+        self.assertTrue(p['ao_vivo'])
+        self.assertEqual(p['fim'], '2026-10-26T08:00:00-03:00')
+        self.assertIsNone(up.proxima_ao_vivo(datetime(2026, 10, 26, 8, 0, tzinfo=BR), self.ELEI, (17, 0)))
+
+    def test_hora_configuravel_e_no_publico(self):
+        self.assertEqual(up.inicio_apuracao('18:30'), (18, 30))
+        self.assertEqual(up.inicio_apuracao(''), (17, 0))
+        c = ciclo()
+        try:
+            pl = up.Playlist(c, eleicoes=self.ELEI, relogio=Relogio(datetime(2026, 10, 20, 14, 40, tzinfo=BR)))
+            j = pl.publico()
+            self.assertEqual(j['proxima_ao_vivo']['eleicao'], '2026-10-25')
+            self.assertIn('inicio', j['proxima_ao_vivo'])
+        finally:
+            shutil.rmtree(c, ignore_errors=True)
+
+
 if __name__ == '__main__':
     unittest.main()

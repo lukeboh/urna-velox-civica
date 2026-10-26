@@ -488,5 +488,17 @@ mod testes {
         let br = Abrangencia::Brasil;
         assert_eq!(crate::resultado::Publicador::novo(&cat, None, None).secoes(&est, &br), (2, 0));
         assert_eq!(crate::resultado::Publicador::novo(&cat, Some(&cad), None).secoes(&est, &br), (1, 0));
+        // B-051: agregada descoberta na apuração sai do total, uma vez só; a do candidatos.json já estava fora
+        let mut p = crate::resultado::Publicador::novo(&cat, Some(&cad), None);
+        let s = &arq.secoes;
+        let uf: [u8; 2] = arq.municipios.iter().find(|m| m.codigo == s[1].municipio).unwrap().uf.as_bytes().try_into().unwrap();
+        let (k0, k1) = (crate::chave(s[0].municipio, s[0].zona, s[0].secao), crate::chave(s[1].municipio, s[1].zona, s[1].secao));
+        assert_eq!(p.agregada(uf, k0), None, "já fora do total pelo candidatos.json");
+        assert_eq!(p.agregada(*b"xx", k1), None, "de outra UF");
+        assert_eq!(p.agregada(uf, crate::chave(99_999, 1, 1)), None, "fora do catálogo");
+        assert!(p.agregada(uf, k1).is_some());
+        assert_eq!(p.secoes(&est, &br), (0, 0));
+        assert_eq!(p.agregada(uf, k1), None, "não desconta duas vezes");
+        assert_eq!(p.secoes(&est, &br), (0, 0));
     }
 }

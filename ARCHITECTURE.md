@@ -171,9 +171,12 @@ flowchart LR
   qualquer 429 (nenhuma requisição, nem as que já esperavam a vez); só o site simulado aceita aceleração, e então a rede
   recusa qualquer outra URL. Seção sem disponibilização no `cs.json` não gera requisição, salvo a sondagem limitada do
   fim da noite (não instaladas; [docs/OPERACAO.md](docs/OPERACAO.md) §3).
-* **Fim da apuração**: todas as abrangências com as seções esperadas (`s.ts` do `candidatos.json`), fila vazia e toda
-  seção publicada resolvida — ou `CONFERIR`/`--conferir-a-cada`. Publica a situação final e confere com os oficiais.
-  Um BU que chegue depois reabre a publicação.
+* **Fim da apuração**: todas as abrangências publicadas com as seções esperadas totalizadas (BUs + não instaladas),
+  fila vazia e toda seção publicada resolvida — ou `CONFERIR`/`--conferir-a-cada`. Esperadas = o total do catálogo
+  (listadas no `cs.json` menos as agregadas, as do `candidatos.json` e as descobertas na noite; o mesmo da página e,
+  em 2024 e 2026, igual ao `s.ts` oficial final em todas as abrangências), com o `s.ts` pré-apuração só como piso
+  (desde a 0.9.2, B-051: antes valia só o `s.ts`, que desatualizado encerrava a apuração cedo). Publica a situação
+  final e confere com os oficiais. Um BU que chegue depois reabre a publicação.
 * **Fora da thread do motor** (para que nada lento atrase o BU seguinte): a gravação dos arquivos da publicação
   (thread `uv-gravacao`, desde a v0.2.4; junta versões acumuladas do mesmo arquivo) e o `sync_data` dos pacotes e do
   diário a cada 2 s (thread `uv-sincronia`, desde a v0.2.6, com cópias dos descritores; antes ficava na thread do motor e

@@ -84,7 +84,7 @@ struct Cli {
     #[arg(long, value_name = "END:PORTA")]
     http: Option<String>,
     /// Conexões WebSocket simultâneas (acima disso, 503 no handshake)
-    #[arg(long, default_value_t = 5000)]
+    #[arg(long, default_value_t = 7500)]
     max_clientes: usize,
     /// Threads do runtime da camada HTTP (separadas da rede de coleta e do motor)
     #[arg(long, default_value_t = 4)]

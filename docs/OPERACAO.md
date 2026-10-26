@@ -29,11 +29,11 @@ no Windows = `/mnt/d/git/lukeboh/urna-velox` no WSL (`Ubuntu-24.04`, usuário `d
      existia — 500.111 seções — e só o de TO continuava em 404). O serviço **recusa** um
      `candidatos.json` incompleto sem `--aceitar-incompleto`; na noite, rodar incompleto significa que os BUs dessas UFs
      caem em "fora do catálogo" (alerta `fora_catalogo`).
-   * `--atualizar` só força `ele-c.json` e `cs.json`. Os `-u.json` pré-apuração ficam no cache (`fontes/u/`): para
-     relê-los, mova a pasta `fontes/u` antes. **Isso importa**: os de 12/10 trazem `s.ts` (seções esperadas) e eleitorado
+   * `--atualizar` baixa de novo todas as fontes, inclusive os `-u.json` pré-apuração (desde a 0.9.7, B-055; até a 0.9.6 só forçava `ele-c.json` e `cs.json` e, para reler os `-u.json`, era preciso mover a pasta `fontes/u`). Na 0.9.6 e antes:
+     relê-los, mova a pasta `fontes/u` antes. **Isso importou**: os de 12/10 trazem `s.ts` (seções esperadas) e eleitorado
      parciais nas abrangências por UF de Presidente (SP com 33.403 seções e 10,8 milhões de eleitores) — o serviço avisa
      com o alerta `secoes_esperadas_incoerentes` (ver §4). O eleitorado das **circunscrições** (Brasil; Governador em AC,
-     AM, DF, ES, RN) estava coerente, e é ele que o "matematicamente" usa.
+     AM, DF, ES, RN) estava coerente em 12/10, mas não ficou: o TSE só publicou o eleitorado do TO em 15/10 e o `candidatos.json` de 18/10 saiu com o Brasil 1.182.041 abaixo e o Governador do ES 448.654 abaixo (B-055). O serviço avisa com o alerta `eleitorado_divergente` quando a comparação com o TSE baixa um `-u.json` com outro eleitorado.
    * Destinação dos candidatos: os `-u.json` pré-apuração não trazem `dvt`; tudo é presumido "Válido" (alerta
      `destinacao_presumida` na partida). Confira cassações e indeferimentos antes da noite.
 3. **Ensaio com o site simulado** (prova o binário da noite sem tocar no TSE):
@@ -61,6 +61,12 @@ nohup $B/uv-servico --pleito 3221 --ciclo ele2026 \
 * Padrões: `--base https://resultados.tse.jus.br`, `--ambiente oficial`, `--rps 95` (teto 100), `--concorrencia 64`.
 * Pode começar a qualquer hora antes das 17h: antes da eleição só relê os `cs.json` (quase todos 304) e **não pede
   nenhuma seção sem disponibilização**.
+* **Exterior: os BUs começam a sair de madrugada.** No 1º turno de 2026 o TSE publicou a primeira seção do exterior às
+  01:49 de Brasília (Wellington) e 781 das 1.310 antes das 17h (`zz-p003220-cs.json`). O serviço não tem trava de
+  horário: totaliza cada BU assim que ele aparece no `cs.json`. **No dia da eleição, ele precisa estar no ar antes da
+  1h** (de preferência na véspera). A página mostra essa totalização e explica que a oficial começa às 17h (chip
+  "Oficial às 17h"; B-050, 0.8.57). Nos **replays** a madrugada não é reproduzida: o `uv-simulador --piso` (padrão
+  `17:00:00`) põe às 17h tudo o que saiu antes, e esses BUs entram juntos (B-049, 0.8.58).
 * **Dois ritmos de releitura dos `cs.json`** (desde a v0.2.8; `saude.json` → `ritmo_cs`):
   * **ocioso** (fila vazia e nada novo no último ciclo — antes da eleição, nos intervalos da noite): um ciclo por
     `--intervalo-cs-ocioso` (padrão 1 s, mínimo 1 s contra o TSE); contra o TSE cada ciclo lê 4 UFs em rodízio, então o
@@ -176,8 +182,7 @@ arquivos completos; `conferencia.json` ganhou `incompletos`.
 |---|---|---|
 | `destinacao_presumida` | candidatos sem `dvt` (todos "Válido") | conferir cassações/indeferimentos antes da noite; situação pode divergir do oficial nesses casos |
 | `candidatos_incompleto` | rodando com `--aceitar-incompleto` | regerar o `candidatos.json` assim que as fontes existirem e reiniciar (a retomada mantém tudo) |
-| `secoes_esperadas_incoerentes` | `s.ts` pré-apuração incoerente: Brasil ≠ soma das UFs (mesmo com UFs sem `s.ts`), UF sem `s.ts`, `s.ts` maior que a lista do `cs.json`, ou (Presidente/Governador, fora o exterior) menor que 90 % dela | o fim automático pode vir cedo (é reaberto se chegar BU) ou não vir: use `CONFERIR`. Regerar os `-u.json` (§1.2). **No 3221 em 13/10:** Brasil 494.864 × soma de 27 UFs 358.396; parcial em CE, ES, GO, MA, PA, PE, PI, RJ, SP (SP 33.403 de 91.326); TO sem `s.ts` |
-| `sem_secoes_esperadas` | `candidatos.json` sem `secoes` | fim só por `CONFERIR`/`--conferir-a-cada` |
+| `secoes_esperadas_incoerentes` | `s.ts` pré-apuração **maior** que as seções do catálogo (listadas no `cs.json` menos as agregadas) numa abrangência | o fim automático dessa abrangência espera por seções que o `cs.json` não lista: regerar o `candidatos.json` (§1.2) ou usar `CONFERIR`. Desde a 0.9.2 (B-051) o fim usa o total do catálogo, o mesmo da página, e o `s.ts` só como piso: um `s.ts` **menor** (desatualizado; no 3221 em 23/10, SP 33.403 de 103.904) não muda mais nada e fica só no `servico.log` (`sts_desatualizado`), sem alerta |
 | `disco` | < 5 GB livres | liberar espaço antes da noite |
 | `cs_ausente`, `cs_ilegivel` | `cs.json` de uma UF com erro (uma vez por UF até voltar) | normal antes da publicação (SE/TO em 12/10); na noite, conferir no navegador |
 | `http429` | o servidor respondeu 429; pausa global de 10 min | **não reiniciar** (reiniciar não encurta a penalidade da borda e o IP é compartilhado); esperar `retomada_em` |

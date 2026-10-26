@@ -44,8 +44,8 @@ escolher o próximo simulado. Suspensa de um dia antes até três dias depois de
 * **Suspensão:** `ELEICOES_OFICIAIS` (padrão `2026-10-25`): de 00:00 do dia anterior até 00:00 do 4º dia depois
   (24/10 00:00 a 29/10 00:00) a playlist não aceita votos nem decide, e o vigia não dispara simulado nenhum (o que
   estiver no ar fica até o operador trocar para a produção, como já previsto para 24/10).
-* **Página da apuração:** chip "Dados reais do TSE · retotalização · …" (botão: abre a explicação, que abre sozinha
-  na primeira visita do dia) e "▶ Playlist" ao lado.
+* **Página da apuração (até a 0.8.37):** chip "Dados reais do TSE · retotalização · …" (botão: abre a explicação, que
+  abre sozinha na primeira visita do dia) e "▶ Playlist" ao lado. **Desde a 0.8.39, ver "Replay" abaixo.**
 * **Instalar / atualizar:** `./63_ciclo.sh --playlist [domínio]` (padrão `urnavelox.com.br`; gera
   `gerado/playlist.segredo` na primeira vez; instala o serviço `uv-playlist` no A, a rota no Caddy dos dois nós —
   validada antes de recarregar, com cópia `Caddyfile.antes-playlist` —, `PLAYLIST_URL`/`ELEICOES_OFICIAIS` no
@@ -53,6 +53,45 @@ escolher o próximo simulado. Suspensa de um dia antes até três dias depois de
 * **Limites conhecidos:** com a Cloudflare na frente, o IP visto seria o da Cloudflare (hoje o DNS aponta direto
   para o A); o Caddy do B não tem a playlist (responde o 503 do serviço fora do ar), o que não importa enquanto o
   DNS apontar para o A.
+
+## Replay, selo único e a próxima eleição ao vivo (0.8.39)
+
+*Pedido do Luciano em 20/10/2026 (M-004 e B-022 no [BUGS.md](BUGS.md)): "simulado" não serve, porque os dados são
+reais; o nome passa a ser **replay**, como a reprise de um jogo. Nos textos para o público, "simulado"/"simulação"
+virou "replay" (página da apuração, `/playlist` — agora "Playlist de Replays" —, mensagens do `uv-playlist` e o
+painel); nos nomes internos (`uv-simulador`, `--simulacao`, campo `simulacao` do protocolo, `tse_simulado.rs`) nada
+mudou, para não mexer em implantação e ensaios a cinco dias do 2º turno.*
+
+* **Selo do topo = modo + playlist:** **REPLAY** (âmbar) quando o serviço manda `simulacao.rotulo`; **AO VIVO**
+  (vermelho) com BUs aplicados ou apuração encerrada sem rótulo; **EM BREVE** sem rótulo e sem BU nenhum — a vitrine
+  do 3221 e a noite da eleição antes das 17h (antes da 0.8.39 essa tela dizia "ao vivo" e não tinha a playlist: o
+  B-022). O ponto do selo continua dizendo a conexão (caiu, pausa do TSE, encerrada). Tocar no selo abre o aviso, com o
+  link "▶ Playlist" quando há playlist.
+* **A próxima eleição ao vivo, sempre à vista:** o `uv-playlist` publica `proxima_ao_vivo` (`{eleicao, nome, inicio,
+  fim, ao_vivo}`; início às 17h de Brasília de cada data em `ELEICOES_OFICIAIS`, `UV_INICIO_APURACAO` troca a hora;
+  a noite vai até as 8h do dia seguinte). A página busca a playlist na partida e a cada ~15 min e mostra um chip
+  vermelho/âmbar na faixa ("Próxima eleição AO VIVO · 2º turno · Eleições Gerais 2026 · domingo (25/10), 17h · faltam
+  4d 02h 13min"; no celular, "AO VIVO (25/10), 17h 4d 02h") e um item fixo no letreiro, os dois abrindo o aviso. Com
+  um `uv-playlist` antigo (sem o campo), a data sai da suspensão + 17h. Some quando a noite oficial está na tela (modo
+  AO VIVO dentro da janela).
+* **Aviso do dia:** abre sozinho na primeira entrada do dia **do visitante** (B-023: antes o "dia" era o de UTC e o
+  aviso reabria depois das 21h), num replay ou com a próxima eleição anunciada; nunca com a noite oficial no ar.
+* **Teste:** `site/testes/modo_pagina.mjs` (sem servidor: página de `dist/`, WebSocket e playlist falsos; replay,
+  vitrine, ao vivo e dia local a 1366, 390 e 360 px). `deploy/oci/testes/test_playlist.py` confere o
+  `proxima_ao_vivo`.
+* **Implantar:** binários novos (`--binarios`, a página está embutida no `uv-servico`) e `./63_ciclo.sh --playlist`
+  (o `uv-playlist` com o campo novo; o Caddy com o 301 do endereço antigo, abaixo).
+
+## Endereço antigo: 301 para urnavelox.com.br (0.8.39)
+
+*M-005: oficializar a mudança de `urnavelox.duckdns.org` para `urnavelox.com.br`.* O `Caddyfile.template` tem um bloco
+`urnavelox.duckdns.org { redir https://urnavelox.com.br{uri} permanent }` (HTTP 301, também para `/robots.txt` e
+`/sitemap.xml`); o `servidor/gerar_caddyfile.sh` o põe só no nó A, para onde o DuckDNS aponta (no B o Caddy nunca
+obteria o certificado), e é o mesmo gerador no `02_configurar_borda.sh` e no `63_ciclo.sh --playlist`.
+`DOMINIO_ANTIGO` no `nos.env` troca o endereço; vazio desliga. A página tem `<link rel="canonical"
+href="https://urnavelox.com.br/">`. Teste: `deploy/oci/testes/test_caddyfile.py` (com `UV_CADDY`, passa pelo
+`caddy adapt` e confere o 301 e o `Location`). **O DuckDNS precisa continuar apontando para o A** enquanto o Google
+não terminar de migrar (semanas); depois do 301, acompanhar no Search Console a indexação do domínio novo.
 
 ## Regras atendidas
 

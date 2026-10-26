@@ -6,6 +6,7 @@
     uv_oci.py para <instância> <origem local> <destino no nó>
     uv_oci.py de <instância> <origem no nó> <destino local>
     uv_oci.py liberar-portas <origem: CIDR ou "sub-rede"> <porta[,porta…]> <instância>…   (Security List, B-019)
+    uv_oci.py fechar-portas <origem: CIDR> <porta[,porta…]> <instância>…   (tira regras exatas dessas portas, B-025)
 
 Ambiente: OCI_COMPARTIMENTO, OCI_BUCKET, OCI_NAMESPACE (opcional). Saiu do `lib.sh` (heredoc) na 0.8.15 para ter teste
 (`deploy/oci/testes/test_uv_oci.py`, B-004); a lógica é a mesma de antes.
@@ -76,26 +77,21 @@ def ler_resultado(texto):
     return None
 
 
-def rodar_remoto(inst_id, script_bytes, timeout_s=1800):
-    tok = f"{int(time.time()*1000)}-{os.getpid()}-{uuid.uuid4().hex[:8]}"
-    in_obj = None
-    try:
-        if len(script_bytes) <= 2000:
-            b64_in = base64.b64encode(script_bytes).decode("ascii")
-            prep = f"echo '{b64_in}' | base64 -d > /tmp/uv-in-{tok}.sh"
-        else:
-            in_obj = f"in-{tok}.sh"
-            os_client.put_object(ns, bucket, in_obj, script_bytes)
-            prep = f"sudo /opt/urna-velox/bin/uv-bucket get '{bucket}' '{in_obj}' /tmp/uv-in-{tok}.sh '{ns}'"
+# B-063: o Run Command da OCI recusa comando com mais de 4.096 caracteres (`content.source.text size must be between 1
+# and 4096`)
+LIMITE_TEXTO = 4096
 
-        wrapper = f"""#!/usr/bin/env bash
+
+def montar_wrapper(tok, prep):
+    """O comando que roda no nó: `prep` põe o script em /tmp/uv-in-<tok>.sh; a saída volta em linha (pequena) ou pelo bucket."""
+    return f"""#!/usr/bin/env bash
 {prep}
 chmod 0700 /tmp/uv-in-{tok}.sh
 bash /tmp/uv-in-{tok}.sh >/tmp/uv-out-{tok} 2>/tmp/uv-err-{tok}
 RC=$?
 OUT_SZ=$(wc -c </tmp/uv-out-{tok} 2>/dev/null || echo 0)
 ERR_SZ=$(wc -c </tmp/uv-err-{tok} 2>/dev/null || echo 0)
-if [ $((OUT_SZ + ERR_SZ)) -le 450 ]; then
+if [ $((OUT_SZ + ERR_SZ)) -le 600 ]; then
   B_OUT=$(base64 -w0 /tmp/uv-out-{tok})
   B_ERR=$(base64 -w0 /tmp/uv-err-{tok})
   printf 'UV_RES:%d:INLINE:%s:%s\\n' "$RC" "$B_OUT" "$B_ERR"
@@ -107,6 +103,20 @@ fi
 rm -f /tmp/uv-in-{tok}.sh /tmp/uv-out-{tok} /tmp/uv-err-{tok}
 exit 0
 """
+
+
+def rodar_remoto(inst_id, script_bytes, timeout_s=1800):
+    tok = f"{int(time.time()*1000)}-{os.getpid()}-{uuid.uuid4().hex[:8]}"
+    in_obj = None
+    try:
+        # B-063: o Run Command aceita no máximo LIMITE_TEXTO caracteres no comando; o script vai em linha (base64) só se o
+        # comando inteiro couber, senão pelo bucket (o limite em bytes do script não basta: base64 cresce 4/3 e o wrapper soma)
+        b64_in = base64.b64encode(script_bytes).decode("ascii")
+        wrapper = montar_wrapper(tok, f"echo '{b64_in}' | base64 -d > /tmp/uv-in-{tok}.sh")
+        if len(wrapper) > LIMITE_TEXTO:
+            in_obj = f"in-{tok}.sh"
+            os_client.put_object(ns, bucket, in_obj, script_bytes)
+            wrapper = montar_wrapper(tok, f"sudo /opt/urna-velox/bin/uv-bucket get '{bucket}' '{in_obj}' /tmp/uv-in-{tok}.sh '{ns}'")
         cmd_id = ia_client.create_instance_agent_command(detalhes_comando(inst_id, wrapper, timeout_s, tok)).data.id
         t0 = time.time()
         sem_texto = 0
@@ -244,7 +254,12 @@ def liberar_portas(computa, rede, origem, portas, instancias):
             continue
         feitas.add((sub.id, fonte))
         listas = [rede.get_security_list(i).data for i in sub.security_list_ids]
-        faltam = [p for p in portas if not any(_cobre(r, fonte, p) for sl in listas for r in sl.ingress_security_rules)]
+        # B-025: para a sub-rede, uma regra pública (0.0.0.0/0) não conta: ela é para ser fechada (fechar-portas), e
+        # a da sub-rede tem de existir por conta própria (senão o balanceamento entre os nós cai junto)
+        def vale(r):
+            return origem != "sub-rede" or not str(getattr(r, "source", "")).endswith("/0")
+        faltam = [p for p in portas
+                  if not any(vale(r) and _cobre(r, fonte, p) for sl in listas for r in sl.ingress_security_rules)]
         if not faltam:
             print(f"liberar-portas: {fonte} → {','.join(map(str, portas))} já liberadas ({sub.id})")
             continue
@@ -256,6 +271,47 @@ def liberar_portas(computa, rede, origem, portas, instancias):
             for p in faltam]
         rede.update_security_list(alvo.id, Upd(ingress_security_rules=novas, egress_security_rules=alvo.egress_security_rules))
         print(f"liberar-portas: {fonte} → {','.join(map(str, faltam))} acrescentadas em {alvo.display_name}")
+    return 0
+
+
+def fechar_portas(computa, rede, origem, portas, instancias):
+    """B-025: tira das Security Lists da sub-rede de cada instância as regras de entrada TCP vindas exatamente de
+    `origem` (ex.: 0.0.0.0/0) para cada uma das `portas` (regra de uma porta só). Não mexe em mais nada. Uma regra
+    mais ampla que também deixe passar alguma dessas portas (todo protocolo, faixa de portas) não é retalhada: falha
+    alto (1) para o operador decidir. Devolve 0 (também quando não havia o que tirar)."""
+    _, _, _, Upd = _modelos()
+    vistas = set()
+    for inst in instancias:
+        anexos = [a for a in computa.list_vnic_attachments(comp, instance_id=inst).data if a.lifecycle_state == "ATTACHED"]
+        if not anexos:
+            print(f"fechar-portas: instância {inst} sem VNIC anexada", file=sys.stderr)
+            return 1
+        sub = rede.get_subnet(rede.get_vnic(anexos[0].vnic_id).data.subnet_id).data
+        for sl_id in sub.security_list_ids:
+            if sl_id in vistas:
+                continue
+            vistas.add(sl_id)
+            sl = rede.get_security_list(sl_id).data
+            fica, tiradas = [], []
+            for r in sl.ingress_security_rules:
+                tcp = getattr(r, "tcp_options", None)
+                pr = tcp.destination_port_range if tcp is not None else None
+                exata = (r.source == origem and str(r.protocol) == "6" and pr is not None and pr.min == pr.max
+                         and pr.min in portas)
+                if exata:
+                    tiradas.append(pr.min)
+                    continue
+                ampla = [p for p in portas if r.source == origem and _cobre(r, origem, p)]
+                if ampla:
+                    print(f"fechar-portas: a regra {r.source} proto {r.protocol} em {sl.display_name} também libera "
+                          f"{','.join(map(str, ampla))}; não vou retalhar uma regra ampla: ajuste à mão", file=sys.stderr)
+                    return 1
+                fica.append(r)
+            if not tiradas:
+                print(f"fechar-portas: {origem} → {','.join(map(str, portas))} já fechadas em {sl.display_name}")
+                continue
+            rede.update_security_list(sl.id, Upd(ingress_security_rules=fica, egress_security_rules=sl.egress_security_rules))
+            print(f"fechar-portas: {origem} → {','.join(map(str, sorted(tiradas)))} tiradas de {sl.display_name}")
     return 0
 
 
@@ -272,6 +328,10 @@ def main(argv):
         import oci
         portas = [int(p) for p in argv[2].split(",") if p]
         return liberar_portas(oci.core.ComputeClient(cfg), oci.core.VirtualNetworkClient(cfg), argv[1], portas, argv[3:])
+    if acao == "fechar-portas":
+        import oci
+        portas = [int(p) for p in argv[2].split(",") if p]
+        return fechar_portas(oci.core.ComputeClient(cfg), oci.core.VirtualNetworkClient(cfg), argv[1], portas, argv[3:])
     print(f"ação desconhecida: {acao}", file=sys.stderr)
     return 2
 

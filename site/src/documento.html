@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<meta name="description" content="{{descricao}}">
+<title>{{titulo}}</title>
+<link rel="canonical" href="https://urnavelox.com.br/{{caminho}}">
+<link rel="icon" href="/static/icone.svg?v={{versao}}" type="image/svg+xml">
+<link rel="stylesheet" href="/static/documento.css?v={{versao}}">
+<script src="/static/documento.js?v={{versao}}"></script>
+</head>
+<!-- molde das páginas de texto (/termos e /privacidade): o site/documentos.mjs põe aqui o texto dos arquivos do
+     repositório (docs/LICENCIAMENTO.md, LICENSE, LICENCA.pt-BR.md, docs/PRIVACIDADE.md) -->
+<body>
+<header class="topo">
+  <a class="marca" href="/">Urna <span>Velox</span></a>
+  <a class="voltar" href="/">← voltar à apuração</a>
+</header>
+<main class="doc">
+<h1>{{h1}}</h1>
+<p class="versao">Urna Velox v{{versao}} · mesmo texto do repositório do projeto</p>
+{{conteudo}}
+</main>
+<footer class="pe">© Urna Velox · <a href="/termos">Termos de uso</a> · <a href="/privacidade">Privacidade</a></footer>
+</body>
+</html>

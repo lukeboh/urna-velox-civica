@@ -15,14 +15,19 @@ import { Historico } from './historico.js';
 import { Nomes, itemMarco, itemEvento, primeiros, itemConfirmou, itemOrdemDiferente } from './textos.js';
 import { coresDaDisputa } from './cores.js';
 import { iniciarPlayer } from './replay.js';
-import { Controle, celulasTse, desenharCelulas, gravarModo, modoInicial, segundosBr, situacaoTse, textoEstado, textoFontes } from './comparacao.js';
+import { Controle, celulasTse, desenharCelulas, DICA_MS, DICA_TEXTO, dicaVista, gravarModo, INFO_FONTE, marcarDica, medirUso, modoInicial, MODOS, segundosBr, situacaoTse, textoEstado, textoFontes } from './comparacao.js';
 import { CartaoPrevisao, juntarPrevisao } from './previsao.js';
 import { ancora, comparar, diaDe, horaDe, quando, segundosF, tseNoSistema } from './relogio.js';
 import { Identificacao } from './identificacao.js';
+import { CartaoMapa } from './mapa.js';
+import { Cartoes } from './cartoes.js';
+import { buscarPlaylist, contagemPartes, diaLocal, modoDe, proximaDe, quandoTxt } from './proxima.js';
 import { abr, digitos, el, hora, mil, pct, segundos, movimentoReduzido } from './util.js';
 
 const $ = (s) => document.querySelector(s);
 const cargo4 = (c) => String(c).padStart(4, '0');
+const TEXTO_HTTP = 'Muitos acessos agora: em vez de receber a apuração em tempo real, esta página a consulta a cada minuto '
+  + '(o letreiro de eventos, a comparação com o TSE e a previsão ficam parados). Volta ao tempo real sozinha assim que houver vaga.';
 
 /** Último resultado de cada tópico: guarda o texto da mensagem e só interpreta o JSON quando alguém lê (get). */
 class Resultados {
@@ -53,7 +58,9 @@ const S = {
   ui: null,                 // elementos da tela atual
   cls: 0,
   msgs: 0,
-  ritmo: [],                // [instante ms, seq] do br/maior tópico (BUs por minuto)
+  ritmo: [],                // [instante ms, seq] do br/maior tópico (BUs por minuto), no relógio da página (servidor antigo)
+  ritmoSrv: [],             // B-053: [instante ms, seq] do `estado`, no relógio do serviço
+  ritmoSessao: undefined,   // `sistema0` da sessão das amostras (replay que recomeça: seq volta do zero)
   // comparação com o TSE (etapa 7, comparacao.js)
   comparar: modoInicial(),  // 'uv' | 'ambos' | 'tse'
   tse: new Map(),           // tópico → última mensagem `tse` (PROTOCOLO_WS §4.6)
@@ -121,6 +128,7 @@ function receber(m) {
       const k = `${m.classe}|${m.abrangencia}|${m.cargo}|${m.seq}|${m.secao}|${m.valor}`;
       if (S.marcos.has(k)) return;
       S.marcos.set(k, m);
+      S.mapa?.marco(m);
       const it = itemMarco(S.N, m);
       if (it) porNoFeed(it);
       if (m.classe === 'pct_secoes' && m.valor === 100 && m.abrangencia.length === 2 && !S.primeiraUf100) {
@@ -130,6 +138,9 @@ function receber(m) {
       }
       break;
     }
+    case 'mapa':
+      S.mapa?.receber(m);
+      break;
     case 'tse': {
       const t = String(m.topico || '').slice(4);
       const ant = S.tse.get(t);
@@ -164,8 +175,10 @@ function receber(m) {
     }
     case 'estado':
       S.estado = m;
+      verificarVersao(m.versao);
       // ritmo da apuração também pelo estado (≤ 10 s): a página não recebe mais os tópicos de todo o país (B-014)
       if (m.ultimo_bu?.seq != null) S.seqMax = Math.max(S.seqMax || 0, m.ultimo_bu.seq);
+      if (m.ultimo_bu?.seq != null && m.relogio_sistema?.agora) amostrarRitmo(m.ultimo_bu.seq, segundosF(m.relogio_sistema.agora), m.relogio_sistema.sistema0);
       S.relogio = { t: segundosBr(m.relogio_site), em: performance.now(), x: m.replay ? (m.replay.pausado ? 0 : (m.replay.acelerar || 1)) : 1 };
       // M-003: relógio do sistema do servidor (anda a 1×) e a âncora com a noite do TSE
       if (m.relogio_sistema) {
@@ -291,6 +304,8 @@ function cardTatil(c) {
   // inclina de leve sob o ponteiro (só transform) e acende o reflexo; no toque, a mesma resposta enquanto pressiona
   if (movimentoReduzido()) return c;
   const mover = (e) => {
+    // maximizado, sendo arrastado ou girando o globo do mapa: sem inclinação
+    if (c.classList.contains('max') || c.classList.contains('arrastando') || e.target?.closest?.('.mp-palco.globo')) return;
     const r = c.getBoundingClientRect();
     const x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
     c.style.setProperty('--ry', `${((x - 0.5) * 3).toFixed(2)}deg`);
@@ -319,6 +334,8 @@ function stat(rot, dig, comPct) {
 function montarPainel(t) {
   const res = S.res.get(t.topico);
   const painel = $('#painel');
+  // a tela vai ser montada de novo: o cartão maximizado volta ao lugar antes
+  S.cartoes?.restaurar(true);
   if (!res) {
     painel.replaceChildren(el('div', 'carregando', 'Esperando o primeiro resultado deste cargo…'));
     S.ui = { topico: t.topico, pendente: true };
@@ -354,7 +371,7 @@ function montarPainel(t) {
       el('span', 'pct', pctH.el), el('span', 'qtd', votH.el), tc.tse, tc.dif, el('span', 'barra', barra));
     li.dataset.n = k.n;
     lista.append(li);
-    linhas.set(k.n, { li, pctH, votH, barra, pilula, tc, pos: -1, glow: false, diverge: false, nome: info.nome, cor });
+    linhas.set(k.n, { li, pctH, votH, barra, pilula, pilTxt: '', tc, pos: -1, glow: false, diverge: false, nome: info.nome, cor });
   }
   lista.classList.add(`m-${S.comparar}`);
   const consulta = S.N.cargos.get(res.cargo)?.consulta;
@@ -365,9 +382,17 @@ function montarPainel(t) {
   selo.setAttribute('aria-live', 'polite');
   // fontes (comparação com o TSE): controle "Urna Velox · Ambos · TSE" e, ao lado, % de seções de cada fonte e a
   // idade do arquivo do TSE — linha de altura fixa, sempre presente (trocar de modo não mexe no que está embaixo)
-  const controle = new Controle(S.comparar, mudarModo);
-  const fa = el('span', 'f-a', ''), fb = el('span', 'f-b', ''), fe = el('span', 'f-est', '');
-  const fontes = el('div', 'fontes', [controle.el, el('div', 'f-txt', [fa, fb]), fe]);
+  // M-015: rótulo "De onde vêm os números" + ⓘ em cima, controle, e embaixo uma frase de uma linha que muda com o modo
+  // (mais o % das seções e o arquivo do TSE); tudo de altura fixa: nada pula (docs/BUGS.md, M-015)
+  const controle = new Controle(S.comparar, (m) => mudarModo(m, true));
+  const fx = el('span', 'f-x', ''), fa = el('span', 'f-a', ''), fb = el('span', 'f-b', ''), fe = el('span', 'f-est', '');
+  const info = el('button', 'f-info', 'i');
+  info.type = 'button';
+  info.title = 'Como funciona a escolha da fonte dos números';
+  info.setAttribute('aria-label', 'Como funciona a escolha da fonte dos números');
+  info.addEventListener('click', () => { medirUso('fonte-info'); fimDaDica(); abrirInfoFonte(); });
+  const cab = el('div', 'f-cab', [el('span', 'f-rot', 'De onde vêm os números'), info]);
+  const fontes = el('div', 'fontes', [cab, controle.el, el('div', 'f-txt', [fx, fa, fb]), fe]);
   const colunas = el('div', 'colunas', [
     el('span', 'c-uv', [el('span', 'uv-longo', 'Urna Velox'), el('span', 'uv-curto', 'UV')]),
     el('span', 'c-tse', 'TSE'),
@@ -376,6 +401,8 @@ function montarPainel(t) {
   colunas.setAttribute('aria-hidden', 'true');
   const corrida = cardTatil(el('section', 'vidro corrida', [el('header', 'corrida-cab', [el('div', null, [h1, sub]), selo]), fontes, colunas, lista]));
   corrida.classList.add(`m-${S.comparar}`);
+  iniciarDica();
+  if (S.dicaAtiva) controle.el.classList.add('dica');
 
   // apuração
   const anel = new Anel();
@@ -391,7 +418,7 @@ function montarPainel(t) {
   const apuracao = cardTatil(el('section', 'vidro apuracao', [
     el('h2', 'cartao-titulo', 'Apuração'), anel.el,
     el('div', 'numeros', [
-      el('div', null, [el('div', 'rot', 'Seções apuradas'), el('div', 'val', [secAp.el, el('span', 'de', ' de '), secTot.el])]),
+      el('div', null, [el('div', 'rot', 'Seções apuradas'), secAp.arrastarEl = el('div', 'val', [secAp.el, el('span', 'de', ' de '), secTot.el])]),
       // M-003: o horário do Urna Velox (relógio do sistema) em destaque; o do TSE embaixo, com rótulo próprio
       el('div', null, [el('div', 'rot', 'Totalizado pelo Urna Velox às'), el('div', 'val', ultBu.el), el('div', 'hora-tse', '')]),
     ]),
@@ -417,9 +444,24 @@ function montarPainel(t) {
   const prev = new CartaoPrevisao();
   const cardPrev = cardTatil(prev.el);
 
-  painel.replaceChildren(corrida, el('aside', 'lado', [apuracao, cardPrev, cardCurva, cardVotos]));
+  // dois trilhos: a coluna larga (corrida e o mapa das seções) e a lateral; todo cartão se maximiza e muda de lugar
+  // (cartoes.js); o mapa é o mesmo em todas as telas (o canvas e as luzes acesas não se perdem ao trocar de cargo)
+  const K = S.cartoes;
+  K.preparar(corrida, 'corrida', 'Corrida');
+  K.preparar(apuracao, 'apuracao', 'Apuração');
+  K.preparar(cardPrev, 'previsao', 'Previsão');
+  K.preparar(cardCurva, 'curva', 'Curva da apuração');
+  K.preparar(cardVotos, 'votos', 'Votos');
+  const principal = el('div', 'principal coluna-cartoes', [corrida]);
+  if (S.mapa) {
+    if (!S.mapa.tatil) { cardTatil(S.mapa.el); S.mapa.tatil = true; }
+    principal.append(K.preparar(S.mapa.el, 'mapa', 'Mapa das seções'));
+  }
+  const lado = el('aside', 'lado coluna-cartoes', [apuracao, cardPrev, cardCurva, cardVotos]);
+  painel.replaceChildren(principal, lado);
+  K.montar([principal, lado]);
   S.ui = { topico: t.topico, circ, linhas, selo, anel, pctSec, secAp, secTot, ultBu, faltH, camadaN, camadaD, curva, legenda, comp, abst, brancos, nulos, altura, ultCurva: 0,
-    corrida, lista, controle, fa, fb, fe, rotBu: apuracao.querySelector('.numeros > div:nth-child(2) .rot'),
+    corrida, lista, controle, fx, fa, fb, fe, rotBu: apuracao.querySelector('.numeros > div:nth-child(2) .rot'),
     horaTse: apuracao.querySelector('.numeros .hora-tse'), prev, cargo: res.cargo };
   if (S.anc) prev.definirAceleracao(S.anc.x);
   S.sujos.add(t.topico);
@@ -542,7 +584,14 @@ function desenharTopico(agora) {
     if (usaTse) { if (k.st) pil = k.st; else if (k.e && sitTse) pil = sitTse === 'eleito' ? 'eleito (TSE)' : '2º turno (TSE)'; }
     else if (encerrada && k.st) pil = k.st;
     else if (k.mat) pil = k.mat.estado === 'eleito' ? `eleito às ${horaMat(res, k.mat.em)}` : `2º turno às ${horaMat(res, k.mat.em)}`;
-    if (l.pilula.textContent !== pil) { l.pilula.textContent = pil; l.pilula.classList.toggle('ligado', !!pil); }
+    if (l.pilTxt !== pil) {
+      // B-043: o horário fica num span à parte, que some quando a linha é estreita (o nome continua à vista)
+      l.pilTxt = pil;
+      const i = pil.indexOf(' às ');
+      l.pilula.replaceChildren(...(i < 0 ? [pil] : [pil.slice(0, i), el('span', 'pl-hora', pil.slice(i))]));
+      l.pilula.title = pil;
+      l.pilula.classList.toggle('ligado', !!pil);
+    }
     const glow = usaTse ? (!!k.e && !!sitTse) : (!!k.mat || k.st === 'Eleito');
     if (glow !== l.glow) {
       l.glow = glow;
@@ -636,6 +685,8 @@ function desenharFontes() {
   const res = S.res.get(ui.topico);
   const tm = S.comparar !== 'uv' ? S.tse.get(ui.topico) : null;
   const f = textoFontes(S.comparar, res, tm, agoraSistema(), S.anc);
+  const x = S.dicaAtiva && S.comparar === 'uv' ? DICA_TEXTO : f.x;
+  if (ui.fx.textContent !== x) ui.fx.textContent = x;
   if (ui.fa.textContent !== f.a) ui.fa.textContent = f.a;
   if (ui.fb.textContent !== f.b) ui.fb.textContent = f.b;
   const e = S.comparar === 'uv' ? '' : S.tseDesligada ? 'comparação desligada neste servidor' : textoEstado(tm);
@@ -697,8 +748,79 @@ function ordemDiferente(t, res, d, diverge) {
   }
 }
 
-/** Troca de modo pelo controle: guarda, ajusta a tela e as inscrições (a de `tse:` liga a busca no servidor). */
-function mudarModo(m) {
+// ---------------------------------------------------------------- aviso de versão nova (M-016)
+// A página não recarrega sozinha quando o servidor troca de versão: quem deixou a aba aberta segue com o JavaScript antigo.
+// A mensagem `estado` traz a versão do servidor; se for MAIOR que a da página, aparece um aviso discreto com "Atualizar".
+// Só maior (nunca diferente): numa troca de nós um nó já está na nova e o outro ainda na antiga, e a página pode cair no
+// antigo — isso não é "versão nova". O aviso é fixo na tela (não está no fluxo: nada se move) e não recarrega sozinho,
+// para não interromper a leitura.
+const versaoCarregada = (() => {
+  try {
+    const s = document.querySelector('script[src*="app.js"]');
+    const v = s ? new URL(s.src, location.href).searchParams.get('v') : null;
+    return v || document.querySelector('.marca-versao')?.textContent.replace(/^v/, '') || null;
+  } catch { return null; }
+})();
+const numerosVersao = (v) => { const m = /^(\d+(?:\.\d+)*)/.exec(String(v || '')); return m ? m[1].split('.').map(Number) : null; };
+/** `a` é uma versão maior que `b` ("0.9.26" > "0.9.25")? Versão ilegível: nunca. */
+function versaoMaior(a, b) {
+  const x = numerosVersao(a), y = numerosVersao(b);
+  if (!x || !y) return false;
+  for (let i = 0; i < Math.max(x.length, y.length); i++) { const d = (x[i] || 0) - (y[i] || 0); if (d) return d > 0; }
+  return false;
+}
+function verificarVersao(servidor) {
+  if (!versaoMaior(servidor, versaoCarregada) || S.versaoDispensada === servidor) return;
+  let n = S.novaVersao;
+  if (!n) {
+    const at = el('button', 'atualizar', 'Atualizar');
+    at.type = 'button';
+    at.addEventListener('click', () => { medirUso('versao-atualizar'); location.reload(); });
+    const fe = el('button', 'fechar', '✕');
+    fe.type = 'button';
+    fe.setAttribute('aria-label', 'Dispensar o aviso de versão nova');
+    fe.addEventListener('click', () => { medirUso('versao-dispensar'); S.versaoDispensada = S.novaVersaoV; n.hidden = true; });
+    n = el('div', 'nova-versao', [el('span', 'nv-txt', 'Nova versão disponível'), at, fe]);
+    n.setAttribute('role', 'status');
+    n.hidden = true;
+    document.body.append(n);
+    S.novaVersao = n;
+  }
+  if (n.hidden) medirUso('versao-aviso');
+  S.novaVersaoV = servidor;
+  n.hidden = false;
+}
+
+/** Dica da primeira visita (M-015): destaque de sombra no controle e a frase "Toque em Comparar…" por 6 s, uma vez por
+ * navegador (localStorage). Termina ao tocar no controle ou no ⓘ. Só no modo padrão (quem já escolheu não precisa). */
+function iniciarDica() {
+  if (S.dicaIniciada) return;
+  S.dicaIniciada = true;
+  if (dicaVista()) return;
+  marcarDica();
+  if (S.comparar !== 'uv') return;
+  S.dicaAtiva = true;
+  medirUso('fonte-dica');
+  S.dicaTimer = setTimeout(fimDaDica, DICA_MS);
+}
+function fimDaDica() {
+  if (!S.dicaAtiva) return;
+  S.dicaAtiva = false;
+  clearTimeout(S.dicaTimer);
+  S.ui?.controle?.el.classList.remove('dica');
+  S.fontesSujo = true;
+  pedirQuadro();
+}
+
+/** Folha "De onde vêm os números" (botão ⓘ): a explicação e um botão por fonte (escolhe e fecha). */
+function abrirInfoFonte() {
+  folha.abrir({ ...INFO_FONTE, acoes: MODOS.map(([m, rot]) => [rot, () => mudarModo(m, true), S.comparar === m]) });
+}
+
+/** Troca de modo pelo controle: guarda, ajusta a tela e as inscrições (a de `tse:` liga a busca no servidor).
+ * `medir`: veio de um toque do usuário (conta no log de uso, M-015). */
+function mudarModo(m, medir = false) {
+  if (medir) { medirUso(`fonte-${m}`); fimDaDica(); }
   S.comparar = m;
   gravarModo(m);
   const ui = S.ui;
@@ -719,9 +841,9 @@ function desenharPrevisao() {
   const pTela = S.prev.get(ui.topico) || null;
   const tc = `${ui.circ}-c${cargo4(ui.cargo)}`;
   const pCirc = tc === ui.topico ? pTela : S.prev.get(tc) || null;
-  if (!pCirc) { ui.prev.definir(pTela, tc === ui.topico, S.N.local(ui.circ)); return; }
+  if (!pCirc) { ui.prev.definir(pTela, tc === ui.topico, S.N.em(ui.circ)); return; }
   const p = pTela === pCirc ? pTela : { ...pCirc, fim99: pTela?.fim99 ?? null, fim100: pTela?.fim100 ?? null, chegou: pTela?.chegou ?? {}, instante: `${pCirc.instante}|${pTela?.instante || ''}` };
-  ui.prev.definir(p, true, S.N.local(ui.circ));
+  ui.prev.definir(p, true, S.N.em(ui.circ));
 }
 
 function desenharFaltam() {
@@ -749,103 +871,371 @@ function desenharFaltam() {
 // ---------------------------------------------------------------- faixa e conexão
 let faixa;
 function montarFaixa() {
-  const ritmoH = new Hodometro({ inteiros: 6 });
-  const ritmo = el('span', 'chip ritmo', [ritmoH.el, el('span', null, ' BUs/min')]);
+  // B-041: o conteúdo do chip desliza junto com o número (metade dos dígitos vazios): fica centrado
+  const ritmoH = new Hodometro({ inteiros: 6, centro: true });
+  const ritmo = el('span', 'chip ritmo', ritmoH.arrastarEl = el('span', 'ritmo-in', [ritmoH.el, el('span', null, ' BUs/min')]));
   ritmo.style.width = '150px';
   const pausa = el('span', 'chip alerta oculto', '');
   pausa.style.width = '260px';
   const alerta = el('span', 'chip alerta oculto', '');
-  // simulação com dados reais (ciclo diário, uv-servico --simulacao): some quando o serviço não manda o rótulo. É um
-  // botão: abre a explicação (dados reais, retotalização, auditoria); ao lado, o link da playlist de simulados
-  const sim = el('button', 'chip sim oculto', '');
-  sim.type = 'button';
-  sim.addEventListener('click', () => explicarSimulacao());
-  const playlist = el('a', 'chip playlist oculto', ['▶ Playlist', el('span', 'longo', '\u00a0de simulados · escolha o próximo')]);
-  playlist.href = '/playlist';
-  $('#faixa').replaceChildren(sim, playlist, ritmo, pausa, alerta);
-  faixa = { ritmoH, ritmo, pausa, alerta, sim, playlist };
+  // M-004: a próxima eleição ao vivo, com contagem regressiva — a "propaganda" da noite oficial, sempre à vista (também
+  // durante um replay); some só quando essa noite está no ar. É um botão: abre o aviso (com a playlist)
+  const pMarca = el('span', 'vivo', [el('i', 'pt'), el('span', 'longo', 'Próxima eleição'), el('span', null, 'AO VIVO')]);
+  const pNome = el('span', 'nome', '');
+  const pQuando = el('span', 'quando', '');
+  const pCont = el('span', 'cont', '');
+  // 0.9.19 (Luciano, 24/10): o aviso de que os BUs do exterior chegam a partir da 01h, e o texto do chip rodando como um
+  // letreiro quando não cabe (o selo AO VIVO fica parado; o resto anda dentro da janela, com uma cópia emendada atrás)
+  const pExt = el('span', 'ext', '');
+  const pA = el('span', 'promo-a', [pNome, pQuando, pCont, pExt]);
+  const pB = el('span', 'promo-b');
+  pB.setAttribute('aria-hidden', 'true');
+  const pTrilho = el('span', 'promo-trilho', [pA, pB]);
+  const pJanela = el('span', 'promo-janela', pTrilho);
+  // aviso da totalização antes das 17h (BUs do exterior): botão que abre a explicação
+  const cedo = el('button', 'chip cedo oculto', [el('span', 'ic', 'i'), el('span', null, 'Oficial às 17h'), el('span', 'longo', '\u00a0· por enquanto, só BUs do exterior')]);
+  cedo.type = 'button';
+  cedo.title = 'Por que o Urna Velox já está totalizando antes das 17h';
+  cedo.addEventListener('click', () => folha.abrir(CEDO));
+  const promo = el('button', 'chip promo oculto', [pMarca, pJanela]);
+  promo.type = 'button';
+  promo.addEventListener('click', () => abrirAviso());
+  // B-026: WebSocket recusado (muitos acessos) → a página consulta a cada minuto; aviso discreto no lugar do BUs/min
+  const http = el('span', 'chip http oculto', 'atualizando a cada minuto (muitos acessos)');
+  http.title = TEXTO_HTTP;
+  // M-019: o TSE não publica BU novo há PARADO_S (depois das 17h); some sozinho no primeiro BU novo
+  const paradoTxt = el('span', null, '');
+  const parado = el('span', 'chip parado oculto', [el('span', 'ic', '!'), paradoTxt, el('span', 'longo', ' · retomamos automaticamente quando voltarem')]);
+  parado.setAttribute('role', 'status');
+  // o aviso das 17h depois do ritmo: quando ele aparece, nada do que está à vista anda (CLS 0)
+  $('#faixa').replaceChildren(parado, promo, http, ritmo, cedo, pausa, alerta);
+  faixa = { ritmoH, ritmo, pausa, alerta, promo, pNome, pQuando, pCont, pExt, pA, pB, pTrilho, pJanela, http, cedo, parado, paradoTxt };
 }
 
-/** Explicação da retotalização com dados reais (folha). Abre sozinha na primeira visita do dia a um simulado. */
-function explicarSimulacao() {
-  const rot = S.estado?.simulacao?.rotulo;
-  if (!rot) return;
-  const link = el('a', null, 'Playlist de simulados: agenda e votação do próximo');
-  link.href = '/playlist';
-  folha.abrir({ titulo: 'Dados reais: isto é uma retotalização', linhas: [
-    ['Os dados', 'Os boletins de urna reais, publicados pelo TSE. Nenhum voto é inventado.'],
-    ['O que se repete', 'A totalização: o Urna Velox começa do zero e soma tudo de novo, na ordem em que os boletins chegaram à Justiça Eleitoral.'],
-    ['Para quê', 'Ver a totalização e a auditoria acontecendo: no fim, o resultado é conferido com o oficial do TSE.'],
-    ['Agora', rot],
-    ['A seguir', link],
-  ] });
+// ---------------------------------------------------------------- M-004: modo, próxima eleição ao vivo e aviso do dia
+/** Agora no relógio do servidor da playlist (o do visitante pode estar errado). */
+const agoraPl = () => Date.now() + (S.pl?.desvio || 0);
+
+/** A promoção da próxima eleição ao vivo, se há uma e ela não é a que está no ar: { nome, inicio, fim, agora, aoVivo }. */
+function promoAtual() {
+  // B-062: antes do primeiro estado a página não sabe se a noite já está ao vivo; anunciar a próxima eleição aí punha o
+  // item no letreiro, e um item à vista só sai quando passa da borda esquerda (ficava anunciando na madrugada)
+  if (!S.estado) return null;
+  const p = proximaDe(S.pl);
+  if (!p) return null;
+  const agora = agoraPl();
+  if (agora >= p.fim) return null;
+  const aoVivo = agora >= p.inicio;
+  // a noite oficial está na tela: não há o que anunciar — também antes das 17h, quando os BUs do exterior já chegam
+  // (B-050: o selo dizia AO VIVO e a faixa, "Próxima eleição AO VIVO · faltam 15h")
+  if (modoDe(S.estado) === 'ao_vivo') return null;
+  return { ...p, agora, aoVivo };
 }
 
-function talvezExplicarSimulacao() {
-  if (S.simExplicada || !S.estado?.simulacao?.rotulo) return;
-  S.simExplicada = true;
-  const hoje = new Date().toISOString().slice(0, 10);
+/** Eleições gerais têm voto no exterior: os BUs de lá podem sair a partir da 01h (Brasília) do dia da eleição (no 1º
+ * turno de 2026, o primeiro saiu às 01:49). Antes da 01h: "a partir da 01h"; depois, até o primeiro BU (quando a noite
+ * passa a "ao vivo" e o chip some): "já podem chegar". '' para as outras eleições. */
+function textoExterior(p) {
+  if (!/Elei[çc][õo]es Gerais/i.test(p.nome) || p.aoVivo) return '';
+  return p.agora < p.inicio - 16 * 3600e3 ? 'BUs do exterior a partir da 01h' : 'BUs do exterior já podem chegar';
+}
+
+/** Letreiro do chip: anda só se o texto não cabe na janela (e o sistema não pede menos movimento). Mede uma vez por
+ * segundo, junto com a contagem; a animação é só transform (nada na página se mexe). */
+const menosMovimento = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+function rolarPromo(f) {
+  const larg = f.pA.scrollWidth, janela = f.pJanela.clientWidth;
+  const rola = larg > janela + 1 && !menosMovimento?.matches;
+  if (f.promo.classList.contains('rolando') !== rola) f.promo.classList.toggle('rolando', rola);
+  if (!rola) { if (f.pB.childNodes.length) f.pB.replaceChildren(); return; }
+  if (f.pB.innerHTML !== f.pA.innerHTML) f.pB.innerHTML = f.pA.innerHTML;
+  const passo = larg + 40;   // 40 px: o espaço entre o fim do texto e a cópia que vem atrás (margem do .promo-b)
+  if (Math.abs((f.passo || 0) - passo) > 4) {   // (algarismos de largura fixa: a contagem não mexe no passo)
+    f.passo = passo;
+    f.pTrilho.style.setProperty('--passo', `${passo}px`);
+    f.pTrilho.style.setProperty('--dur', `${(passo / 40).toFixed(1)}s`);   // ~40 px por segundo
+  }
+}
+
+function textoPromo(p) {
+  const q = quandoTxt(p.inicio, p.agora);
+  const cont = p.aoVivo ? null : contagemPartes(p.inicio - p.agora);
+  return { q, cont, linha: `${p.nome}: ${q.longo}`, falta: cont ? `faltam ${cont.join(' ')}` : 'agora' };
+}
+
+// ---------------------------------------------------------------- totalização antes das 17h (pedido do Luciano, 23/10)
+// No Brasil a totalização começa oficialmente às 17h (Brasília), quando termina a votação no país. Os boletins de urna
+// do exterior saem antes: no 1º turno de 2026 o TSE publicou o primeiro às 01:49 (Wellington) e 781 das 1.310 seções do
+// exterior antes das 17h. O Urna Velox totaliza cada BU assim que ele é publicado; até as 17h, a página explica.
+
+/** Agora no relógio do serviço (segundos civis de Brasília; no replay, a hora da noite reproduzida), ou null. */
+function agoraSite() {
+  const r = S.relogio;
+  return r && Number.isFinite(r.t) ? r.t + ((performance.now() - r.em) / 1000) * (r.x || 0) : null;
+}
+
+/** 17h do dia da eleição (mesma escala): do primeiro BU da noite (marco do servidor) ou, sem ele, da playlist. */
+function inicioOficial() {
+  for (const m of S.marcos.values()) {
+    if (m.classe !== 'primeira_secao' || m.abrangencia !== 'br') continue;
+    const t = segundos(m.horario);
+    if (t != null) return Math.floor(t / 86400) * 86400 + 17 * 3600;
+  }
+  const p = proximaDe(S.pl);
+  return p ? p.inicio / 1000 - 3 * 3600 : null;
+}
+
+/** A totalização está no ar e ainda não são 17h do dia da eleição. */
+function antesDas17() {
+  const m = modoDe(S.estado);
+  if ((m !== 'ao_vivo' && m !== 'replay') || S.estado?.encerrada) return false;
+  const t0 = inicioOficial(), agora = agoraSite();
+  return t0 != null && agora != null && agora < t0 && agora >= t0 - 17 * 3600;
+}
+
+const CEDO = { titulo: 'Totalização antes das 17h', linhas: [
+  ['Oficial', 'No Brasil, a totalização dos votos começa oficialmente às 17h (horário de Brasília), quando termina a votação em todo o país.'],
+  ['Exterior', 'Os eleitores no exterior votam no horário local. Onde a votação termina antes, como na Nova Zelândia, na Austrália, na Ásia e na Europa, o TSE publica os boletins de urna (BUs) a partir de 1h da madrugada de domingo.'],
+  ['Urna Velox', 'O Urna Velox totaliza cada boletim de urna assim que o TSE o publica. Por isso começa a totalizar antes das 17h: até lá, os números são só dos eleitores do exterior.'],
+] };
+
+function desenharCedo() {
+  const cedo = antesDas17(), f = faixa;
+  if (f.cedo.classList.contains('oculto') === cedo) f.cedo.classList.toggle('oculto', !cedo);
+  const it = feed.porId.get('cedo');
+  if (!cedo) { if (it) it.sair = true; return; }
+  feed.por({ id: 'cedo', fixo: true, cls: 'cedo', ic: 'i', texto: 'Totalização oficial às 17h: por enquanto, só os boletins de urna do exterior', t: '', detalhe: CEDO });
+  const x = feed.porId.get('cedo');
+  if (x) x.sair = false;
+}
+
+// ---------------------------------------------------------------- M-019: TSE sem novos BUs (Luciano, 25/10, 17h42)
+/** Sem BU novo no TSE há este tempo (s, relógio do site), depois das 17h: aviso no topo. */
+const PARADO_S = 600;
+
+/** Horário (segundos civis) do último BU no TSE que a página conhece: do `estado` (≤ 10 s) ou do resultado na tela. */
+function ultimoBuSite() {
+  const a = segundosBr(S.estado?.ultimo_bu?.site), b = segundos(S.res.get(S.tela?.topico)?.ultimo_bu);
+  return a == null ? b : b == null ? a : Math.max(a, b);
+}
+
+/** O horário do último BU se a noite ao vivo está parada (TSE sem BU novo há PARADO_S depois das 17h); senão null.
+ * Reavaliado a cada segundo (desenharPromo): o primeiro BU novo apaga o aviso. */
+function tseParado() {
+  if (modoDe(S.estado) !== 'ao_vivo' || S.estado?.encerrada) return null;
+  const agora = agoraSite(), t0 = inicioOficial(), tb = ultimoBuSite();
+  if (agora == null || t0 == null || tb == null || agora < t0) return null;
+  return agora - Math.max(tb, t0) >= PARADO_S ? tb : null;
+}
+
+function desenharParado() {
+  const tb = tseParado(), f = faixa;
+  if (f.parado.classList.contains('oculto') === (tb != null)) f.parado.classList.toggle('oculto', tb == null);
+  if (tb == null) return;
+  const d = new Date(tb * 1000), hh = String(d.getUTCHours()).padStart(2, '0'), mm = String(d.getUTCMinutes()).padStart(2, '0');
+  const txt = `TSE sem novos BUs desde ${hh}h${mm}`;
+  if (f.paradoTxt.textContent !== txt) f.paradoTxt.textContent = txt;
+}
+
+/** Faixa e letreiro, a cada segundo: só o texto muda (o chip só muda de largura quando a contagem troca de unidade). */
+function desenharPromo() {
+  desenharParado();
+  desenharCedo();
+  const p = promoAtual();
+  const f = faixa;
+  if (f.promo.classList.contains('oculto') === !!p) f.promo.classList.toggle('oculto', !p);
+  const it = feed.porId.get('promo:ao-vivo');
+  if (!p) { if (it) it.sair = true; return; }
+  const t = textoPromo(p);
+  // "2º turno das Eleições Gerais 2026" → "2º turno · Eleições Gerais 2026"
+  const nome = p.nome.replace(/^(\dº turno) das /, '$1 · ');
+  if (f.pNome.textContent !== nome) f.pNome.textContent = nome;
+  const quando = p.aoVivo ? 'agora' : t.q.longo;
+  if (f.pQuando.dataset.v !== quando) {
+    f.pQuando.replaceChildren(...(p.aoVivo ? ['agora'] : [el('span', 'dia', t.q.dia), `(${t.q.ddmm}), ${t.q.hora}`]));
+    f.pQuando.dataset.v = quando;
+  }
+  const contTxt = t.cont ? t.cont.join(' ') : '';
+  if (f.pCont.dataset.v !== contTxt) {
+    f.pCont.replaceChildren(...(t.cont ? [el('span', 'longo', 'faltam'), el('b', null, `${t.cont[0]} ${t.cont[1]}`), el('span', 'seg', t.cont[2] || '')] : []));
+    f.pCont.dataset.v = contTxt;
+  }
+  const ext = textoExterior(p);
+  const extTxt = ext ? `· ${ext}` : '';
+  if (f.pExt.textContent !== extTxt) f.pExt.textContent = extTxt;
+  rolarPromo(f);
+  const titulo = p.aoVivo ? `AO VIVO agora: ${p.nome}` : `Próxima eleição AO VIVO: ${t.linha} · ${t.falta}${ext ? ` · ${ext}` : ''}`;
+  if (f.promo.title !== titulo) { f.promo.title = titulo; f.promo.setAttribute('aria-label', `${titulo}. Toque para saber mais.`); }
+  // letreiro: um item fixo (nunca sai pelo limite de itens), destacado
+  feed.por({ id: 'promo:ao-vivo', fixo: true, cls: 'promo', ic: '●',
+    texto: p.aoVivo ? `AO VIVO agora: ${p.nome}` : `Próxima eleição AO VIVO: ${t.linha}${ext ? ` · ${ext}` : ''}`, t: p.aoVivo ? '' : t.falta, detalhe: AVISO });
+  const x = feed.porId.get('promo:ao-vivo');
+  if (x) x.sair = false;
+}
+
+/** Folha do aviso: a próxima eleição ao vivo, o que está no ar (o replay explicado) e a playlist. */
+function detalheAviso() {
+  const e = S.estado;
+  const modo = modoDe(e);
+  const linhas = [];
+  let titulo = 'Urna Velox';
+  if (modo === 'replay') {
+    titulo = 'REPLAY: dados reais, totalizados de novo';
+    linhas.push(['Replay', 'A apuração de uma eleição que já aconteceu, passando de novo — como a reprise de um jogo.'],
+      ['Dados', 'Os boletins de urna reais, publicados pelo TSE: nenhum voto é inventado. A totalização recomeça do zero, na ordem em que os boletins chegaram à Justiça Eleitoral, e no fim é conferida com o resultado oficial.'],
+      ['No ar', e.simulacao.rotulo]);
+  } else if (modo === 'espera') {
+    titulo = 'A apuração ainda não começou';
+    linhas.push(['No ar', S.pl?.no_ar?.modo === 'espera' && S.pl.no_ar.modo_descricao ? S.pl.no_ar.modo_descricao : 'Os candidatos já carregados, à espera dos primeiros boletins de urna.']);
+  } else if (modo === 'ao_vivo') {
+    titulo = e?.encerrada ? 'Apuração encerrada' : 'AO VIVO: totalização em tempo real';
+    linhas.push(['No ar', 'A totalização da eleição com os boletins de urna publicados pelo TSE, à medida que chegam.']);
+  }
+  const p = promoAtual();
+  if (p) {
+    const t = textoPromo(p);
+    if (modo === 'espera' || modo === '') titulo = p.aoVivo ? `AO VIVO agora: ${p.nome}` : 'Próxima eleição AO VIVO';
+    // em destaque, no alto: "AO VIVO · 2º turno das Eleições Gerais 2026 / domingo (25/10), a partir das 17h · faltam …"
+    linhas.unshift([el('span', 'aviso-selo', 'AO VIVO'),
+      el('strong', 'aviso-vivo', p.aoVivo ? [`Agora: ${p.nome}`] : [p.nome, el('br'), `${t.q.dia} (${t.q.ddmm}), a partir das ${t.q.hora} · ${t.falta}`])]);
+    // 0.9.19: os BUs do exterior chegam antes (a partir da 01h do dia da eleição)
+    if (textoExterior(p)) {
+      linhas.splice(1, 0, ['Exterior', `A partir da 01h do dia da eleição (${t.q.ddmm}), o TSE já pode publicar os boletins de urna (BUs) do exterior, e o Urna Velox totaliza cada um assim que sai. A totalização oficial no Brasil começa às 17h.`]);
+    }
+  }
+  // M-012: com o selo escondido (atributo hidden no #conexao, até o fim da totalização do 2º turno), o aviso também não
+  // leva à playlist; tirar o hidden traz os dois de volta
+  if (S.pl && !$('#conexao')?.hidden) {
+    const link = el('a', null, '▶ Playlist: a agenda dos replays e a votação do próximo');
+    link.href = '/playlist';
+    linhas.push(['Playlist', link]);
+  }
+  return { titulo, linhas };
+}
+
+/** O detalhe do item do letreiro: montado na hora do toque (não a cada segundo). */
+const AVISO = { get titulo() { return detalheAviso().titulo; }, get linhas() { return detalheAviso().linhas; } };
+
+function abrirAviso() {
+  const d = detalheAviso();
+  if (d.linhas.length) folha.abrir(d);
+}
+
+/** Na primeira entrada do dia (o dia do visitante, B-023) o aviso abre sozinho: num replay ou com a próxima eleição ao
+ * vivo anunciada; nunca com a noite oficial no ar. Espera a playlist (no máximo 3 s) para já vir completo. */
+function talvezAvisar() {
+  if (S.avisado || !S.estado || !S.plPronta) return;
+  const modo = modoDe(S.estado);
+  if (modo === 'ao_vivo') { S.avisado = true; return; }
+  if (modo !== 'replay' && !promoAtual()) return;
+  S.avisado = true;
+  const hoje = diaLocal();
   let visto = null;
-  try { visto = localStorage.getItem('uv-sim-explicada'); } catch { /* sem armazenamento */ }
+  try { visto = localStorage.getItem('uv-aviso-dia'); } catch { /* sem armazenamento */ }
   if (visto === hoje) return;
-  try { localStorage.setItem('uv-sim-explicada', hoje); } catch { /* sem armazenamento */ }
-  explicarSimulacao();
+  try { localStorage.setItem('uv-aviso-dia', hoje); } catch { /* sem armazenamento */ }
+  abrirAviso();
+}
+
+/** Playlist: na partida e a cada ~15 min (a agenda muda pouco; o uv-playlist é um só, no nó A). */
+async function acompanharPlaylist() {
+  const prazo = new Promise((ok) => setTimeout(ok, 3000));
+  const primeira = buscarPlaylist();
+  const pl = await Promise.race([primeira, prazo.then(() => undefined)]);
+  if (pl !== undefined) S.pl = pl;
+  S.plPronta = true;
+  S.estadoSujo = true;
+  pedirQuadro();
+  if (pl === undefined) { S.pl = await primeira; S.estadoSujo = true; pedirQuadro(); }
+  // B-024: sem a playlist (um nó fora do ar, uma falha de rede), tenta de novo em ~30 s em vez de esperar 15 min — a
+  // contagem para a próxima eleição ao vivo tem de estar sempre à vista
+  const proxima = () => setTimeout(async () => {
+    const n = await buscarPlaylist();
+    if (n) S.pl = n;
+    S.estadoSujo = true; pedirQuadro(); proxima();
+  }, S.pl ? 15 * 60e3 + Math.random() * 60e3 : 25e3 + Math.random() * 10e3);
+  proxima();
 }
 
 function desenharEstado() {
   S.estadoSujo = false;
   const e = S.estado;
   const c = $('#conexao');
-  let est = S.conexao, txt = 'conectando…';
-  if (S.conexao === 'vivo') { txt = 'ao vivo'; }
+  // M-004: o selo diz o modo (REPLAY em âmbar, AO VIVO, aguardando a apuração) e, no ponto e no complemento, a conexão
+  const modo = S.conexao === 'vivo' || e ? modoDe(e) : '';
+  // B-026: WebSocket recusado (muitos acessos) → consultas por HTTP a cada minuto; o selo mantém o modo
+  const http = S.conexao === 'http';
+  const ligada = S.conexao === 'vivo' || http;
+  // (espera: "EM BREVE" cabe inteiro no selo do celular, 136 px; "AGUARDANDO" era cortado)
+  const nomeModo = { replay: 'REPLAY', ao_vivo: 'AO VIVO', espera: 'EM BREVE' }[modo] || '';
+  let est = S.conexao, txt = nomeModo || 'conectando…';
+  if (S.conexao === 'conectando' && !e) txt = 'conectando…';
   if (S.conexao === 'caiu') {
     const s = Math.max(0, Math.round(((S.conexaoInfo?.em || Date.now()) - Date.now()) / 1000));
-    txt = `conexão caiu · volta em ${s}s`;
+    txt = nomeModo ? `${nomeModo} · reconectando ${s}s` : `conexão caiu · volta em ${s}s`;
     clearTimeout(S.tCaiu);
     S.tCaiu = setTimeout(() => { S.estadoSujo = true; pedirQuadro(); }, 1000);
   }
-  if (S.conexao === 'vivo' && e?.pausa_429?.ativa) { est = 'pausa'; txt = 'TSE pediu pausa'; }
-  if (S.conexao === 'vivo' && e?.encerrada) { est = 'encerrada'; txt = 'apuração encerrada'; }
+  if (http && !e) txt = 'a cada minuto';
+  if (ligada && e?.pausa_429?.ativa) { est = 'pausa'; txt = `${nomeModo ? `${nomeModo} · ` : ''}TSE pediu pausa`; }
+  if (ligada && e?.encerrada) { est = 'encerrada'; txt = modo === 'replay' ? 'REPLAY · fim' : 'apuração encerrada'; }
+  // B-026: o aviso "a cada minuto" toma o lugar do BUs/min (que, com uma consulta por minuto, não diria nada)
+  if (faixa?.http && faixa.http.classList.contains('oculto') === http) { faixa.http.classList.toggle('oculto', !http); faixa.ritmo.classList.toggle('com-http', http); }
   if (c.dataset.estado !== est) c.dataset.estado = est;
+  if (c.dataset.modo !== modo) c.dataset.modo = modo;
   const t = c.querySelector('.txt');
   if (t.textContent !== txt) t.textContent = txt;
-  // complemento do selo: simulação com os BUs reais do TSE (rótulo do serviço: eleição e modo)
+  // o selo também é o acesso à playlist (o aviso que ele abre tem o link)
+  const pl = c.querySelector('.pl');
+  const comPl = !!S.pl && modo !== 'ao_vivo';
+  if (pl.classList.contains('oculto') === comPl) pl.classList.toggle('oculto', !comPl);
   const rot = e?.simulacao?.rotulo || '';
-  if (c.classList.contains('sim') !== !!rot) c.classList.toggle('sim', !!rot);
-  let comp = c.querySelector('.comp');
-  if (rot && !comp) { comp = el('span', 'comp', ''); c.appendChild(comp); }
-  if (comp) { const ct = rot ? 'simulação' : ''; if (comp.textContent !== ct) comp.textContent = ct; }
-  const dica = rot ? `Simulação com dados reais: os boletins de urna são os publicados pelo TSE, totalizados de novo, do zero, na ordem em que chegaram à Justiça Eleitoral (${rot}); no fim, o resultado é conferido com o oficial. O relógio mostra o horário da noite da eleição.` : '';
-  if (c.title !== dica) c.title = dica;
-  const st = rot ? `Dados reais do TSE · retotalização · ${rot}` : '';
-  if (faixa.sim.textContent !== st) {
-    // no celular só "Dados reais" (o resto vem no toque, na explicação): sobra lugar para o ritmo (B-018)
-    faixa.sim.replaceChildren(...(rot ? [el('b', null, ['Dados reais', el('span', 'tse', ' do TSE')]), el('span', 'resto', ` · retotalização · ${rot}`)] : []));
-    faixa.sim.title = dica; faixa.sim.classList.toggle('oculto', !st);
-    faixa.sim.setAttribute('aria-label', rot ? `Por que é simulação e os dados são reais: ${rot}` : '');
-    faixa.playlist.classList.toggle('oculto', !st);
-  }
-  if (rot) talvezExplicarSimulacao();
+  const dica = modo === 'replay'
+    ? `REPLAY com dados reais: os boletins de urna são os publicados pelo TSE, totalizados de novo, do zero, na ordem em que chegaram à Justiça Eleitoral (${rot}); no fim, o resultado é conferido com o oficial. O relógio mostra o horário da noite da eleição.`
+    : modo === 'espera' ? 'A apuração ainda não começou.' : modo === 'ao_vivo' ? 'Totalização ao vivo.' : '';
+  const dicaHttp = http ? ` ${TEXTO_HTTP}` : '';
+  if (c.title !== dica + dicaHttp) { c.title = dica + dicaHttp; c.setAttribute('aria-label', `${txt}${dica + dicaHttp ? `. ${dica}${dicaHttp}` : ''} Toque para saber mais${comPl ? ' e ver a playlist' : ''}.`); }
+  talvezAvisar();
+  desenharPromo();
   if (!e) return;
   const pz = e.pausa_429?.ativa ? `Pausa de rede (HTTP 429)${e.pausa_429.retomada_em ? ' até ' + hora(e.pausa_429.retomada_em) : ''}` : '';
   if (faixa.pausa.textContent !== pz) { faixa.pausa.textContent = pz; faixa.pausa.title = pz; faixa.pausa.classList.toggle('oculto', !pz); }
   const al = e.alertas || {};
   const avisos = [];
   if (al.secoes_esperadas_incoerentes) avisos.push('o % de seções de algumas UFs pode estar errado (seções esperadas incoerentes)');
-  if (al.destinacao_presumida) avisos.push('destinação dos votos presumida "Válido"');
+  // M-010 (24/10/2026, Luciano): o aviso da destinação presumida sai da página até haver uma forma de apresentá-lo
+  // que não deixe dúvidas; o alerta continua no estado (/api/v1/estado), nos logs e no 30_verificar.sh
+  // if (al.destinacao_presumida) avisos.push('destinação dos votos presumida "Válido"');
   if (al.reenvio_diferente || al.anulacao) avisos.push('houve BU reenviado ou seção anulada');
   const at = avisos.length ? `Atenção: ${avisos.join('; ')}` : '';
   if (faixa.alerta.textContent !== at) { faixa.alerta.textContent = at; faixa.alerta.title = at; faixa.alerta.classList.toggle('oculto', !at); }
 }
 
+// ---------------------------------------------------------------- ritmo da apuração (BUs por minuto)
+/**
+ * B-053: uma amostra do ritmo pelo `estado` (BUs aplicados e o relógio do serviço na mesma mensagem). No relógio da
+ * página, uma pausa sem mensagens (celular em segundo plano, WebSocket reconectando) e o salto do seq na volta davam
+ * centenas de milhares de BUs/min: os BUs de minutos do serviço divididos pelos poucos segundos da página.
+ */
+function amostrarRitmo(seq, t, sessao) {
+  if (t == null) return;
+  if (sessao !== S.ritmoSessao) { S.ritmoSessao = sessao; S.ritmoSrv = []; }
+  const r = S.ritmoSrv, u = r[r.length - 1];
+  // outro nó um pouco atrás (modo HTTP, reconexão) ou mensagem fora de ordem: a série só anda para a frente
+  if (u && (t * 1000 <= u[0] || seq < u[1])) return;
+  r.push([t * 1000, seq]);
+  while (r.length > 2 && t * 1000 - r[0][0] > 60000) r.shift();
+}
+
 // ---------------------------------------------------------------- curiosidades calculadas aqui (a cada 2 s)
 function curiosidades() {
-  // ritmo: BUs por minuto do tópico mais movimentado, janela de 60 s (relógio da página)
+  // ritmo: BUs por minuto, janela de 60 s; no relógio do serviço (B-053) ou, servidor antigo, no da página
   const agora = performance.now();
   if (S.seqMax != null) S.ritmo.push([agora, S.seqMax]);
   while (S.ritmo.length > 2 && agora - S.ritmo[0][0] > 60000) S.ritmo.shift();
-  if (S.ritmo.length >= 2) {
-    const [t0, s0] = S.ritmo[0], [t1, s1] = S.ritmo[S.ritmo.length - 1];
+  const r = S.ritmoSessao !== undefined ? S.ritmoSrv : S.ritmo;
+  if (r.length >= 2) {
+    const [t0, s0] = r[0], [t1, s1] = r[r.length - 1];
     faixa.ritmoH.definir(t1 > t0 ? Math.round(((s1 - s0) * 60000) / Math.max(5000, t1 - t0)) : 0);
   } else faixa.ritmoH.definir(0);
   if (S.primeirosSujo) { S.primeirosSujo = false; for (const it of primeiros(S.N, S.eventos.values())) porNoFeed(it); }
@@ -917,11 +1307,20 @@ async function iniciar() {
   S.player = player;
   await document.fonts.ready;
   montarFaixa();
+  // M-004: o selo abre o aviso (com a playlist); a contagem anda a cada segundo
+  $('#conexao').addEventListener('click', () => abrirAviso());
+  acompanharPlaylist();
+  setInterval(() => desenharPromo(), 1000);
   // M-001: eleição, turno e abrangência sempre à vista
   S.ident = new Identificacao();
   S.N = new Nomes(nomes);
   S.topicos = new Set(topicos.map((t) => t.topico));
   S.con = new Conexao(receber, estadoConexao);
+  // mapa das seções (mapa.js) e cartões que se maximizam e se reorganizam (cartoes.js)
+  const versao = new URL(import.meta.url).searchParams.get('v') || '';
+  S.mapa = new CartaoMapa({ obter: (c) => S.con.obter(c), pedirMapa: (f) => S.con.pedirMapa(f), nomes: () => S.N, versao });
+  S.con.aoConsultar = () => S.mapa?.consultar();
+  S.cartoes = new Cartoes({ aoMaximizar: (c, sim) => { if (c === S.mapa?.el) S.mapa.maximizado(sim); } });
   window.addEventListener('hashchange', montarTela);
   // aba escondida: cancela a comparação com o TSE (e a refaz ao voltar)
   document.addEventListener('visibilitychange', () => { if (S.comparar !== 'uv') atualizarTopicos(); });

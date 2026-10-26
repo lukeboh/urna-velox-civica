@@ -43,18 +43,24 @@ export class Feed {
   get largura() { return this.trilho.clientWidth; }
 
   /**
-   * Acrescenta (ou atualiza, pelo id) um item. `it` = { id, ic, texto, t, detalhe, fixo, hod, anunciar }.
+   * Acrescenta (ou atualiza, pelo id) um item. `it` = { id, ic, texto, t, detalhe, fixo, hod, anunciar, cls }.
    * `fixo`: item de largura fixa cujo conteúdo muda (ex.: eleitores que faltam), atualizado no lugar.
    */
   por(it) {
     const ja = this.porId.get(it.id);
     if (ja) {
-      if (it.texto != null && ja.txt.textContent !== it.texto) ja.txt.textContent = it.texto;
+      if (it.texto != null && ja.txt.textContent !== it.texto) {
+        ja.txt.textContent = it.texto;
+        // 0.9.19: o texto de um item fixo pode mudar de tamanho (a próxima eleição ganha/troca o aviso do exterior): a
+        // largura guardada acompanha, e os itens que vêm depois dele no trilho andam o mesmo tanto (nada se sobrepõe)
+        const w = ja.el.offsetWidth, d = w - ja.w;
+        if (d) { for (const i of this.itens) if (i !== ja && i.x > ja.x) i.x += d; ja.w = w; }
+      }
       if (it.t != null) ja.t.textContent = it.t;
       ja.detalhe = it.detalhe;
       return ja;
     }
-    const b = el('button', 'item' + (it.fixo ? ' fixo' : ''));
+    const b = el('button', 'item' + (it.fixo ? ' fixo' : '') + (it.cls ? ` ${it.cls}` : ''));
     b.type = 'button';
     const ic = el('span', 'ic', it.ic || '•');
     ic.setAttribute('aria-hidden', 'true');
@@ -157,6 +163,10 @@ export class Folha {
     this.raiz = raiz;
     this.titulo = raiz.querySelector('#folha-titulo');
     this.corpo = raiz.querySelector('#folha-corpo');
+    // M-015: botões de ação opcionais (`d.acoes`: [rótulo, função, marcado]), depois da lista
+    this.acoes = el('div', 'folha-acoes');
+    this.acoes.hidden = true;
+    raiz.append(this.acoes);
     raiz.querySelector('#folha-fechar').addEventListener('click', () => this.fechar());
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') this.fechar(); });
     document.addEventListener('pointerdown', (e) => {
@@ -167,6 +177,13 @@ export class Folha {
     if (!d) return;
     this.titulo.textContent = d.titulo;
     this.corpo.replaceChildren(...d.linhas.flatMap(([a, b]) => [el('dt', null, a), el('dd', null, b)]));
+    this.acoes.replaceChildren(...(d.acoes || []).map(([rot, fn, marcado]) => {
+      const b = el('button', marcado ? 'ativo' : null, rot);
+      b.type = 'button';
+      b.addEventListener('click', () => { fn(); this.fechar(); });
+      return b;
+    }));
+    this.acoes.hidden = !(d.acoes && d.acoes.length);
     this.raiz.classList.add('aberta');
     this.raiz.setAttribute('aria-hidden', 'false');
   }

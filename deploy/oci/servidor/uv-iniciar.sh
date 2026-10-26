@@ -6,6 +6,9 @@ source /etc/urna-velox/no.env
 ARGS=(--pleito "$PLEITO" --ciclo "$CICLO" --ambiente "$AMBIENTE" --base "$BASE"
   --candidatos "${CANDIDATOS:-/srv/urna-velox/preparo/candidatos.json}"
   --dados /srv/urna-velox/dados --saida /srv/urna-velox/saida --rps "$RPS"
+  # releitura dos cs.json com seções chegando (INTERVALO_CS no no.env; padrão 30 s, o mesmo do uv-servico). O ritmo
+  # ocioso (--intervalo-cs-ocioso) e o --tse-intervalo continuam os do binário
+  --intervalo-cs "${INTERVALO_CS:-30}"
   --federacao /etc/urna-velox/federacao.json --no "$NO_ID" --armazem /srv/urna-velox/federacao
   --federacao-escuta "0.0.0.0:$FED_PORTA")
 [ -n "${ECO_IP:-}" ] && ARGS+=(--eco-ip "$ECO_IP")

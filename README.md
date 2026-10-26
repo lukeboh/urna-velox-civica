@@ -45,8 +45,8 @@ conta: funciona no navegador do celular e do computador.
   o horário do TSE de cada item fica no detalhe.
 - **⚖️ Lado a lado com o TSE.** Um botão põe a contagem do Urna Velox ao lado da do site oficial do TSE, candidato
   por candidato, com a diferença e a idade do arquivo do TSE. Quando o TSE confirma o resultado, a página mostra
-  quanto tempo antes o Urna Velox já tinha chegado lá, medido no mesmo relógio. Num simulado de outro dia (ou
-  acelerado), o horário do TSE é trazido para o dia e a velocidade do simulado antes da comparação: assim a distância
+  quanto tempo antes o Urna Velox já tinha chegado lá, medido no mesmo relógio. Num replay de outro dia (ou
+  acelerado), o horário do TSE é trazido para o dia e a velocidade do replay antes da comparação: assim a distância
   entre as duas apurações continua certa.
 - **📈 A curva da noite.** Um gráfico com o avanço das seções e o percentual dos dois primeiros colocados desde o
   começo da apuração.
@@ -56,30 +56,34 @@ conta: funciona no navegador do celular e do computador.
   reproduzidas (2024 e 2026), o resultado final foi idêntico ao oficial, candidato por candidato. O Urna Velox não
   substitui a divulgação oficial do TSE: é uma forma independente de acompanhá-la e conferi-la.
 
-### 🎬 Simulados com dados reais e a Playlist de Simulados
+### 🎬 Replays com dados reais e a Playlist de Replays
 
-Fora da noite da eleição, o site fica totalizando de novo, sem parar, eleições que já aconteceram: o 1º e o 2º turno
-de 2024 e o 1º turno de 2026. **Os dados são os reais**: os boletins de urna publicados pelo TSE, nenhum voto
-inventado. O que se repete é a **totalização**: a cada ciclo o Urna Velox começa do zero e soma de novo todos os
-boletins, na ordem em que chegaram à Justiça Eleitoral. Assim dá para ver a totalização funcionando e a **auditoria**
-acontecendo: no fim de cada ciclo, o resultado é conferido com o oficial do TSE, candidato por candidato.
+Fora da noite da eleição, o site passa **replays**: eleições que já aconteceram (o 1º e o 2º turno de 2024 e o 1º
+turno de 2026) apuradas de novo, como a reprise de um jogo. **Os dados são os reais**: os boletins de urna publicados
+pelo TSE, nenhum voto inventado. O que se repete é a **totalização**: a cada replay o Urna Velox começa do zero e soma
+de novo todos os boletins, na ordem em que chegaram à Justiça Eleitoral. Assim dá para ver a totalização funcionando e
+a **auditoria** acontecendo: no fim de cada replay, o resultado é conferido com o oficial do TSE, candidato por
+candidato. (Até a 0.8.37 o site chamava os replays de "simulados".)
 
-- **Na página da apuração:** o chip "Dados reais do TSE · retotalização" diz qual eleição está passando (com a data em
-  que ela aconteceu) e em que modo. Tocou nele, abre a explicação, que também aparece sozinha na primeira visita do
-  dia. O selo do topo leva a marca "simulação".
+- **Na página da apuração:** o selo do topo diz o que está no ar — **REPLAY** em âmbar, **AO VIVO** em vermelho na
+  noite de uma eleição oficial, ou **EM BREVE** antes de a apuração começar — e é também o acesso à playlist: tocou
+  nele, abre o aviso com a eleição que está passando (e a data em que ela aconteceu), o modo e o link da playlist.
+- **A próxima eleição ao vivo, sempre à vista:** um chip em destaque na faixa e um item fixo no letreiro anunciam a
+  próxima totalização ao vivo, com contagem regressiva (por exemplo, "Próxima eleição AO VIVO · 2º turno · Eleições
+  Gerais 2026 · domingo (25/10), 17h · faltam 4d 02h"). Na primeira entrada do dia, o aviso abre sozinho.
 - **Dois modos:**
   - **tempo real:** os boletins entram no mesmo ritmo e na mesma ordem da noite da eleição (leva horas);
   - **mesma ordem, acelerado:** a mesma ordem de chegada, o mais rápido que o sistema consegue totalizar (alguns
     minutos).
-- **▶ Playlist de Simulados das Eleições** ([/playlist](https://urnavelox.com.br/playlist)), para escolher o que
+- **▶ Playlist de Replays das Eleições** ([/playlist](https://urnavelox.com.br/playlist)), para escolher o que
   passa a seguir:
   - mostra o que está no ar e a agenda, com o horário previsto de início (sempre numa hora cheia) e de fim, a eleição,
     a data em que ela aconteceu e o modo;
-  - qualquer pessoa vota no simulado que quer ver a seguir, com um voto por conexão (endereço IP), que pode ser
+  - qualquer pessoa vota no replay que quer ver a seguir, com um voto por conexão (endereço IP), que pode ser
     trocado ou retirado;
   - o mais votado é sempre o próximo; sem votos, segue a rotação automática.
 - **Pausa nas eleições oficiais:** de um dia antes até três dias depois de uma eleição oficial, a playlist fica
-  suspensa e o site acompanha a eleição de verdade.
+  suspensa e o site acompanha a eleição de verdade, AO VIVO.
 
 Como funciona por dentro (rotação, vigias dos nós, votação e suspensão): [docs/CICLO_DIARIO.md](docs/CICLO_DIARIO.md).
 
@@ -186,7 +190,7 @@ Testes: `cargo test --release -p urna-velox` (unidade + fixtures) e, com os dado
 
 - [docs/AQUISICAO.md](docs/AQUISICAO.md): Fase de aquisição: como os BUs são obtidos do TSE (API de resultados e dados abertos), arquitetura do coletor, limites do CDN, medições reais e gráficos. Código em [aquisicao/](aquisicao/) (`uv-coletor`); para repetir: `./aquisicao/teste-real.sh` ou `.\aquisicao\teste-real.ps1`.
 - [docs/FORMATO_RESULTADO.md](docs/FORMATO_RESULTADO.md): Formato JSON do resultado por cargo e abrangência (situação, matematicamente eleito), contrato do WebSocket e do site.
-- [docs/CICLO_DIARIO.md](docs/CICLO_DIARIO.md): Simulados contínuos com dados reais nos dois nós da OCI: rotação por hora cheia, modos tempo real e acelerado, Playlist de Simulados (votação por IP, decisão única nos dois nós, suspensão nas eleições oficiais), telemetria e conferência de cada ciclo.
+- [docs/CICLO_DIARIO.md](docs/CICLO_DIARIO.md): Replays contínuos com dados reais nos dois nós da OCI: rotação por hora cheia, modos tempo real e acelerado, Playlist de Replays (votação por IP, decisão única nos dois nós, suspensão nas eleições oficiais), telemetria e conferência de cada ciclo.
 - [ARCHITECTURE.md](ARCHITECTURE.md): Detalhamento do pipeline de parsing, modelo de concorrência, estruturas em memória e garantias de idempotência e integridade.
 - [docs/ARCHITECTURE_DECISIONS.md](docs/ARCHITECTURE_DECISIONS.md): Registro de decisões (ADR-000 a ADR-031): linguagem (Rust vs. JavaScript vs. Java), modelo de estado, concorrência, deduplicação, validação, orçamento de memória, critérios de pivot, federação e licenciamento (ADR-031: Source-Available / PolyForm Noncommercial com dupla licença).
 - [docs/ESTIMATIVAS_MEMORIA_E_TEMPO.md](docs/ESTIMATIVAS_MEMORIA_E_TEMPO.md): Cálculos de memória e tempo de totalização de uma eleição real nas três linguagens, medidos com o mesmo corpus sintético, com gráficos.
@@ -212,3 +216,5 @@ Ao contribuir, valem as condições do [licenciamento](docs/LICENCIAMENTO.md#con
 ## ⚖️ Licença e Termos de Uso
 
 O Urna Velox é **livre para qualquer uso não comercial** — pesquisa, auditoria cidadã, ensino e uso pessoal —, sem custo e sem pedir autorização. Detalhes em [docs/LICENCIAMENTO.md](docs/LICENCIAMENTO.md).
+
+Privacidade, acesso e retenção de dados do site (fazemos o mínimo; não vendemos nem compartilhamos informação pessoal dos visitantes): [docs/PRIVACIDADE.md](docs/PRIVACIDADE.md), publicada em [urnavelox.com.br/privacidade](https://urnavelox.com.br/privacidade).

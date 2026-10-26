@@ -4,6 +4,11 @@
 import { NOME_CARGO, NOME_CARGO_PLURAL, abr, hora, mil, pct, titulo } from './util.js';
 import { distancia, horaDe, quando } from './relogio.js';
 
+// B-042: a preposição de cada UF ("na Bahia", "no Paraná", "em São Paulo"); municípios levam "em"
+const PREP_UF = { ac: 'no', al: 'em', am: 'no', ap: 'no', ba: 'na', ce: 'no', df: 'no', es: 'no', go: 'em', ma: 'no', mg: 'em', ms: 'em',
+  mt: 'em', pa: 'no', pb: 'na', pe: 'em', pi: 'no', pr: 'no', rj: 'no', rn: 'no', rs: 'no', ro: 'em', rr: 'em', sc: 'em', se: 'em', sp: 'em',
+  to: 'no', zz: 'no' };
+
 export class Nomes {
   constructor(n) {
     this.n = n || { ufs: {}, municipios: {}, eleicoes: [] };
@@ -29,13 +34,20 @@ export class Nomes {
     if (a.tipo === 'uf') return this.uf(a.uf);
     return `${this.mun(cod)} (${a.uf.toUpperCase()})`;
   }
+  /** "no Brasil", "na Bahia", "em São Paulo", "em Manaus (AM)" */
+  em(cod) {
+    const a = abr(cod);
+    if (a.tipo === 'br') return 'no Brasil';
+    if (a.tipo === 'uf') return `${PREP_UF[a.uf] || 'em'} ${this.uf(a.uf)}`;
+    return `em ${this.local(cod)}`;
+  }
   cargo(c) { return NOME_CARGO[c] || (this.cargos.get(c)?.consulta || c >= 25 ? 'Consulta' : `Cargo ${c}`); }
-  /** "Governador em São Paulo", "Presidente", "Prefeito de Manaus (AM)" */
+  /** "Governador em São Paulo", "Governador na Bahia", "Presidente", "Prefeito de Manaus (AM)" */
   disputa(cod, c) {
     const a = abr(cod);
     const nome = this.cargo(c);
     if (a.tipo === 'br') return nome;
-    if (a.tipo === 'uf') return `${nome} em ${this.uf(a.uf)}`;
+    if (a.tipo === 'uf') return `${nome} ${this.em(cod)}`;
     return `${nome} de ${this.local(cod)}`;
   }
   candidato(circ, c, n) {
@@ -70,7 +82,7 @@ function corpoMarco(N, m) {
   const t = hora(quando(m));
   switch (m.classe) {
     case 'primeira_secao': {
-      const onde = m.abrangencia === 'br' ? 'do Brasil' : `em ${N.local(m.abrangencia)}`;
+      const onde = m.abrangencia === 'br' ? 'do Brasil' : N.em(m.abrangencia);
       return { id, ic: '1', t, texto: `Primeira seção totalizada ${onde}: seção ${m.secao}, zona ${m.zona}, ${lugar(N, m)}`,
         anunciar: `Primeira seção totalizada ${onde}, às ${t}.`,
         detalhe: { titulo: `Primeira seção totalizada ${onde}`, linhas: linhasSecao(N, m) } };
@@ -144,8 +156,8 @@ export function primeiros(N, eventos) {
       const k = `uf:${e.cargo}:${a.uf}`;
       if (!vistos.has(k)) {
         vistos.set(k, 1);
-        out.push({ id: `p:${k}`, ic: '①', t, seq: e.seq, cat: 'decisao', texto: `Primeiro ${nome} eleito em ${N.uf(a.uf)}: ${quem}, ${N.local(e.abrangencia)}`,
-          detalhe: { titulo: `Primeiro ${nome} matematicamente eleito em ${N.uf(a.uf)}`, linhas: [['Eleito', quem], ['Onde', N.local(e.abrangencia)], ['Horário (Urna Velox)', t]] } });
+        out.push({ id: `p:${k}`, ic: '①', t, seq: e.seq, cat: 'decisao', texto: `Primeiro ${nome} eleito ${N.em(a.uf)}: ${quem}, ${N.local(e.abrangencia)}`,
+          detalhe: { titulo: `Primeiro ${nome} matematicamente eleito ${N.em(a.uf)}`, linhas: [['Eleito', quem], ['Onde', N.local(e.abrangencia)], ['Horário (Urna Velox)', t]] } });
       }
     }
   }
@@ -165,7 +177,7 @@ export function itemConfirmou(N, circ, cargo, sit, emUv, geracao, cmp, anc) {
   const o = sit === '2t' ? 'o 2º turno' : 'o matematicamente';
   const tseTxt = sim ? `${hhmm(geracao)} do TSE (≙ ${horaDe(cmp.tse).slice(0, 5)} aqui)` : hhmm(geracao);
   const linhas = [['Urna Velox (relógio do sistema)', hora(emUv)], ['TSE (arquivo gerado às, relógio do TSE)', hora(geracao)]];
-  if (sim) linhas.push(['TSE no relógio do sistema', `${horaDe(cmp.tse)} — a noite do TSE ${anc.x !== 1 ? `a ${String(anc.x).replace('.', ',')}× ` : ''}a partir do início deste simulado`]);
+  if (sim) linhas.push(['TSE no relógio do sistema', `${horaDe(cmp.tse)} — a noite do TSE ${anc.x !== 1 ? `a ${String(anc.x).replace('.', ',')}× ` : ''}a partir do início deste replay`]);
   linhas.push(['Antecedência do Urna Velox', `${ante}${sim && anc.x !== 1 ? ` (${distancia(cmp.noite)} no tempo da noite)` : ''}`],
     ['Como se compara', 'o arquivo de resultado do TSE desta disputa (buscado a cada 30–60 s) passou a mostrar a mesma situação']);
   return { id: `c:tse-conf:${circ}:${cargo}`, ic: '⇄', t: hora(emUv), cat: 'decisao', destaque: true,

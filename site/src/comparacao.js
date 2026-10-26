@@ -12,7 +12,18 @@ import { Hodometro } from './hodometro.js';
 import { el, hora, mil, pct } from './util.js';
 import { horaDe, tseNoSistema } from './relogio.js';
 
-export const MODOS = [['uv', 'Urna Velox'], ['ambos', 'Ambos'], ['tse', 'TSE']];
+// Melhoria do seletor (docs/BUGS.md, M-015): o controle diz de onde vêm os números. "Comparar" (antes "Ambos") mostra as
+// duas fontes lado a lado; "TSE oficial" é o arquivo que o TSE divulga. Cada modo tem uma frase de uma linha embaixo
+// (cabe em 288 px a 12 px: nada pula, nada é cortado) e uma folha com a explicação inteira (botão ⓘ).
+export const MODOS = [['uv', 'Urna Velox'], ['ambos', 'Comparar'], ['tse', 'TSE oficial']];
+export const EXPLICA = {
+  uv: 'Boletins somados assim que o TSE os publica',
+  ambos: 'Lado a lado: veja quem está à frente',
+  tse: 'Só o arquivo oficial do TSE (≈ 1 min)',
+};
+export const EXPLICA_SEM_TSE = { ambos: 'Sem totais no TSE ainda; só o Urna Velox', tse: 'Ainda sem totais no TSE: veja o Urna Velox' };
+export const DICA_TEXTO = 'Toque em Comparar para conferir com o TSE';
+const DICA_MS = 6000;
 const VALIDO = new Set(MODOS.map((m) => m[0]));
 const CHAVE = 'uv-comparar';
 
@@ -63,14 +74,13 @@ export class Controle {
 export function celulasTse(dig) {
   const pctH = new Hodometro({ inteiros: 3, casas: 2, sufixo: '%' });
   const votH = new Hodometro({ inteiros: dig, sufixo: 'votos' });
-  const difH = new Hodometro({ inteiros: dig });
+  const difH = new Hodometro({ inteiros: dig, prefixo: true });
   const pos = el('span', 'pos-tse', '');
   pos.title = 'Posição no TSE';
-  const sinal = el('span', 'sinal', '');
   const tse = el('span', 'tse', [el('span', 'tse-l1', [pos, el('span', 'tse-pct', pctH.el)]), el('span', 'tse-qtd', votH.el)]);
-  const dif = el('span', 'dif', [el('span', 'dif-rot', 'UV − TSE'), el('span', 'dif-val', [sinal, difH.el])]);
+  const dif = el('span', 'dif', [el('span', 'dif-rot', 'UV − TSE'), el('span', 'dif-val', difH.el)]);
   dif.title = 'Diferença de votos: Urna Velox − TSE';
-  return { tse, dif, pos, pctH, votH, difH, sinal, ultPos: null, ultSinal: null };
+  return { tse, dif, pos, pctH, votH, difH, ultPos: null, ultSinal: null };
 }
 
 /** Desenha as células do TSE de um candidato (`k` = o candidato no resumo do TSE; `uv` = votos no Urna Velox). */
@@ -82,7 +92,7 @@ export function desenharCelulas(c, k, uv, posUv) {
   const d = k && uv != null ? uv - k.v : null;
   c.difH.definir(d == null ? null : Math.abs(d));
   const s = d == null ? '' : d > 0 ? '+' : d < 0 ? '−' : '';
-  if (c.ultSinal !== s) { c.sinal.textContent = s; c.ultSinal = s; }
+  if (c.ultSinal !== s) { c.difH.prefixar(s); c.ultSinal = s; }
   return k != null && posUv != null && k.pos !== posUv + 1;
 }
 
@@ -141,10 +151,36 @@ export function textoFontes(modo, res, tse, agora, anc) {
   const g = segundosBr(d?.geracao);
   const eq = tseNoSistema(anc, g);
   const sim = anc && g != null && (anc.x !== 1 || Math.abs(eq - g) > 3600);
+  const semTotais = !!d && st === 0;
   const arq = d?.geracao ? `arquivo do TSE das ${hora(d.geracao)}${sim ? ` (≙ ${horaDe(eq)} aqui)` : ''}${agora != null && eq != null ? ` · ${idade(agora - eq)}` : ''}` : '';
-  if (modo === 'uv') return { a: uv, b: '' };
-  if (modo === 'tse') return { a: tTse + (d ? ' das seções' : ''), b: arq };
-  return { a: `${uv} · ${tTse}`, b: arq };
+  // M-015: com o TSE ainda em 0 seções, o "arquivo das 19:19 · há 10 h" parecia defeito: diz o que está acontecendo
+  const b = semTotais ? 'O TSE ainda não começou a totalizar' : arq;
+  const x = (semTotais && EXPLICA_SEM_TSE[modo]) || EXPLICA[modo];
+  if (modo === 'uv') return { a: uv, b: '', x };
+  if (modo === 'tse') return { a: tTse + (d ? ' das seções' : ''), b, x };
+  return { a: `${uv} · ${tTse}`, b, x };
+}
+
+/** Folha com a explicação inteira (botão ⓘ): o que cada fonte é e por que os números podem diferir. */
+export const INFO_FONTE = { titulo: 'De onde vêm os números', linhas: [
+  ['Urna Velox', 'Somamos cada boletim de urna (BU) assim que o TSE o publica. Por isso os números aparecem antes e andam a cada boletim.'],
+  ['TSE oficial', 'O arquivo de resultados que o próprio TSE divulga, atualizado a cada cerca de 1 minuto. É o número oficial, mas chega um pouco depois.'],
+  ['Comparar', 'Mostra as duas fontes lado a lado, com a diferença entre elas. Normalmente o Urna Velox está um pouco à frente do TSE.'],
+  ['Antes das 17h', 'O TSE só começa a totalizar às 17h. Até lá, só o Urna Velox tem números: os dos eleitores do exterior.'],
+] };
+
+const CHAVE_DICA = 'uv-dica-fonte';
+/** A dica da primeira visita (destaque no controle e frase) já foi mostrada neste navegador? */
+export function dicaVista() {
+  try { return localStorage.getItem(CHAVE_DICA) === '1'; } catch { return true; /* sem armazenamento: não insiste */ }
+}
+export function marcarDica() { try { localStorage.setItem(CHAVE_DICA, '1'); } catch { /* sem armazenamento */ } }
+export { DICA_MS };
+
+/** Uso do seletor, só para saber se a melhoria funcionou: um POST sem corpo e sem identificação para
+ * /api/v1/uso/<evento> (o servidor responde 404; o que vale é a linha no log de acesso do Caddy). */
+export function medirUso(evento) {
+  try { if (navigator.sendBeacon) navigator.sendBeacon(`/api/v1/uso/${evento}`, ''); } catch { /* sem beacon */ }
 }
 
 export { mil };

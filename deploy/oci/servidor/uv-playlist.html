@@ -4,53 +4,74 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
-<meta name="description" content="Playlist de Simulados das Eleições do Urna Velox: veja a agenda e escolha qual eleição real será totalizada de novo a seguir.">
-<title>Playlist de Simulados · Urna Velox</title>
+<meta name="description" content="Playlist de Replays das Eleições do Urna Velox: veja a agenda e escolha qual eleição real passa de novo, totalizada do zero, a seguir.">
+<title>Playlist de Replays · Urna Velox</title>
 <link rel="icon" href="/static/icone.svg" type="image/svg+xml">
+<!-- tema: o mesmo da apuração (escuro por padrão; "uv-tema" guarda a escolha do botão ◐, nas duas páginas) -->
 <script>try { const t = localStorage.getItem('uv-tema'); if (t === 'claro' || t === 'escuro') document.documentElement.dataset.tema = t; } catch { /* sem armazenamento */ }</script>
 <style>
-@font-face { font-family: 'Archivo UV'; src: url('/static/archivo.woff2') format('woff2'); font-weight: 100 900; font-stretch: 62% 125%; font-display: swap; }
+/* B-048: a identidade visual é a da página da apuração (site/src/estilo.css): mesma fonte, mesmas cores do tema (escuro
+   por padrão, como o app; o claro só pela escolha guardada em "uv-tema"), mesma aurora, mesma marca, mesmo vidro.
+   Ao mudar um token lá, mude aqui também: site/testes/playlist_identidade.mjs confere que as duas páginas batem. */
+@font-face { font-family: "Archivo UV"; src: url("/static/archivo.woff2") format("woff2-variations"), url("/static/archivo.woff2") format("woff2");
+  font-weight: 100 900; font-stretch: 62% 125%; font-style: normal; font-display: swap; }
 :root {
-  --fundo: #0d1431; --vidro: rgba(255,255,255,.065); --vidro-forte: rgba(255,255,255,.11); --borda: rgba(255,255,255,.15);
-  --texto: #eef1ff; --texto-2: rgba(238,241,255,.72); --texto-3: rgba(238,241,255,.52);
-  --ok: #4fe0b0; --alerta: #ffc24b; --a1: #4fc3ff; --a2: #8c6bff; --a3: #ff5fd2; --sombra: 0 18px 40px rgba(2,5,22,.45);
-  --real: #4fe0b0; --rapido: #8c6bff;
+  --fundo: #0d1431; --fundo-2: #141d45;
+  --aurora-1: rgba(112, 86, 255, 0.30); --aurora-2: rgba(0, 196, 255, 0.18); --aurora-3: rgba(255, 92, 168, 0.14);
+  --vidro: rgba(255, 255, 255, 0.065); --vidro-forte: rgba(255, 255, 255, 0.11); --borda: rgba(255, 255, 255, 0.15); --borda-luz: rgba(255, 255, 255, 0.32);
+  --texto: #eef1ff; --texto-2: #a8b2d8; --texto-3: #7680a8;
+  --sombra: 0 18px 40px rgba(2, 5, 22, 0.45);
+  --ok: #4fe0b0; --alerta: #ffc24b;
+  --raio-g: 26px; --raio-m: 16px; --raio-p: 999px;
+  /* destaques da playlist: as cores do anel da apuração */
+  --a1: #4fc3ff; --a2: #8c6bff; --a3: #ff5fd2; --real: var(--ok); --rapido: #a996ff;
+  color-scheme: dark;
 }
-/* tema: o mesmo da página da apuração (localStorage "uv-tema"); sem escolha, o do sistema */
-:root[data-tema="claro"] { --fundo: #e9edf8; --vidro: rgba(255,255,255,.62); --vidro-forte: rgba(255,255,255,.85); --borda: rgba(30,40,90,.12);
-  --texto: #121836; --texto-2: rgba(18,24,54,.74); --texto-3: rgba(18,24,54,.55); --ok: #0b8a64; --alerta: #9a5b00;
-  --sombra: 0 16px 36px rgba(40,50,110,.16); --real: #0b8a64; --rapido: #5b3fd6; color-scheme: light; }
-@media (prefers-color-scheme: light) {
-  :root:not([data-tema]) { --fundo: #e9edf8; --vidro: rgba(255,255,255,.62); --vidro-forte: rgba(255,255,255,.85); --borda: rgba(30,40,90,.12);
-    --texto: #121836; --texto-2: rgba(18,24,54,.74); --texto-3: rgba(18,24,54,.55); --ok: #0b8a64; --alerta: #9a5b00;
-    --sombra: 0 16px 36px rgba(40,50,110,.16); --real: #0b8a64; --rapido: #5b3fd6; }
+:root[data-tema="claro"] {
+  --fundo: #e9edf8; --fundo-2: #f6f7fc;
+  --aurora-1: rgba(112, 86, 255, 0.20); --aurora-2: rgba(0, 170, 255, 0.16); --aurora-3: rgba(255, 92, 168, 0.12);
+  --vidro: rgba(255, 255, 255, 0.58); --vidro-forte: rgba(255, 255, 255, 0.78); --borda: rgba(30, 40, 90, 0.12); --borda-luz: rgba(255, 255, 255, 0.9);
+  --texto: #121836; --texto-2: #4a5378; --texto-3: #7a83a6;
+  --sombra: 0 16px 36px rgba(40, 50, 110, 0.16);
+  --ok: #0b8a64; --alerta: #9a5b00; --rapido: #5b3fd6;
+  color-scheme: light;
 }
 * { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; }
-body { margin: 0; min-height: 100vh; background: var(--fundo); color: var(--texto);
-  font: 16px/1.5 'Archivo UV', system-ui, -apple-system, 'Segoe UI', sans-serif; overflow-x: hidden; }
-.aurora { position: fixed; inset: -20vh -20vw auto; height: 70vh; z-index: 0; pointer-events: none; opacity: .5; filter: blur(70px);
-  background: radial-gradient(40% 50% at 25% 40%, var(--a1), transparent 70%), radial-gradient(35% 45% at 60% 30%, var(--a2), transparent 70%),
-  radial-gradient(30% 40% at 85% 45%, var(--a3), transparent 70%); }
-main { position: relative; z-index: 1; max-width: 980px; margin: 0 auto; padding: 16px 16px 48px; }
+html, body { margin: 0; }
+html { -webkit-text-size-adjust: 100%; overflow-x: clip; }
+body { min-height: 100vh; background: var(--fundo); color: var(--texto); font-family: "Archivo UV", system-ui, sans-serif; font-size: 16px;
+  line-height: 1.45; font-stretch: 100%; overflow-x: clip; -webkit-tap-highlight-color: transparent; }
+.aurora { position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background:
+    radial-gradient(60vmax 40vmax at 8% -6%, var(--aurora-1), transparent 70%),
+    radial-gradient(50vmax 36vmax at 100% 10%, var(--aurora-2), transparent 70%),
+    radial-gradient(55vmax 40vmax at 60% 110%, var(--aurora-3), transparent 70%),
+    linear-gradient(180deg, var(--fundo-2), var(--fundo)); }
+:focus-visible { outline: 2px solid #9db7ff; outline-offset: 2px; }
+main { position: relative; max-width: 980px; margin: 0 auto; padding: 8px 16px 48px; }
 a { color: inherit; }
-.topo { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0 20px; }
-.marca { font-weight: 800; font-size: 1.15rem; text-decoration: none; letter-spacing: -.01em; }
-.marca span { background: linear-gradient(90deg, var(--a1), var(--a2), var(--a3)); -webkit-background-clip: text; background-clip: text; color: transparent; }
-.botao { display: inline-flex; align-items: center; gap: 6px; padding: 9px 16px; border-radius: 999px; border: 1px solid var(--borda);
-  background: var(--vidro-forte); color: var(--texto); font: inherit; font-weight: 600; font-size: .92rem; text-decoration: none; cursor: pointer; }
+.topo { display: flex; align-items: center; gap: 12px; height: 64px; padding: 0 0 8px; }
+.topo .voltar { margin-left: auto; }
+.marca { font-stretch: 125%; font-weight: 800; font-size: 19px; letter-spacing: -0.01em; color: var(--texto); text-decoration: none; white-space: nowrap; }
+.marca span { font-weight: 300; color: var(--texto-2); }
+.icone-btn { width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--borda); background: var(--vidro); color: var(--texto); cursor: pointer;
+  display: grid; place-items: center; font: inherit; font-size: 16px; flex: none; }
+.botao { display: inline-flex; align-items: center; gap: 6px; padding: 9px 16px; border-radius: var(--raio-p); border: 1px solid var(--borda);
+  background: var(--vidro); color: var(--texto); font: inherit; font-weight: 600; font-size: .92rem; text-decoration: none; cursor: pointer; }
 .botao:hover:not(:disabled) { border-color: var(--a1); }
 .botao:disabled { opacity: .5; cursor: not-allowed; }
-.botao.primario { border: 0; color: #fff; background: linear-gradient(90deg, #3b8fe0, var(--a2), #d94fb4); }
+.botao.primario { border: 0; color: #fff; background: linear-gradient(90deg, #3b8fe0, var(--a2), #d94fb4); font-weight: 700; }
 .botao.votado { border-color: var(--ok); color: var(--ok); background: transparent; }
 .botao:focus-visible { outline: 3px solid var(--a1); outline-offset: 2px; }
-.heroi h1 { font-size: clamp(1.7rem, 5.2vw, 2.7rem); line-height: 1.08; margin: 0 0 8px; font-weight: 850; letter-spacing: -.02em; }
-.heroi h1 em { font-style: normal; background: linear-gradient(90deg, var(--a1), var(--a2), var(--a3)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+/* títulos como os do app: Archivo larga e pesada; o complemento leve, como o "Velox" da marca */
+.heroi { margin-top: 10px; }
+.heroi h1 { font-size: clamp(1.7rem, 5.2vw, 2.6rem); line-height: 1.08; margin: 0 0 8px; font-stretch: 118%; font-weight: 750; letter-spacing: -.015em; }
+.heroi h1 em { font-style: normal; font-weight: 300; color: var(--texto-2); }
 .heroi p { margin: 0; color: var(--texto-2); font-size: 1.08rem; max-width: 46rem; }
-.vidro { background: var(--vidro); border: 1px solid var(--borda); border-radius: 22px; box-shadow: var(--sombra);
-  -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); }
+.vidro { position: relative; background: var(--vidro); border: 1px solid var(--borda); border-radius: var(--raio-g);
+  box-shadow: var(--sombra), inset 0 1px 0 var(--borda-luz); -webkit-backdrop-filter: blur(18px) saturate(150%); backdrop-filter: blur(18px) saturate(150%); }
 .real { margin: 22px 0; padding: 18px 20px; display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; align-items: start; }
-.real .selo { grid-row: span 2; width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; font-size: 1.3rem;
+.real .ic { grid-row: span 2; width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; font-size: 1.3rem;
   background: color-mix(in srgb, var(--ok) 22%, transparent); color: var(--ok); }
 .real h2 { margin: 0; font-size: 1.08rem; }
 .real p { margin: 0; color: var(--texto-2); }
@@ -58,7 +79,7 @@ a { color: inherit; }
   background: color-mix(in srgb, var(--alerta) 12%, transparent); }
 .aviso h2 { margin: 0 0 4px; font-size: 1.05rem; color: var(--alerta); }
 .aviso p { margin: 0; color: var(--texto-2); }
-section > h2.sec { font-size: 1.2rem; margin: 30px 0 12px; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+section > h2.sec { font-size: 1.2rem; font-stretch: 112%; font-weight: 700; margin: 30px 0 12px; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
 section > h2.sec small { font-weight: 500; color: var(--texto-3); font-size: .88rem; }
 .noar { padding: 18px 20px; display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
 .noar .vivo { width: 12px; height: 12px; border-radius: 50%; background: var(--a3); box-shadow: 0 0 0 0 var(--a3); animation: pulso 1.8s infinite; flex: none; }
@@ -107,7 +128,7 @@ section > h2.sec small { font-weight: 500; color: var(--texto-3); font-size: .88
 @media (max-width: 560px) {
   .fila li { grid-template-columns: 62px 1fr; }
   .fila .marcas { grid-column: 2; justify-content: flex-start; }
-  .real { grid-template-columns: 1fr; } .real .selo { display: none; }
+  .real { grid-template-columns: 1fr; } .real .ic { display: none; }
 }
 </style>
 </head>
@@ -116,17 +137,18 @@ section > h2.sec small { font-weight: 500; color: var(--texto-3); font-size: .88
 <main>
   <header class="topo">
     <a class="marca" href="/">Urna <span>Velox</span></a>
-    <a class="botao" href="/">← Ver a apuração</a>
+    <a class="botao voltar" href="/">← Ver a apuração</a>
+    <button class="icone-btn" id="tema" type="button" aria-label="Trocar tema claro/escuro">◐</button>
   </header>
 
   <section class="heroi">
-    <h1>Playlist de Simulados <em>das Eleições</em></h1>
-    <p>Escolha qual eleição você quer ver ser totalizada de novo. O simulado mais votado é sempre o próximo a entrar no ar.</p>
+    <h1>Playlist de Replays <em>das Eleições</em></h1>
+    <p>Escolha qual eleição você quer ver passar de novo, como a reprise de um jogo, totalizada do zero. O replay mais votado é sempre o próximo a entrar no ar.</p>
   </section>
 
   <div class="real vidro" role="note">
-    <div class="selo" aria-hidden="true">✓</div>
-    <h2>Os dados dos simulados são os dados reais</h2>
+    <div class="ic" aria-hidden="true">✓</div>
+    <h2>Os dados dos replays são os dados reais</h2>
     <p>Os boletins de urna são os mesmos que o TSE publicou em cada eleição; nenhum voto é inventado. O que se repete é a
       <b>totalização</b>: a cada ciclo, o Urna Velox começa do zero e soma de novo todos os boletins, na ordem em que
       chegaram à Justiça Eleitoral. Assim você vê a totalização acontecendo e a <b>auditoria</b>: no fim, cada resultado é
@@ -146,7 +168,7 @@ section > h2.sec small { font-weight: 500; color: var(--texto-3); font-size: .88
   </section>
 
   <section aria-labelledby="t-opcoes">
-    <h2 class="sec" id="t-opcoes">Escolha o próximo simulado <small id="total"></small></h2>
+    <h2 class="sec" id="t-opcoes">Escolha o próximo replay <small id="total"></small></h2>
     <div class="opcoes" id="opcoes"></div>
   </section>
 
@@ -154,7 +176,7 @@ section > h2.sec small { font-weight: 500; color: var(--texto-3); font-size: .88
 
   <ul class="regras">
     <li>Um voto por conexão (endereço IP). Você pode trocar ou retirar o seu voto quando quiser.</li>
-    <li>Na virada de cada hora em que um simulado termina, o mais votado entra no ar e os votos dele são usados; os
+    <li>Na virada de cada hora em que um replay termina, o mais votado entra no ar e os votos dele são usados; os
       votos nos outros continuam valendo. Empate: vence quem chegou primeiro àquela contagem. Sem votos, segue a
       rotação automática.</li>
     <li><b>Tempo real</b>: os boletins chegam no mesmo ritmo e na mesma ordem da noite da eleição (leva horas).
@@ -217,7 +239,7 @@ function desenhar() {
   if (sv.parentNode !== lugar) lugar.append(sv);
   if (susp) {
     sv.replaceChildren(el('h2', null, 'Playlist suspensa: eleição oficial'),
-      el('p', null, `Eleição oficial (${susp.nome}): de ${fDia.format(new Date(susp.de))} a ${fDia.format(new Date(new Date(susp.ate) - 1))} não há simulados nem votação. A playlist volta em ${fDiaSem.format(new Date(susp.retoma_em)).replace('.', '')}, às ${hora(susp.retoma_em)}.`));
+      el('p', null, `Eleição oficial (${susp.nome}): de ${fDia.format(new Date(susp.de))} a ${fDia.format(new Date(new Date(susp.ate) - 1))} não há replays nem votação. A playlist volta em ${fDiaSem.format(new Date(susp.retoma_em)).replace('.', '')}, às ${hora(susp.retoma_em)}.`));
   } else if (d.proxima_suspensao) {
     const p = d.proxima_suspensao;
     sv.replaceChildren(el('h2', null, 'Pausa programada'),
@@ -227,7 +249,7 @@ function desenhar() {
   // no ar
   const na = d.no_ar, box = $('#noar');
   box.classList.toggle('encerrada', !!(na && na.encerrada));
-  if (!na) box.replaceChildren(el('div', 'vazio', 'Nenhum simulado no ar neste momento.'));
+  if (!na) box.replaceChildren(el('div', 'vazio', 'Nenhum replay no ar neste momento.'));
   else {
     const fim = na.modo === 'espera'
       ? `Em exibição até ${hora(na.proxima_troca || na.previsao_fim)}`
@@ -244,7 +266,7 @@ function desenhar() {
 
   // fila
   const fila = $('#fila');
-  if (susp) fila.replaceChildren(el('li', 'vidro vazio', 'Sem simulados durante a suspensão.'));
+  if (susp) fila.replaceChildren(el('li', 'vidro vazio', 'Sem replays durante a suspensão.'));
   else fila.replaceChildren(...d.fila.slice(0, 6).map((it, i) => {
     const marcas = [etqModo(it), it.origem === 'votos'
       ? el('span', 'etq votos', `★ ${it.votos} ${it.votos === 1 ? 'voto' : 'votos'}`)
@@ -306,6 +328,11 @@ async function votar(item) {
   }
 }
 
+$('#tema').addEventListener('click', () => {
+  const t = document.documentElement.dataset.tema === 'claro' ? 'escuro' : 'claro';
+  document.documentElement.dataset.tema = t;
+  try { localStorage.setItem('uv-tema', t); } catch { /* sem armazenamento */ }
+});
 carregar();
 setInterval(() => { if (!document.hidden) carregar(); }, 20000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) carregar(); });

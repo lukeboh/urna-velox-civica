@@ -40,6 +40,11 @@ export class Hodometro {
    * o número ficar alinhado ao rótulo. A largura reservada continua a mesma (nada ao lado se mexe); o número todo é que
    * desliza para a esquerda por `transform` (não conta no CLS) o tanto dos dígitos e separadores vazios. `centro: true`
    * quando o número está centralizado (o anel da apuração): desliza metade.
+ * `prefixo`: um sinal ("+", "−") antes do número, sempre colado no primeiro dígito à vista (B-031): o número fica no
+ * lugar (alinhado à direita) e só o sinal desliza para a direita, por `transform`, o tanto dos dígitos vazios.
+ * `arrastarEl` (propriedade, depois de montar): um elemento em volta do número (a linha "312.954 de 499.248", o
+ * conteúdo de um chip) que desliza no lugar dele, para o que vem depois do número andar junto (B-041); com `centro`,
+ * metade.
    */
   constructor(op = {}) {
     this.op = op;
@@ -51,6 +56,7 @@ export class Hodometro {
     const vis = el('span', 'vis');
     vis.setAttribute('aria-hidden', 'true');
     this.vis = vis;
+    if (op.prefixo) { this.pre = el('span', 'pre sinal', ''); vis.append(this.pre); }
     this.desloc = 0;
     this.texto = el('span', 'sr');
     if (op.molde) {
@@ -126,10 +132,12 @@ export class Hodometro {
     g.d = d;
   }
 
-  /** Enxuto: desliza o número (só `transform`) para os dígitos vazios à esquerda não aparecerem como espaço. */
+  /** Enxuto: desliza o número (só `transform`) para os dígitos vazios à esquerda não aparecerem como espaço. Com
+   *  `prefixo`, é o sinal que desliza (para a direita), até o primeiro dígito à vista. */
   #deslizar() {
     let w = 0;
     for (const x of this.vis.children) {
+      if (x === this.pre) continue;
       if (!x.classList.contains('vazio')) break;
       w += x.getBoundingClientRect().width; // fracionário (offsetWidth arredonda: erro somado de px)
     }
@@ -143,14 +151,26 @@ export class Hodometro {
     const primeira = !this.medido;
     this.medido = true;
     this.desloc = w;
-    if (primeira) this.vis.style.transition = 'none';
-    this.vis.style.transform = w ? `translateX(${-w}px)` : '';
-    if (primeira) { void this.vis.offsetWidth; this.vis.style.transition = ''; }
+    const alvo = this.arrastarEl || (this.op.enxuto ? this.vis : this.pre);
+    if (primeira) alvo.style.transition = 'none';
+    alvo.style.transform = w ? `translateX(${alvo === this.pre ? w : -w}px)` : '';
+    if (primeira) { void alvo.offsetWidth; alvo.style.transition = ''; }
   }
+
+  /** B-041: o elemento que desliza no lugar do número; medido no quadro seguinte (já no documento), mesmo sem valor novo. */
+  set arrastarEl(e) { this.arrastar = e; this.medido = false; requestAnimationFrame(() => this.#deslizar()); }
+  get arrastarEl() { return this.arrastar; }
+
+  /** Sinal antes do número (só com `prefixo`). */
+  prefixar(t) { if (this.pre && this.pre.textContent !== t) this.pre.textContent = t; }
 
   /** Valor novo (número; texto no modo `molde`; `null` = desconhecido). */
   definir(v) {
-    if (v === this.valor) return;
+    if (v === this.valor) {
+      // definido antes de ter layout (lista montada fora do documento, coluna escondida): mede agora
+      if ((this.op.enxuto || this.op.prefixo || this.arrastarEl) && !this.medido) this.#deslizar();
+      return;
+    }
     const antes = this.valor;
     this.valor = v;
     const nulo = v == null || (typeof v === 'number' && !Number.isFinite(v));
@@ -168,7 +188,7 @@ export class Hodometro {
       for (let i = 0; i < this.nInt; i++) this.#por(i, cheio[i]);
       for (let i = 0; i < casas; i++) this.#por(this.nInt + i, dec[i] ?? '0');
       for (const s of this.seps) s.span.classList.toggle('vazio', cheio[s.apos] === ' ');
-      if (this.op.enxuto) this.#deslizar();
+      if (this.op.enxuto || this.op.prefixo || this.arrastarEl) this.#deslizar();
       this.texto.textContent = nulo ? '—' : (int.replace(/\B(?=(\d{3})+(?!\d))/g, '.') + (casas ? ',' + dec : '') + (this.op.sufixo ? ' ' + this.op.sufixo : ''));
     }
     if (antes !== undefined && antes !== null && movimentoReduzido() && this.el.animate) {
