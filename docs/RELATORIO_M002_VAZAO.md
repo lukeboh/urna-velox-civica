@@ -102,5 +102,5 @@ e **C** a de ganhar coleta sem mais máquinas. **D** é barata e só melhora as 
 ```
 cd deploy/oci && ./63_ciclo.sh --telemetria                       # evidências do bucket para o D:
 python3 aquisicao/scripts/medir_vazao.py /mnt/d/dados/urna-velox/ciclo-diario/<execução> [--json x.json]
-python3 aquisicao/scripts/fila_noite.py /mnt/d/dados/urna-velox/linha-do-tempo/452.csv [--json x.json]
+python3 aquisicao/scripts/fila_noite.py /mnt/d/dados/urna-velox/pleitos/2024-10-06-452/linha-do-tempo.csv [--json x.json]
 ```

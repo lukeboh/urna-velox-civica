@@ -16,14 +16,15 @@ U="${UV_WORK:-$HOME/uvreal}"
 R=/mnt/d/git/lukeboh/urna-velox
 B="${UV_BIN:-$U/target-dev/release}"
 TESTE="${UV_TESTE_PAGINA:-testes/carga_pagina.mjs}"
-LT=/mnt/d/dados/urna-velox/linha-do-tempo
+# Pastas de pleito no D: = AAAA-MM-DD-código (pleitos/README.md); a linha do tempo de cada uma é linha-do-tempo.csv
+LT="${UV_PLEITOS:-/mnt/d/dados/urna-velox/pleitos}"
 case "${UV_PLEITO:-452}" in
   452) PLEITO=452; CICLO=ele2024; DADOS=$U/2024-1t/dados; CS=$U/2024-1t/dados/config; OF=$U/2024-1t/oficial
        CAND=$U/2024-1t/preparo/candidatos.json; CORTE="07/10/2024 02:00:00"
-       MET=$LT/452.csv; [ -f "$MET" ] || MET=$U/2024-1t/metricas_aux.csv ;;
+       MET=$LT/2024-10-06-452/linha-do-tempo.csv; [ -f "$MET" ] || MET=$U/2024-1t/metricas_aux.csv ;;
   3220) PLEITO=3220; CICLO=ele2026; DADOS=$U/dados; CS=$U/config; OF=$U/oficial
         CAND=$U/etapa5/preparo-2026-1t/candidatos.json; CORTE="05/10/2026 02:00:00"
-        MET=$LT/3220.csv; [ -f "$MET" ] || MET=$U/metricas_multi.csv,$U/metricas_nacional.csv,$U/metricas_retomada.csv ;;
+        MET=$LT/2026-10-04-3220/linha-do-tempo.csv; [ -f "$MET" ] || MET=$U/metricas_multi.csv,$U/metricas_nacional.csv,$U/metricas_retomada.csv ;;
   *) echo "UV_PLEITO: 452 ou 3220"; exit 2 ;;
 esac
 ORDEM=(); [[ "$MET" == $LT/* ]] && ORDEM=(--ordem "$MET")

@@ -3,8 +3,10 @@
 # Traz de cada nó a saude.json, a conferencia.json e o diário de seções (secoes.log, compactado) para a pasta local e
 # mede a ordem aqui (nada de script na nuvem). Uso: ./61_relatorio.sh [pasta-local] [--ordem ordem.csv]
 source "$(dirname "$0")/lib.sh"
-DEST="${1:-/mnt/d/dados/urna-velox/simulado-3220/resultado-$(date +%Y%m%d-%H%M)}"
-ORDEM="${2:-/mnt/d/dados/urna-velox/simulado-3220/ordem_3220.csv}"
+P3220=""   # /mnt/d/dados/urna-velox/pleitos/2026-10-04-3220 (AAAA-MM-DD-código), só se faltar argumento
+if [ -z "${1:-}" ] || [ -z "${2:-}" ]; then P3220="$(pasta_pleito 3220)"; fi
+DEST="${1:-$P3220/simulado/resultado-$(date +%Y%m%d-%H%M)}"
+ORDEM="${2:-$P3220/simulado/ordem_3220.csv}"
 SCRIPT="$(cd "$AQUI/../.." && pwd)/aquisicao/scripts/ordem_totalizacao.py"
 mkdir -p "$DEST"
 for N in A B; do

@@ -1,6 +1,6 @@
 [package]
 name = "uv-aquisicao"
-version = "1.0.10"
+version = "1.0.12"
 edition = "2021"
 description = "Urna Velox — fase de aquisição: coleta de BUs do TSE e entrega ao núcleo de totalização"
 license = "PolyForm-Noncommercial-1.0.0"

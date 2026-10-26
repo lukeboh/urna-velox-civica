@@ -30,7 +30,7 @@ não está instalada** (nem no Windows, nem no WSL do usuário `dev`).
 | Passo a passo da implantação original | `/mnt/d/git/lukeboh/urna-velox/docs/HANDOFF_IMPLANTACAO_OCI.md` |
 | Configuração local dos nós (fora do Git) | `/mnt/d/git/lukeboh/urna-velox/deploy/oci/nos.env` (cópia do worktree antigo; IDs, IPs, órgãos, pleito, RPS, chave SSH) |
 | Binários aarch64 da `0.6.2`, prontos | `/mnt/d/git/lukeboh/urna-velox/deploy/oci/gerado/uv-binarios-aarch64.tar.gz` (gerado por `compilar_local_arm64.sh`: só executáveis e `VERSION`, sem código-fonte) |
-| Insumos do simulado do 3220 | `/mnt/d/dados/urna-velox/simulado-3220/` (`candidatos.json` com as agregadas marcadas, `ordem_3220.csv`) |
+| Insumos do simulado do 3220 | `/mnt/d/dados/urna-velox/pleitos/2026-10-04-3220/simulado/` (até 26/10/2026 em `simulado-3220/`; `candidatos.json` com as agregadas marcadas, `ordem_3220.csv`) |
 | No servidor | binários em `/opt/urna-velox/bin/`, config em `/etc/urna-velox/` (`no.env`, `federacao.json`), dados em `/srv/urna-velox/` (`preparo/`, `saida/`, `dados/`, `federacao/`), serviço systemd `urna-velox` (usuário `urnavelox`), iniciado por `/opt/urna-velox/bin/uv-iniciar.sh` |
 
 Infraestrutura (do `docs/RELATORIO_SIMULADO_1T_2026.md` e do `nos.env`): região `sa-saopaulo-1`; VCN `uv-vcn`

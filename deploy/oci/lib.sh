@@ -20,6 +20,15 @@ msg() { printf '\n\033[1;36m== %s\033[0m\n' "$*"; }
 aviso() { printf '\033[1;33m!! %s\033[0m\n' "$*"; }
 erro() { printf '\033[1;31mXX %s\033[0m\n' "$*" >&2; exit 1; }
 
+# Dados de cada pleito no D: (fora do git): uma pasta por pleito, com o nome AAAA-MM-DD-código (data da eleição e
+# código do pleito, ex.: 2026-10-25-3221), em /mnt/d/dados/urna-velox/pleitos (ou $UV_PLEITOS).
+PLEITOS_D="${UV_PLEITOS:-/mnt/d/dados/urna-velox/pleitos}"
+pasta_pleito() { # <código> → caminho da pasta AAAA-MM-DD-<código>; erro se não houver exatamente uma
+  local c=("$PLEITOS_D"/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-"$1")
+  [ ${#c[@]} -eq 1 ] && [ -d "${c[0]}" ] || erro "pasta do pleito $1 não encontrada em $PLEITOS_D (formato AAAA-MM-DD-$1)"
+  echo "${c[0]}"
+}
+
 if [ "$TRANSPORTE" = "oci" ]; then
   export PATH="$HOME/.local/bin:$HOME/bin:$PATH"
   OCI_PY="$HOME/lib/oracle-cli/bin/python3"

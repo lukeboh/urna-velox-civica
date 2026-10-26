@@ -7,14 +7,16 @@
 # todas as seções já estão publicadas: sem o arquivo de ordem a coleta seguiria os cs.json (disponibilização), e até
 # a 0.6.0 ia UF por UF em ordem alfabética.
 #
-#   ./60_simulado.sh --confirmo-tse --combinado [--pleito 3220] [--insumos /mnt/d/dados/urna-velox/simulado-3220]
+#   ./60_simulado.sh --confirmo-tse --combinado [--pleito 3220] [--insumos <pasta>]
+#   (insumos por padrão: <pasta do pleito>/simulado, com a pasta do pleito em /mnt/d/dados/urna-velox/pleitos/
+#   no formato AAAA-MM-DD-código, ex.: 2026-10-04-3220; ver pasta_pleito no lib.sh)
 #   ./60_simulado.sh --restaurar      # para os nós e devolve o no.env original (pleito de produção)
 #
 # Depois: ./30_verificar.sh (andamento) e, no fim, ./61_relatorio.sh (conferência, 429 e ordem de totalização).
 # Atenção (CLAUDE.md): contra o TSE, ≤ 95 req/s no IP do nó que coleta; baixa de novo os BUs do pleito (combinado
 # com o Luciano em 15/10/2026 para o simulado de 16/10).
 source "$(dirname "$0")/lib.sh"
-CONF=0; COMB=0; REST=0; SPLEITO=3220; INS=/mnt/d/dados/urna-velox/simulado-3220
+CONF=0; COMB=0; REST=0; SPLEITO=3220; INS=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --confirmo-tse) CONF=1 ;; --combinado) COMB=1 ;; --restaurar) REST=1 ;;
@@ -23,6 +25,7 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
+[ "$REST" = 1 ] || [ -n "$INS" ] || INS="$(pasta_pleito "$SPLEITO")/simulado"
 
 if [ "$REST" = 1 ]; then
   for N in A B; do

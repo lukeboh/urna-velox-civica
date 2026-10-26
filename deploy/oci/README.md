@@ -45,6 +45,7 @@ republicar o diário inteiro e a morrer por falta de memória a cada partida. De
 nesse caso e dá o alerta `federacao_diario_desalinhado`. Antes de religar um nó, confira para onde o `no.env` dele
 aponta (`BASE`, `PLEITO`): ao voltar, ele retoma a coleta.
 
-O simulado (`60`) usa os insumos de `D:\dados\urna-velox\simulado-3220` (`candidatos.json` do 3220 e `ordem_3220.csv`,
+O simulado (`60`) usa os insumos de `D:\dados\urna-velox\pleitos\2026-10-04-3220\simulado` (pastas de pleito no
+formato `AAAA-MM-DD-código`; `pasta_pleito` no `lib.sh`) (`candidatos.json` do 3220 e `ordem_3220.csv`,
 o `recebido_tse` de cada seção tirado dos `aux.json`); a saída anterior de cada nó vai para
 `/srv/urna-velox/anteriores/<data>` (nada é apagado). Exige o binário `0.6.1` ou mais novo (`uv-servico --ordem`).

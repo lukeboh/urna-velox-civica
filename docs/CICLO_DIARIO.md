@@ -147,15 +147,19 @@ do TSE com a defasagem de um ciclo de `cs.json`. Para ordem estrita no modo ráp
 (o outro só recebendo) ou relógio mais lento. O `RESUMO.json` separa divergência de votos (falha) de situação
 divergente pela destinação presumida (observação).
 
-## Linha do tempo das eleições (`D:\dados\urna-velox\linha-do-tempo`)
+## Linha do tempo das eleições (`D:\dados\urna-velox\pleitos\<AAAA-MM-DD-código>\linha-do-tempo.csv`)
 
-`<pleito>.csv`, uma linha por seção, no formato das métricas da coleta (lido pelo `uv-simulador --metricas` e pelo
+Desde 26/10/2026 cada pleito tem a sua pasta em `D:\dados\urna-velox\pleitos`, com o nome `AAAA-MM-DD-código` (data da
+eleição e código do pleito: `2024-10-06-452`, `2024-10-27-453`, `2026-10-04-3220`, `2026-10-25-3221`); antes, as
+linhas do tempo ficavam juntas em `D:\dados\urna-velox\linha-do-tempo\<pleito>.csv`.
+
+`linha-do-tempo.csv`, uma linha por seção, no formato das métricas da coleta (lido pelo `uv-simulador --metricas` e pelo
 `uv-servico --ordem`), ordenado pelo recebimento no TSE: `recebido_tse` = `dr`/`hr` do hash do `aux.json` (o
 recebimento do BU no TSE). 452: 478.026 seções com recebimento (todas as não agregadas); 453: 97.392 (todas); 3220:
 499.207 (todas as instaladas; 6.969 completadas com o `ordem_3220.csv` do simulado de 16/10).
 
 **Hora de totalização do BU:** o `aux.json` não traz. A sondagem de 200 `aux.json` do 3220 (17/10/2026, 5 req/s,
-`sondagem-aux-3220/`) mostrou que o `dg`/`hg` do arquivo é a hora da **última regeração** do arquivo pelo TSE (126 de
+`sondagem-aux/` na pasta `2026-10-04-3220`) mostrou que o `dg`/`hg` do arquivo é a hora da **última regeração** do arquivo pelo TSE (126 de
 200 em 05/10 entre 12:53 e 12:56; as outras em 06, 10, 14, 15 e 16/10), não a da totalização da seção; no 2024 é
 29/09/2026 (republicação). O `disponivel_cs` do `cs.json` também não serve (mediana de 4,5 h depois do recebimento no
 3220). Por isso a extração completa não foi feita.

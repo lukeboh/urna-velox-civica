@@ -741,7 +741,7 @@ fn previsao_acompanha_servico_atrasado() {
     let c = conj("2026-1t");
     let d = pasta("previsao");
     // a linha do tempo do ciclo diário (horário de recebimento no TSE de cada seção), como no modo rápido
-    let c = Conj { metricas: std::env::var("UV_LINHA_3220").unwrap_or_else(|_| "/mnt/d/dados/urna-velox/linha-do-tempo/3220.csv".into()), ..c };
+    let c = Conj { metricas: std::env::var("UV_LINHA_3220").unwrap_or_else(|_| "/mnt/d/dados/urna-velox/pleitos/2026-10-04-3220/linha-do-tempo.csv".into()), ..c };
     let acel = 500.0;
     let sim = simulador(&d, &c, "ac", acel, &["--horario", "recebido", "--corte", "05/10/2026 02:00:00", "--latencia-ms", "200-300"]);
     let f = servico_com(&d, &c, "ac", sim.porta, acel, &["--concorrencia", "8"]);
@@ -775,7 +775,7 @@ fn get(url: &str) -> String {
 fn curva_sem_salto_no_modo_rapido() {
     let c = conj("2026-1t");
     let d = pasta("curva");
-    let c = Conj { metricas: std::env::var("UV_LINHA_3220").unwrap_or_else(|_| "/mnt/d/dados/urna-velox/linha-do-tempo/3220.csv".into()), ..c };
+    let c = Conj { metricas: std::env::var("UV_LINHA_3220").unwrap_or_else(|_| "/mnt/d/dados/urna-velox/pleitos/2026-10-04-3220/linha-do-tempo.csv".into()), ..c };
     let acel = 500.0;
     let mut args = vec!["--horario", "recebido", "--corte", "05/10/2026 02:00:00", "--latencia-ms", "200-300"];
     args.extend_from_slice(SIM_RAPIDO);
@@ -822,7 +822,7 @@ fn seg_iso(s: &str) -> Option<i64> {
 fn horarios_do_sistema_no_simulado() {
     let c = conj("2026-1t");
     let d = pasta("horarios");
-    let c = Conj { metricas: std::env::var("UV_LINHA_3220").unwrap_or_else(|_| "/mnt/d/dados/urna-velox/linha-do-tempo/3220.csv".into()), ..c };
+    let c = Conj { metricas: std::env::var("UV_LINHA_3220").unwrap_or_else(|_| "/mnt/d/dados/urna-velox/pleitos/2026-10-04-3220/linha-do-tempo.csv".into()), ..c };
     let acel = 500.0;
     let mut args = vec!["--horario", "recebido", "--corte", "05/10/2026 02:00:00", "--latencia-ms", "200-300"];
     args.extend_from_slice(SIM_RAPIDO);

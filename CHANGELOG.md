@@ -2,6 +2,55 @@
 
 Todas as versões do Urna Velox. Regras em [docs/VERSIONAMENTO.md](docs/VERSIONAMENTO.md): cada commit sobe a versão; só as versões `X.Y.0` ganham tag (`vX.Y.0`; até a `0.3.0` todo commit ganhava a sua); o MINOR acompanha a última etapa concluída do [ROADMAP](ROADMAP.md) (etapas 1 a 9 = `0.1.0` a `0.9.0`, com a escalabilidade segura na etapa 6, a comparação com o TSE na 7, a previsão na 8 e o ensaio geral na 9 desde a renumeração de 16/10/2026; nas entradas anteriores à `0.6.7`, "etapa 7" / `0.7.0` = ensaio geral, hoje `0.9.0`; majoritários completos = `1.0.0`; proporcionais = `2.0.0`; até a 0.0.19 valia o esquema antigo de seis fases). As entradas `2.0.0-alpha.N`, abaixo da `0.6.0`, são o trabalho da etapa 6 feito na branch `feature/2.0-escalabilidade` antes da renumeração de 15/10/2026; nelas, "2.0" quer dizer a etapa 6 e "3.0", os proporcionais (hoje `2.0.0`).
 
+## [1.0.12] — 2026-10-26
+
+- **Acervo do 2º turno de 2026 (3221) para os replays acelerados** (pedido do Luciano, 26/10: "precisamos ter os dados
+  prontos para os replays acelerados"), montado só com o que já tínhamos da noite real, sem nenhuma requisição ao TSE:
+  pacotes `.uvpk` do nó A (499.207 BUs), `cs.json` de 24/10, os 45 `-u.json` oficiais baixados na conferência do fim
+  da apuração, `candidatos.json` com a destinação final (`uv-coletor preparar --offline` com esses oficiais no cache,
+  como o B-005: 2 candidatos "Anulado sub judice", `destinacao_presumida` = false) e `linha-do-tempo.csv`. Novo
+  `aquisicao/scripts/linha_do_tempo_servico.py`: a linha do tempo no formato das métricas da coleta, gerada do
+  `secoes.log` do `uv-servico` (499.248 seções: 499.207 com recebimento, 41 não instaladas). Enviado aos nós em
+  `/srv/urna-velox/acervo/3221` (A completo, B com candidatos e linha do tempo, `.completo` nos dois) e copiado para
+  `D:\dados\urna-velox\pleitos\2026-10-25-3221\acervo`. **Verificação:** replay local a 500× (`uv-simulador` +
+  `uv-servico` 1.0.8, como o modo rápido do ciclo): 499.207 BUs em 65 s; conferência 42 de 45 arquivos idênticos ao
+  oficial, Presidente 29/29, situações 91/91; as 3 divergências que restam são as de seções totalizadas do B-066
+  (cargos 25, 26 e 27). Evidências em `D:\dados\urna-velox\ensaios\20261026-1814-replay-3221`. **O ciclo diário ainda
+  não usa esse acervo:** no `uv-ciclo.sh`, no vigia e na playlist o 3221 continua no modo "espera" (vitrine sem coleta);
+  trocar por replay depende de decisão do Luciano.
+- **Nós:** apagados, com o aval do Luciano (26/10, 18h05), os dados só de teste (`ciclo/historico`,
+  `simulado_local_20261016_184634`, amostras) e as execuções do 3220 em `/srv/urna-velox/anteriores`, todos guardados
+  no backup de 26/10 (`D:\dados\urna-velox\backup-nos\2026-10-26`). Disco usado: nó A de 44 para 16 GB, nó B de 21
+  para 6,3 GB. O `acervo/` e a saída da noite de 25/10 ficam.
+
+## [1.0.11] — 2026-10-26
+
+- **Análise do atraso do 2º turno** ([docs/ANALISE_ATRASO_2026-10-25.md](docs/ANALISE_ATRASO_2026-10-25.md), pedido do
+  Luciano em 26/10: "por que o Urna Velox ficou atrás do TSE?"). Com o backup completo dos dois nós, a instância de
+  validação no espelho e a linha do tempo do 1º turno: (1) o TSE não registrou nenhum recebimento de BU de 17:09 a
+  19:08 e depois recebeu 99 % das seções em ~2 h, a ~91 BUs/s sustentados por 1 h (1º turno: 75 BUs/s); (2) isso é
+  96 % da capacidade da produção (2 nós × 95 req/s ÷ 2 requisições por BU); (3) três HTTP 429 (B 19:47, A 19:53 e
+  21:00) pararam um nó por 10 min cada e a fila chegou a 63 mil BUs (21:12). Produção: p50 389 s / p90 717 s depois do
+  recebimento e "matematicamente" às 21:23 (TSE ~21:09); espelho sem teto: p50 42 s e 21:12. Implantações, trava M-020,
+  `cs.json` e CPU descartados como causa. Seis evoluções propostas (folga ≥ 1,5×: 1 requisição por BU ou 3º nó; nó em
+  pausa por 429 sai da partição; causa dos 429; série de req/s na noite; replay de 25/10 no ciclo; nada de implantação
+  na apuração), nenhuma feita. Gráficos em `docs/img/analise_2026-10-25_*.png`; scripts em
+  `aquisicao/scripts/analise_noite/` (`curvas.py`, `fila.py`, `turnos.py`, `graficos.py`). Só lê dados: sem mudança em
+  totalização, sem conferência contra os oficiais.
+- **Bugs registrados (só o sintoma):** B-066 (conferência do fim da apuração com 5 de 45 arquivos divergentes, igual
+  nos dois nós; Presidente 29/29 idêntico) e B-067 (três HTTP 429 no pico com o teto de 95 req/s).
+- **Dados de cada pleito no D: em `pleitos/<AAAA-MM-DD-código>`** (pedido do Luciano, 26/10: a data no nome diz de
+  qual eleição se trata): `2024-10-06-452`, `2024-10-27-453`, `2026-10-04-3220`, `2026-10-25-3221`, montadas a partir
+  do backup completo dos nós de 26/10 (`backup-nos/2026-10-26`, 56,5 GB em pedaços de 1 GiB, SHA-256 conferido). As
+  linhas do tempo (`linha-do-tempo/<código>.csv`) e os insumos do simulado (`simulado-3220/`) mudaram para dentro da
+  pasta do pleito. Código ajustado: `pasta_pleito <código>` no `deploy/oci/lib.sh` (`UV_PLEITOS` troca a raiz);
+  `60_simulado.sh` (insumos padrão = `<pasta do pleito>/simulado`, também para `--pleito` diferente de 3220),
+  `61_relatorio.sh`, `aquisicao/scripts/ensaio_carga_pagina.sh` e os três testes `--ignored` de
+  `aquisicao/tests/servico.rs` que leem a linha do tempo do 3220 (`UV_LINHA_3220` continua valendo). Docs:
+  `CLAUDE.md`, `docs/CICLO_DIARIO.md`, `deploy/oci/README.md`, `docs/RELATORIO_M002_VAZAO.md`,
+  `docs/HANDOFF_DEPLOY_SEM_SSH.md`. Verificação: `bash -n` nos quatro roteiros; os testes `--ignored` não foram rodados
+  (só o caminho padrão mudou).
+
 ## [1.0.10] — 2026-10-26
 
 - **Revisão para a cópia pública:** capturas de tela do celular em `docs/bugs/` (B-030, B-031, B-043, B-045, B-052)
