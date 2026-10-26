@@ -1,4 +1,4 @@
-# [⚡ Urna Velox](https://urnavelox.com.br)
+# Urna Velox
 
 ![Urna Velox: totalização eleitoral independente, BU por BU](docs/img/capa.png)
 
