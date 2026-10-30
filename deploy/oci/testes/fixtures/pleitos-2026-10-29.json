@@ -1,0 +1,2055 @@
+{
+  "versao": 1,
+  "gerado": "29/10/2026 12:00:00",
+  "ele_c": {
+    "dg": "18/10/2026",
+    "hg": "12:38:11"
+  },
+  "contagem": {
+    "agendado": 0,
+    "em_curso": 0,
+    "encerrado": 43,
+    "replay": 6
+  },
+  "pleitos": [
+    {
+      "codigo": 3221,
+      "ciclo": "ele2026",
+      "data": "25/10/2026",
+      "data_iso": "2026-10-25",
+      "ano": 2026,
+      "turno": 2,
+      "situacao": "encerrado",
+      "nome": "2º turno de 2026",
+      "titulo": "Eleições Gerais 2026 · 2º turno",
+      "complementares": 10,
+      "eleicoes": [
+        {
+          "codigo": 6284,
+          "nome": "Eleição Suplementar - Narandiba",
+          "local": "Narandiba (SP)",
+          "turno": 1,
+          "tipo": "suplementar",
+          "cargos": [
+            {
+              "codigo": 11,
+              "nome": "Prefeito"
+            }
+          ],
+          "ufs": [
+            "sp"
+          ],
+          "municipios": [
+            67458
+          ]
+        },
+        {
+          "codigo": 6282,
+          "nome": "Eleição Suplementar - Macedônia",
+          "local": "Macedônia (SP)",
+          "turno": 1,
+          "tipo": "suplementar",
+          "cargos": [
+            {
+              "codigo": 11,
+              "nome": "Prefeito"
+            }
+          ],
+          "ufs": [
+            "sp"
+          ],
+          "municipios": [
+            66656
+          ]
+        },
+        {
+          "codigo": 6283,
+          "nome": "Eleição Suplementar - Martinópolis",
+          "local": "Martinópolis (SP)",
+          "turno": 1,
+          "tipo": "suplementar",
+          "cargos": [
+            {
+              "codigo": 11,
+              "nome": "Prefeito"
+            }
+          ],
+          "ufs": [
+            "sp"
+          ],
+          "municipios": [
+            66850
+          ]
+        },
+        {
+          "codigo": 6290,
+          "nome": "Eleição Suplementar - Arroio Do Sal",
+          "local": "Arroio do Sal (RS)",
+          "turno": 1,
+          "tipo": "suplementar",
+          "cargos": [
+            {
+              "codigo": 11,
+              "nome": "Prefeito"
+            }
+          ],
+          "ufs": [
+            "rs"
+          ],
+          "municipios": [
+            85308
+          ]
+        },
+        {
+          "codigo": 6285,
+          "nome": "Eleição Suplementar - Itaguaí",
+          "local": "Itaguaí (RJ)",
+          "turno": 1,
+          "tipo": "suplementar",
+          "cargos": [
+            {
+              "codigo": 11,
+              "nome": "Prefeito"
+            }
+          ],
+          "ufs": [
+            "rj"
+          ],
+          "municipios": [
+            58394
+          ]
+        },
+        {
+          "codigo": 6288,
+          "nome": "Consulta Popular - Mato Grosso",
+          "local": "Mato Grosso",
+          "turno": 1,
+          "tipo": "consulta",
+          "cargos": [
+            {
+              "codigo": 26,
+              "nome": "Você é favorável ao desmembramento das \"Ilhas de Ocupação\" do Projeto de Assentamento Nova Cotriguaçu do Município de Colniza e a sua incorporação ao Município de Cotriguaçu?"
+            }
+          ],
+          "ufs": [
+            "mt"
+          ],
+          "municipios": []
+        },
+        {
+          "codigo": 6289,
+          "nome": "Consulta Popular - Mato Grosso",
+          "local": "Mato Grosso",
+          "turno": 1,
+          "tipo": "consulta",
+          "cargos": [
+            {
+              "codigo": 27,
+              "nome": "Você é favorável ao desmembramento do Distrito de Nova Poxoréu do Município de Poxoréu e a sua incorporação ao Município de Primavera do Leste?"
+            }
+          ],
+          "ufs": [
+            "mt"
+          ],
+          "municipios": []
+        },
+        {
+          "codigo": 6260,
+          "nome": "Eleição Ordinária Estadual - 2026 2º Turno",
+          "local": "",
+          "turno": 2,
+          "tipo": "ordinaria",
+          "cargos": [
+            {
+              "codigo": 3,
+              "nome": "Governador"
+            }
+          ],
+          "ufs": [
+            "ac",
+            "am",
+            "df",
+            "es",
+            "rn",
+            "to"
+          ],
+          "municipios": []
+        },
+        {
+          "codigo": 6286,
+          "nome": "Eleição Suplementar - Goiatins",
+          "local": "Goiatins (TO)",
+          "turno": 1,
+          "tipo": "suplementar",
+          "cargos": [
+            {
+              "codigo": 11,
+              "nome": "Prefeito"
+            }
+          ],
+          "ufs": [
+            "to"
+          ],
+          "municipios": [
+            95338
+          ]
+        },
+        {
+          "codigo": 6258,
+          "nome": "Eleição Ordinária Federal - 2026 2º Turno",
+          "local": "",
+          "turno": 2,
+          "tipo": "ordinaria",
+          "cargos": [
+            {
+              "codigo": 1,
+              "nome": "Presidente"
+            }
+          ],
+          "ufs": [
+            "br"
+          ],
+          "municipios": []
+        },
+        {
+          "codigo": 6287,
+          "nome": "Consulta Popular - Paraná",
+          "local": "Paraná",
+          "turno": 1,
+          "tipo": "consulta",
+          "cargos": [
+            {
+              "codigo": 25,
+              "nome": "Você é a favor da separação e transferência da \"Comunidade do Alto Mirim\" de Chopinzinho para São João?"
+            }
+          ],
+          "ufs": [
+            "pr"
+          ],
+          "municipios": []
+        },
+        {
+          "codigo": 6293,
+          "nome": "Eleição Suplementar - Santana Do Itararé",
+          "local": "Santana do Itararé (PR)",
+          "turno": 1,
+          "tipo": "suplementar",
+          "cargos": [
+            {
+              "codigo": 11,
+              "nome": "Prefeito"
+            }
+          ],
+          "ufs": [
+            "pr"
+          ],
+          "municipios": [
+            78557
+          ]
+        }
+      ],
+      "ufs": [
+        "ac",
+        "am",
+        "br",
+        "df",
+        "es",
+        "mt",
+        "pr",
+        "rj",
+        "rn",
+        "rs",
+        "sp",
+        "to"
+      ],
+      "replay": true
+    },
+    {
+      "codigo": 3220,
+      "ciclo": "ele2026",
+      "data": "04/10/2026",
+      "data_iso": "2026-10-04",
+      "ano": 2026,
+      "turno": 1,
+      "situacao": "encerrado",
+      "nome": "1º turno de 2026",
+      "titulo": "Eleições Gerais 2026 · 1º turno",
+      "complementares": 0,
+      "eleicoes": [
+        {
+          "codigo": 6257,
+          "nome": "Eleição Ordinária Federal - 2026 1º Turno",
+          "local": "",
+          "turno": 1,
+          "tipo": "ordinaria",
+          "cargos": [
+            {
+              "codigo": 1,
+              "nome": "Presidente"
+            }
+          ],
+          "ufs": [
+            "br"
+          ],
+          "municipios": []
+        },
+        {
+          "codigo": 6259,
+          "nome": "Eleição Ordinária Estadual - 2026 1º Turno",
+          "local": "",
+          "turno": 1,
+          "tipo": "ordinaria",
+          "cargos": [
+            {
+              "codigo": 3,
+              "nome": "Governador"
+            },
+            {
+              "codigo": 5,
+              "nome": "Senador"
+            }
+          ],
+          "ufs": [
+            "br"
+          ],
+          "municipios": []
+        },
+        {
+          "codigo": 6261,
+          "nome": "Eleição Ordinária Municipal - 2026 - 04/10/2026 1º Turno",
+          "local": "",
+          "turno": 1,
+          "tipo": "ordinaria",
+          "cargos": [
+            {
+              "codigo": 25,
+              "nome": "Conselheiro Distrital"
+            }
+          ],
+          "ufs": [
+            "br"
+          ],
+          "municipios": []
+        }
+      ],
+      "ufs": [
+        "br"
+      ],
+      "replay": true
+    },
+    {
+      "codigo": 3240,
+      "ciclo": "ele2024",
+      "data": "21/06/2026",
+      "data_iso": "2026-06-21",
+      "ano": 2026,
+      "turno": 1,
+      "situacao": "encerrado",
+      "nome": "Suplementar de Tuiuti (SP)",
+      "titulo": "Eleição suplementar · Tuiuti (SP)",
+      "complementares": 0,
+      "eleicoes": [
+        {
+          "codigo": 6281,
+          "nome": "Eleição Suplementar - Tuiuti",
+          "local": "Tuiuti (SP)",
+          "turno": 1,
+          "tipo": "suplementar",
+          "cargos": [
+            {
+              "codigo": 11,
+              "nome": "Prefeito"
+            }
+          ],
+          "ufs": [
+            "sp"
+          ],
+          "municipios": [
+            61620
+          ]
+        }
+      ],
+      "ufs": [
+        "sp"
+      ],
+      "replay": false
+    },
+    {
+      "codigo": 3239,
+      "ciclo": "ele2024",
+      "data": "21/06/2026",
+      "data_iso": "2026-06-21",
+      "ano": 2026,
+      "turno": 1,
+      "situacao": "encerrado",
+      "nome": "Suplementar de Reginópolis (SP)",
+      "titulo": "Eleição suplementar · Reginópolis (SP)",
+      "complementares": 0,
+      "eleicoes": [
+        {
+          "codigo": 6280,
+          "nome": "Eleição Suplementar - Reginópolis",
+          "local": "Reginópolis (SP)",
+          "turno": 1,
+          "tipo": "suplementar",
+          "cargos": [
+            {
+              "codigo": 11,
+              "nome": "Prefeito"
+            }
+          ],
+          "ufs": [
+            "sp"
+          ],
+          "municipios": [
+            69515
+          ]
+        }
+      ],
+      "ufs": [
+        "sp"
+      ],
+      "replay": false
+    },
+    {
+      "codigo": 3237,
+      "ciclo": "ele2024",
+      "data": "21/06/2026",
+      "data_iso": "2026-06-21",
+      "ano": 2026,
+      "turno": 1,
+      "situacao": "encerrado",
+      "nome": "Suplementar de Roraima",
+      "titulo": "Eleição suplementar · Roraima",
+      "complementares": 0,
+      "eleicoes": [
+        {
+          "codigo": 6278,
+          "nome": "Eleição Suplementar - Roraima",
+          "local": "Roraima",
+          "turno": 1,
+          "tipo": "suplementar",
+          "cargos": [
+            {
+              "codigo": 3,
+              "nome": "Governador"
+            }
+          ],
+          "ufs": [
+            "rr"
+          ],
+          "municipios": []
+        }
+      ],
+      "ufs": [
+        "rr"
+      ],
+      "replay": false
+    },
+    {
+      "codigo": 3236,
+      "ciclo": "ele2024",
+      "data": "21/06/2026",
+      "data_iso": "2026-06-21",
+      "ano": 2026,
+      "turno": 1,
+      "situacao": "encerrado",
+      "nome": "Suplementar de Joviânia (GO)",
+      "titulo": "Eleição suplementar · Joviânia (GO)",
+      "complementares": 0,
+      "eleicoes": [
+        {
+          "codigo": 6277,
+          "nome": "Eleição Suplementar - Joviânia",
+          "local": "Joviânia (GO)",
+          "turno": 1,
+          "tipo": "suplementar",
+          "cargos": [
+            {
+              "codigo": 11,
+              "nome": "Prefeito"
+            }
+          ],
+          "ufs": [
+            "go"
+          ],
+          "municipios": [
+            94374
+          ]
+        }
+      ],
+      "ufs": [
+        "go"
+      ],
+      "replay": false
+    },
+    {
+      "codigo": 3235,
+      "ciclo": "ele2024",
+      "data": "21/06/2026",
+      "data_iso": "2026-06-21",
+      "ano": 2026,
+      "turno": 1,
+      "situacao": "encerrado",
+      "nome": "Suplementar de Amparo do Serra (MG)",
+      "titulo": "Eleição suplementar · Amparo do Serra (MG)",
+      "complementares": 0,
+      "eleicoes": [
+        {
+          "codigo": 6276,
+          "nome": "Eleição Suplementar - Amparo Do Serra",
+          "local": "Amparo do Serra (MG)",
+          "turno": 1,
+          "tipo": "suplementar",
+          "cargos": [
+            {
+              "codigo": 11,
+              "nome": "Prefeito"
+            }
+          ],
+          "ufs": [
+            "mg"
+          ],
+          "municipios": [
+            40495
+          ]
+        }
+      ],
+      "ufs": [
+        "mg"
+      ],
+      "replay": false
+    },
+    {
+      "codigo": 3234,
+      "ciclo": "ele2024",
+      "data": "21/06/2026",
+      "data_iso": "2026-06-21",
+      "ano": 2026,
+      "turno": 1,
+      "situacao": "encerrado",
+      "nome": "Suplementar de Bonito de Minas (MG)",
+      "titulo": "Eleição suplementar · Bonito de Minas (MG)",
+      "complementares": 0,
+      "eleicoes": [
+        {
+          "codigo": 6275,
+          "nome": "Eleição Suplementar - Bonito De Minas",
+          "local": "Bonito de Minas (MG)",
+          "turno": 1,
+          "tipo": "suplementar",
+          "cargos": [
+            {
+              "codigo": 11,
+              "nome": "Prefeito"
+            }
+          ],
+          "ufs": [
+            "mg"
+          ],
+          "municipios": [
+            41742
+          ]
+        }
+      ],
+      "ufs": [
+        "mg"
+      ],
+      "replay": false
+    },
+    {
+      "codigo": 3232,
+      "ciclo": "ele2024",
+      "data": "17/05/2026",
+      "data_iso": "2026-05-17",
+      "ano": 2026,
+      "turno": 1,
+      "situacao": "encerrado",
+      "nome": "Suplementar de Brejo Alegre (SP)",
+      "titulo": "Eleição suplementar · Brejo Alegre (SP)",
+      "complementares": 0,
+      "eleicoes": [
+        {
+          "codigo": 6272,
+          "nome": "Eleição Suplementar - Brejo Alegre",
+          "local": "Brejo Alegre (SP)",
+          "turno": 1,
+          "tipo": "suplementar",
+          "cargos": [
+            {
+              "codigo": 11,
+              "nome": "Prefeito"
+            }
+          ],
+          "ufs": [
+            "sp"
+          ],
+          "municipios": [
+            62081
+          ]
+        }
+      ],
+      "ufs": [
+        "sp"
+      ],
+      "replay": false
+    },
+    {
+      "codigo": 3231,
+      "ciclo": "ele2024",
+      "data": "17/05/2026",
+      "data_iso": "2026-05-17",
+      "ano": 2026,
+      "turno": 1,
+      "situacao": "encerrado",
+      "nome": "Suplementar de Ouro Branco (RN)",
+      "titulo": "Eleição suplementar · Ouro Branco (RN)",
+      "complementares": 0,
+      "eleicoes": [
+        {
+          "codigo": 6271,
+          "nome": "Eleição Suplementar - Ouro Branco",
+          "local": "Ouro Branco (RN)",
+          "turno": 1,
+          "tipo": "suplementar",
+          "cargos": [
+            {
+              "codigo": 11,
+              "nome": "Prefeito"
+            }
+          ],
+          "ufs": [
+            "rn"
+          ],
+          "municipios": [
+            17698
+          ]
+        }
+      ],
+      "ufs": [
+        "rn"
+      ],
+      "replay": false
+    },
+    {
+      "codigo": 3230,
+      "ciclo": "ele2024",
+      "data": "17/05/2026",
+      "data_iso": "2026-05-17",
+      "ano": 2026,
+      "turno": 1,
+      "situacao": "encerrado",
+      "nome": "Suplementar de Itaú (RN)",
+      "titulo": "Eleição suplementar · Itaú (RN)",
+      "complementares": 0,
+      "eleicoes": [
+        {
+          "codigo": 6270,
+          "nome": "Eleição Suplementar - Itaú",
+          "local": "Itaú (RN)",
+          "turno": 1,
+          "tipo": "suplementar",
+          "cargos": [
+            {
+              "codigo": 11,
+              "nome": "Prefeito"
+            }
+          ],
+          "ufs": [
+            "rn"
+          ],
+          "municipios": [
+            16950
+          ]
+        }
+      ],
+      "ufs": [
+        "rn"
+      ],
+      "replay": false
+    },
+    {
+      "codigo": 3229,
+      "ciclo": "ele2024",
+      "data": "17/05/2026",
+      "data_iso": "2026-05-17",
+      "ano": 2026,
+      "turno": 1,
+      "situacao": "encerrado",
+      "nome": "Suplementar de Melgaço (PA)",
+      "titulo": "Eleição suplementar · Melgaço (PA)",
+      "complementares": 0,
+      "eleicoes": [
+        {
+          "codigo": 6269,
+          "nome": "Eleição Suplementar - Melgaço",
+          "local": "Melgaço (PA)",
+          "turno": 1,
+          "tipo": "suplementar",
+          "cargos": [],
+          "ufs": [
+            "pa"
+          ],
+          "municipios": [
+            4898
+          ]
+        }
+      ],
+      "ufs": [
+        "pa"
+      ],
+      "replay": false
+    },
+    {
+      "codigo": 3228,
+      "ciclo": "ele2024",
+      "data": "12/04/2026",
+      "data_iso": "2026-04-12",
+      "ano": 2026,
+      "turno": 1,
+      "situacao": "encerrado",
+      "nome": "Suplementar de Cachoeirinha (RS)",
+      "titulo": "Eleição suplementar · Cachoeirinha (RS)",
+      "complementares": 0,
+      "eleicoes": [
+        {
+          "codigo": 6268,
+          "nome": "Eleição Suplementar - Cachoeirinha",
+          "local": "Cachoeirinha (RS)",
+          "turno": 1,
+          "tipo": "suplementar",
+          "cargos": [
+            {
+              "codigo": 11,
+              "nome": "Prefeito"
+            }
+          ],
+          "ufs": [
+            "rs"
+          ],
+          "municipios": [
+            85618
+          ]
+        }
+      ],
+      "ufs": [
+        "rs"
+      ],
+      "replay": false
+    },
+    {
+      "codigo": 3226,
+      "ciclo": "ele2024",
+      "data": "12/04/2026",
+      "data_iso": "2026-04-12",
+      "ano": 2026,
+      "turno": 1,
+      "situacao": "encerrado",
+      "nome": "Suplementar de Oiapoque (AP)",
+      "titulo": "Eleição suplementar · Oiapoque (AP)",
+      "complementares": 0,
+      "eleicoes": [
+        {
+          "codigo": 6266,
+          "nome": "Eleição Suplementar - Oiapoque",
+          "local": "Oiapoque (AP)",
+          "turno": 1,
+          "tipo": "suplementar",
+          "cargos": [
+            {
+              "codigo": 11,
+              "nome": "Prefeito"
+            }
+          ],
+          "ufs": [
+            "ap"
+          ],
+          "municipios": [
+            6092
+          ]
+        }
+      ],
+      "ufs": [
+        "ap"
+      ],
+      "replay": false
+    },
+    {
+      "codigo": 3225,
+      "ciclo": "ele2024",
+      "data": "12/04/2026",
+      "data_iso": "2026-04-12",
+      "ano": 2026,
+      "turno": 1,
+      "situacao": "encerrado",
+      "nome": "Suplementar de Cabedelo (PB)",
+      "titulo": "Eleição suplementar · Cabedelo (PB)",
+      "complementares": 0,
+      "eleicoes": [
+        {
+          "codigo": 6265,
+          "nome": "Eleição Suplementar - Cabedelo",
+          "local": "Cabedelo (PB)",
+          "turno": 1,
+          "tipo": "suplementar",
+          "cargos": [
+            {
+              "codigo": 11,
+              "nome": "Prefeito"
+            }
+          ],
+          "ufs": [
+            "pb"
+          ],
+          "municipios": [
+            19658
+          ]
+        }
+      ],
+      "ufs": [
+        "pb"
+      ],
+      "replay": false
+    },
+    {
+      "codigo": 3224,
+      "ciclo": "ele2024",
+      "data": "01/03/2026",
+      "data_iso": "2026-03-01",
+      "ano": 2026,
+      "turno": 1,
+      "situacao": "encerrado",
+      "nome": "Suplementar de Potiretama (CE)",
+      "titulo": "Eleição suplementar · Potiretama (CE)",
+      "complementares": 0,
+      "eleicoes": [
+        {
+          "codigo": 6264,
+          "nome": "Eleição Suplementar - Potiretama",
+          "local": "Potiretama (CE)",
+          "turno": 1,
+          "tipo": "suplementar",
+          "cargos": [
+            {
+              "codigo": 11,
+              "nome": "Prefeito"
+            }
+          ],
+          "ufs": [
+            "ce"
+          ],
+          "municipios": [
+            13269
+          ]
+        }
+      ],
+      "ufs": [
+        "ce"
+      ],
+      "replay": false
+    },
+    {
+      "codigo": 3223,
+      "ciclo": "ele2024",
+      "data": "01/03/2026",
+      "data_iso": "2026-03-01",
+      "ano": 2026,
+      "turno": 1,
+      "situacao": "encerrado",
+      "nome": "Suplementar de Senador Sá (CE)",
+      "titulo": "Eleição suplementar · Senador Sá (CE)",
+      "complementares": 0,
+      "eleicoes": [
+        {
+          "codigo": 6263,
+          "nome": "Eleição Suplementar - Senador Sá",
+          "local": "Senador Sá (CE)",
+          "turno": 1,
+          "tipo": "suplementar",
+          "cargos": [
+            {
+              "codigo": 11,
+              "nome": "Prefeito"
+            }
+          ],
+          "ufs": [
+            "ce"
+          ],
+          "municipios": [
+            15571
+          ]
+        }
+      ],
+      "ufs": [
+        "ce"
+      ],
+      "replay": false
+    },
+    {
+      "codigo": 3222,
+      "ciclo": "ele2024",
+      "data": "01/03/2026",
+      "data_iso": "2026-03-01",
+      "ano": 2026,
+      "turno": 1,
+      "situacao": "encerrado",
+      "nome": "Suplementar de Choró (CE)",
+      "titulo": "Eleição suplementar · Choró (CE)",
+      "complementares": 0,
+      "eleicoes": [
+        {
+          "codigo": 6262,
+          "nome": "Eleição Suplementar - Choró",
+          "local": "Choró (CE)",
+          "turno": 1,
+          "tipo": "suplementar",
+          "cargos": [
+            {
+              "codigo": 11,
+              "nome": "Prefeito"
+            }
+          ],
+          "ufs": [
+            "ce"
+          ],
+          "municipios": [
+            13463
+          ]
+        }
+      ],
+      "ufs": [
+        "ce"
+      ],
+      "replay": false
+    },
+    {
+      "codigo": 3217,
+      "ciclo": "ele2024",
+      "data": "07/12/2025",
+      "data_iso": "2025-12-07",
+      "ano": 2025,
+      "turno": 1,
+      "situacao": "encerrado",
+      "nome": "Suplementar de Guará (SP)",
+      "titulo": "Eleição suplementar · Guará (SP)",
+      "complementares": 0,
+      "eleicoes": [
+        {
+          "codigo": 6249,
+          "nome": "Eleição Suplementar - Guará",
+          "local": "Guará (SP)",
+          "turno": 1,
+          "tipo": "suplementar",
+          "cargos": [
+            {
+              "codigo": 11,
+              "nome": "Prefeito"
+            }
+          ],
+          "ufs": [
+            "sp"
+          ],
+          "municipios": [
+            64556
+          ]
+        }
+      ],
+      "ufs": [
+        "sp"
+      ],
+      "replay": false
+    },
+    {
+      "codigo": 3216,
+      "ciclo": "ele2024",
+      "data": "07/12/2025",
+      "data_iso": "2025-12-07",
+      "ano": 2025,
+      "turno": 1,
+      "situacao": "encerrado",
+      "nome": "Suplementar de Martins Soares (MG)",
+      "titulo": "Eleição suplementar · Martins Soares (MG)",
+      "complementares": 0,
+      "eleicoes": [
+        {
+          "codigo": 6248,
+          "nome": "Eleição Suplementar - Martins Soares",
+          "local": "Martins Soares (MG)",
+          "turno": 1,
+          "tipo": "suplementar",
+          "cargos": [
+            {
+              "codigo": 11,
+              "nome": "Prefeito"
+            }
+          ],
+          "ufs": [
+            "mg"
+          ],
+          "municipios": [
+            41041
+          ]
+        }
+      ],
+      "ufs": [
+        "mg"
+      ],
+      "replay": false
+    },
+    {
+      "codigo": 3215,
+      "ciclo": "ele2024",
+      "data": "07/12/2025",
+      "data_iso": "2025-12-07",
+      "ano": 2025,
+      "turno": 1,
+      "situacao": "encerrado",
+      "nome": "Suplementar de Braga (RS)",
+      "titulo": "Eleição suplementar · Braga (RS)",
+      "complementares": 0,
+      "eleicoes": [
+        {
+          "codigo": 6247,
+          "nome": "Eleição Suplementar - Braga",
+          "local": "Braga (RS)",
+          "turno": 1,
+          "tipo": "suplementar",
+          "cargos": [],
+          "ufs": [
+            "rs"
+          ],
+          "municipios": [
+            85510
+          ]
+        }
+      ],
+      "ufs": [
+        "rs"
+      ],
+      "replay": false
+    },
+    {
+      "codigo": 3212,
+      "ciclo": "ele2024",
+      "data": "26/10/2025",
+      "data_iso": "2025-10-26",
+      "ano": 2025,
+      "turno": 1,
+      "situacao": "encerrado",
+      "nome": "Suplementar de Santa Quitéria (CE)",
+      "titulo": "Eleição suplementar · Santa Quitéria (CE)",
+      "complementares": 0,
+      "eleicoes": [
+        {
+          "codigo": 6244,
+          "nome": "Eleição Suplementar - Santa Quitéria",
+          "local": "Santa Quitéria (CE)",
+          "turno": 1,
+          "tipo": "suplementar",
+          "cargos": [
+            {
+              "codigo": 11,
+              "nome": "Prefeito"
+            }
+          ],
+          "ufs": [
+            "ce"
+          ],
+          "municipios": [
+            15458
+          ]
+        }
+      ],
+      "ufs": [
+        "ce"
+      ],
+      "replay": false
+    },
+    {
+      "codigo": 3211,
+      "ciclo": "ele2024",
+      "data": "05/10/2025",
+      "data_iso": "2025-10-05",
+      "ano": 2025,
+      "turno": 1,
+      "situacao": "encerrado",
+      "nome": "Suplementar de Cruzeiro do Iguaçu (PR)",
+      "titulo": "Eleição suplementar · Cruzeiro do Iguaçu (PR)",
+      "complementares": 0,
+      "eleicoes": [
+        {
+          "codigo": 6243,
+          "nome": "Eleição Suplementar - Cruzeiro Do Iguaçu",
+          "local": "Cruzeiro do Iguaçu (PR)",
+          "turno": 1,
+          "tipo": "suplementar",
+          "cargos": [
+            {
+              "codigo": 11,
+              "nome": "Prefeito"
+            }
+          ],
+          "ufs": [
+            "pr"
+          ],
+          "municipios": [
+            74241
+          ]
+        }
+      ],
+      "ufs": [
+        "pr"
+      ],
+      "replay": false
+    },
+    {
+      "codigo": 3210,
+      "ciclo": "ele2024",
+      "data": "05/10/2025",
+      "data_iso": "2025-10-05",
+      "ano": 2025,
+      "turno": 1,
+      "situacao": "encerrado",
+      "nome": "Suplementar de São João (PR)",
+      "titulo": "Eleição suplementar · São João (PR)",
+      "complementares": 0,
+      "eleicoes": [
+        {
+          "codigo": 6242,
+          "nome": "Eleição Suplementar - São João",
+          "local": "São João (PR)",
+          "turno": 1,
+          "tipo": "suplementar",
+          "cargos": [
+            {
+              "codigo": 11,
+              "nome": "Prefeito"
+            }
+          ],
+          "ufs": [
+            "pr"
+          ],
+          "municipios": [
+            78719
+          ]
+        }
+      ],
+      "ufs": [
+        "pr"
+      ],
+      "replay": false
+    },
+    {
+      "codigo": 3209,
+      "ciclo": "ele2024",
+      "data": "05/10/2025",
+      "data_iso": "2025-10-05",
+      "ano": 2025,
+      "turno": 1,
+      "situacao": "encerrado",
+      "nome": "Suplementar de São Tomé (PR)",
+      "titulo": "Eleição suplementar · São Tomé (PR)",
+      "complementares": 0,
+      "eleicoes": [
+        {
+          "codigo": 6241,
+          "nome": "Eleição Suplementar - São Tomé",
+          "local": "São Tomé (PR)",
+          "turno": 1,
+          "tipo": "suplementar",
+          "cargos": [
+            {
+              "codigo": 11,
+              "nome": "Prefeito"
+            }
+          ],
+          "ufs": [
+            "pr"
+          ],
+          "municipios": [
+            78972
+          ]
+        }
+      ],
+      "ufs": [
+        "pr"
+      ],
+      "replay": false
+    },
+    {
+      "codigo": 3208,
+      "ciclo": "ele2024",
+      "data": "05/10/2025",
+      "data_iso": "2025-10-05",
+      "ano": 2025,
+      "turno": 1,
+      "situacao": "encerrado",
+      "nome": "Suplementar de Três Rios (RJ)",
+      "titulo": "Eleição suplementar · Três Rios (RJ)",
+      "complementares": 0,
+      "eleicoes": [
+        {
+          "codigo": 6240,
+          "nome": "Eleição Suplementar - Três Rios",
+          "local": "Três Rios (RJ)",
+          "turno": 1,
+          "tipo": "suplementar",
+          "cargos": [
+            {
+              "codigo": 11,
+              "nome": "Prefeito"
+            }
+          ],
+          "ufs": [
+            "rj"
+          ],
+          "municipios": [
+            59196
+          ]
+        }
+      ],
+      "ufs": [
+        "rj"
+      ],
+      "replay": false
+    },
+    {
+      "codigo": 3207,
+      "ciclo": "ele2024",
+      "data": "05/10/2025",
+      "data_iso": "2025-10-05",
+      "ano": 2025,
+      "turno": 1,
+      "situacao": "encerrado",
+      "nome": "Suplementar de Muaná (PA)",
+      "titulo": "Eleição suplementar · Muaná (PA)",
+      "complementares": 0,
+      "eleicoes": [
+        {
+          "codigo": 6239,
+          "nome": "Eleição Suplementar - Muaná",
+          "local": "Muaná (PA)",
+          "turno": 1,
+          "tipo": "suplementar",
+          "cargos": [
+            {
+              "codigo": 11,
+              "nome": "Prefeito"
+            }
+          ],
+          "ufs": [
+            "pa"
+          ],
+          "municipios": [
+            4979
+          ]
+        }
+      ],
+      "ufs": [
+        "pa"
+      ],
+      "replay": false
+    },
+    {
+      "codigo": 3206,
+      "ciclo": "ele2024",
+      "data": "14/09/2025",
+      "data_iso": "2025-09-14",
+      "ano": 2025,
+      "turno": 1,
+      "situacao": "encerrado",
+      "nome": "Suplementar de Sales Oliveira (SP)",
+      "titulo": "Eleição suplementar · Sales Oliveira (SP)",
+      "complementares": 0,
+      "eleicoes": [
+        {
+          "codigo": 6238,
+          "nome": "Eleição Suplementar - Sales Oliveira",
+          "local": "Sales Oliveira (SP)",
+          "turno": 1,
+          "tipo": "suplementar",
+          "cargos": [
+            {
+              "codigo": 11,
+              "nome": "Prefeito"
+            }
+          ],
+          "ufs": [
+            "sp"
+          ],
+          "municipios": [
+            69990
+          ]
+        }
+      ],
+      "ufs": [
+        "sp"
+      ],
+      "replay": false
+    },
+    {
+      "codigo": 3205,
+      "ciclo": "ele2024",
+      "data": "03/08/2025",
+      "data_iso": "2025-08-03",
+      "ano": 2025,
+      "turno": 1,
+      "situacao": "encerrado",
+      "nome": "Suplementar de São José da Varginha (MG)",
+      "titulo": "Eleição suplementar · São José da Varginha (MG)",
+      "complementares": 0,
+      "eleicoes": [
+        {
+          "codigo": 6237,
+          "nome": "Eleição Suplementar - São José Da Varginha",
+          "local": "São José da Varginha (MG)",
+          "turno": 1,
+          "tipo": "suplementar",
+          "cargos": [
+            {
+              "codigo": 11,
+              "nome": "Prefeito"
+            }
+          ],
+          "ufs": [
+            "mg"
+          ],
+          "municipios": [
+            52612
+          ]
+        }
+      ],
+      "ufs": [
+        "mg"
+      ],
+      "replay": false
+    },
+    {
+      "codigo": 3204,
+      "ciclo": "ele2024",
+      "data": "03/08/2025",
+      "data_iso": "2025-08-03",
+      "ano": 2025,
+      "turno": 1,
+      "situacao": "encerrado",
+      "nome": "Suplementar de Guatapará (SP)",
+      "titulo": "Eleição suplementar · Guatapará (SP)",
+      "complementares": 0,
+      "eleicoes": [
+        {
+          "codigo": 6236,
+          "nome": "Eleição Suplementar - Guatapará",
+          "local": "Guatapará (SP)",
+          "turno": 1,
+          "tipo": "suplementar",
+          "cargos": [
+            {
+              "codigo": 11,
+              "nome": "Prefeito"
+            }
+          ],
+          "ufs": [
+            "sp"
+          ],
+          "municipios": [
+            61107
+          ]
+        }
+      ],
+      "ufs": [
+        "sp"
+      ],
+      "replay": false
+    },
+    {
+      "codigo": 3201,
+      "ciclo": "ele2024",
+      "data": "03/08/2025",
+      "data_iso": "2025-08-03",
+      "ano": 2025,
+      "turno": 1,
+      "situacao": "encerrado",
+      "nome": "Suplementar de Tucuruí (PA)",
+      "titulo": "Eleição suplementar · Tucuruí (PA)",
+      "complementares": 0,
+      "eleicoes": [
+        {
+          "codigo": 6231,
+          "nome": "Eleição Suplementar - Tucuruí",
+          "local": "Tucuruí (PA)",
+          "turno": 1,
+          "tipo": "suplementar",
+          "cargos": [
+            {
+              "codigo": 11,
+              "nome": "Prefeito"
+            }
+          ],
+          "ufs": [
+            "pa"
+          ],
+          "municipios": [
+            5614
+          ]
+        }
+      ],
+      "ufs": [
+        "pa"
+      ],
+      "replay": false
+    },
+    {
+      "codigo": 3203,
+      "ciclo": "ele2024",
+      "data": "06/07/2025",
+      "data_iso": "2025-07-06",
+      "ano": 2025,
+      "turno": 1,
+      "situacao": "encerrado",
+      "nome": "Suplementar de Bandeirantes (MS)",
+      "titulo": "Eleição suplementar · Bandeirantes (MS)",
+      "complementares": 0,
+      "eleicoes": [
+        {
+          "codigo": 6235,
+          "nome": "Eleição Suplementar - Bandeirantes",
+          "local": "Bandeirantes (MS)",
+          "turno": 1,
+          "tipo": "suplementar",
+          "cargos": [
+            {
+              "codigo": 11,
+              "nome": "Prefeito"
+            }
+          ],
+          "ufs": [
+            "ms"
+          ],
+          "municipios": [
+            90298
+          ]
+        }
+      ],
+      "ufs": [
+        "ms"
+      ],
+      "replay": false
+    },
+    {
+      "codigo": 3180,
+      "ciclo": "ele2024",
+      "data": "06/07/2025",
+      "data_iso": "2025-07-06",
+      "ano": 2025,
+      "turno": 1,
+      "situacao": "encerrado",
+      "nome": "Suplementar de Guapé (MG)",
+      "titulo": "Eleição suplementar · Guapé (MG)",
+      "complementares": 0,
+      "eleicoes": [
+        {
+          "codigo": 6200,
+          "nome": "Eleição Suplementar - Guapé",
+          "local": "Guapé (MG)",
+          "turno": 1,
+          "tipo": "suplementar",
+          "cargos": [
+            {
+              "codigo": 11,
+              "nome": "Prefeito"
+            }
+          ],
+          "ufs": [
+            "mg"
+          ],
+          "municipios": [
+            45616
+          ]
+        }
+      ],
+      "ufs": [
+        "mg"
+      ],
+      "replay": false
+    },
+    {
+      "codigo": 3160,
+      "ciclo": "ele2024",
+      "data": "08/06/2025",
+      "data_iso": "2025-06-08",
+      "ano": 2025,
+      "turno": 1,
+      "situacao": "encerrado",
+      "nome": "Suplementar de Bocaina (SP)",
+      "titulo": "Eleição suplementar · Bocaina (SP)",
+      "complementares": 0,
+      "eleicoes": [
+        {
+          "codigo": 6161,
+          "nome": "Eleição Suplementar - Bocaina",
+          "local": "Bocaina (SP)",
+          "turno": 1,
+          "tipo": "suplementar",
+          "cargos": [
+            {
+              "codigo": 11,
+              "nome": "Prefeito"
+            }
+          ],
+          "ufs": [
+            "sp"
+          ],
+          "municipios": [
+            62359
+          ]
+        }
+      ],
+      "ufs": [
+        "sp"
+      ],
+      "replay": false
+    },
+    {
+      "codigo": 3140,
+      "ciclo": "ele2024",
+      "data": "08/06/2025",
+      "data_iso": "2025-06-08",
+      "ano": 2025,
+      "turno": 1,
+      "situacao": "encerrado",
+      "nome": "Suplementar de Mongaguá (SP)",
+      "titulo": "Eleição suplementar · Mongaguá (SP)",
+      "complementares": 0,
+      "eleicoes": [
+        {
+          "codigo": 6180,
+          "nome": "Eleição Suplementar - Mongaguá",
+          "local": "Mongaguá (SP)",
+          "turno": 1,
+          "tipo": "suplementar",
+          "cargos": [
+            {
+              "codigo": 11,
+              "nome": "Prefeito"
+            }
+          ],
+          "ufs": [
+            "sp"
+          ],
+          "municipios": [
+            67237
+          ]
+        }
+      ],
+      "ufs": [
+        "sp"
+      ],
+      "replay": false
+    },
+    {
+      "codigo": 3120,
+      "ciclo": "ele2024",
+      "data": "08/06/2025",
+      "data_iso": "2025-06-08",
+      "ano": 2025,
+      "turno": 1,
+      "situacao": "encerrado",
+      "nome": "Suplementar de Panorama (SP)",
+      "titulo": "Eleição suplementar · Panorama (SP)",
+      "complementares": 0,
+      "eleicoes": [
+        {
+          "codigo": 6160,
+          "nome": "Eleição Suplementar - Panorama",
+          "local": "Panorama (SP)",
+          "turno": 1,
+          "tipo": "suplementar",
+          "cargos": [
+            {
+              "codigo": 11,
+              "nome": "Prefeito"
+            }
+          ],
+          "ufs": [
+            "sp"
+          ],
+          "municipios": [
+            68098
+          ]
+        }
+      ],
+      "ufs": [
+        "sp"
+      ],
+      "replay": false
+    },
+    {
+      "codigo": 3100,
+      "ciclo": "ele2024",
+      "data": "04/05/2025",
+      "data_iso": "2025-05-04",
+      "ano": 2025,
+      "turno": 1,
+      "situacao": "encerrado",
+      "nome": "Suplementar de Goiana (PE)",
+      "titulo": "Eleição suplementar · Goiana (PE)",
+      "complementares": 0,
+      "eleicoes": [
+        {
+          "codigo": 6140,
+          "nome": "Eleição Suplementar - Goiana",
+          "local": "Goiana (PE)",
+          "turno": 1,
+          "tipo": "suplementar",
+          "cargos": [
+            {
+              "codigo": 11,
+              "nome": "Prefeito"
+            }
+          ],
+          "ufs": [
+            "pe"
+          ],
+          "municipios": [
+            24236
+          ]
+        }
+      ],
+      "ufs": [
+        "pe"
+      ],
+      "replay": false
+    },
+    {
+      "codigo": 3080,
+      "ciclo": "ele2024",
+      "data": "06/04/2025",
+      "data_iso": "2025-04-06",
+      "ano": 2025,
+      "turno": 1,
+      "situacao": "encerrado",
+      "nome": "Suplementar de Paranhos (MS)",
+      "titulo": "Eleição suplementar · Paranhos (MS)",
+      "complementares": 0,
+      "eleicoes": [
+        {
+          "codigo": 6120,
+          "nome": "Eleição Suplementar - Paranhos",
+          "local": "Paranhos (MS)",
+          "turno": 1,
+          "tipo": "suplementar",
+          "cargos": [
+            {
+              "codigo": 11,
+              "nome": "Prefeito"
+            }
+          ],
+          "ufs": [
+            "ms"
+          ],
+          "municipios": [
+            91847
+          ]
+        }
+      ],
+      "ufs": [
+        "ms"
+      ],
+      "replay": true,
+      "acervo": {
+        "secoes": 30,
+        "tempo_cadencia_s": 3380,
+        "montado": "2026-10-29T11:25:37"
+      }
+    },
+    {
+      "codigo": 3060,
+      "ciclo": "ele2024",
+      "data": "06/04/2025",
+      "data_iso": "2025-04-06",
+      "ano": 2025,
+      "turno": 1,
+      "situacao": "encerrado",
+      "nome": "Suplementar de Ruy Barbosa (BA)",
+      "titulo": "Eleição suplementar · Ruy Barbosa (BA)",
+      "complementares": 0,
+      "eleicoes": [
+        {
+          "codigo": 6081,
+          "nome": "Eleição Suplementar - Ruy Barbosa",
+          "local": "Ruy Barbosa (BA)",
+          "turno": 1,
+          "tipo": "suplementar",
+          "cargos": [
+            {
+              "codigo": 11,
+              "nome": "Prefeito"
+            }
+          ],
+          "ufs": [
+            "ba"
+          ],
+          "municipios": [
+            38458
+          ]
+        }
+      ],
+      "ufs": [
+        "ba"
+      ],
+      "replay": false
+    },
+    {
+      "codigo": 3040,
+      "ciclo": "ele2024",
+      "data": "06/04/2025",
+      "data_iso": "2025-04-06",
+      "ano": 2025,
+      "turno": 1,
+      "situacao": "encerrado",
+      "nome": "Suplementares de Neves Paulista (SP) e Eldorado (SP)",
+      "titulo": "Eleições suplementares · Neves Paulista (SP) e Eldorado (SP)",
+      "complementares": 0,
+      "eleicoes": [
+        {
+          "codigo": 6041,
+          "nome": "Eleição Suplementar - Neves Paulista",
+          "local": "Neves Paulista (SP)",
+          "turno": 1,
+          "tipo": "suplementar",
+          "cargos": [
+            {
+              "codigo": 11,
+              "nome": "Prefeito"
+            }
+          ],
+          "ufs": [
+            "sp"
+          ],
+          "municipios": [
+            67512
+          ]
+        },
+        {
+          "codigo": 6042,
+          "nome": "Eleição Suplementar - Eldorado",
+          "local": "Eldorado (SP)",
+          "turno": 1,
+          "tipo": "suplementar",
+          "cargos": [
+            {
+              "codigo": 11,
+              "nome": "Prefeito"
+            }
+          ],
+          "ufs": [
+            "sp"
+          ],
+          "municipios": [
+            63975
+          ]
+        }
+      ],
+      "ufs": [
+        "sp"
+      ],
+      "replay": true,
+      "acervo": {
+        "secoes": 72,
+        "tempo_cadencia_s": 6714,
+        "montado": "2026-10-29T11:22:47"
+      }
+    },
+    {
+      "codigo": 467,
+      "ciclo": "ele2024",
+      "data": "10/11/2024",
+      "data_iso": "2024-11-10",
+      "ano": 2024,
+      "turno": 1,
+      "situacao": "encerrado",
+      "nome": "Suplementar de Castelândia (GO)",
+      "titulo": "Eleição suplementar · Castelândia (GO)",
+      "complementares": 0,
+      "eleicoes": [
+        {
+          "codigo": 638,
+          "nome": "Eleição Suplementar - Castelândia",
+          "local": "Castelândia (GO)",
+          "turno": 1,
+          "tipo": "suplementar",
+          "cargos": [],
+          "ufs": [
+            "go"
+          ],
+          "municipios": [
+            92967
+          ]
+        }
+      ],
+      "ufs": [
+        "go"
+      ],
+      "replay": false
+    },
+    {
+      "codigo": 453,
+      "ciclo": "ele2024",
+      "data": "27/10/2024",
+      "data_iso": "2024-10-27",
+      "ano": 2024,
+      "turno": 2,
+      "situacao": "encerrado",
+      "nome": "2º turno de 2024",
+      "titulo": "Eleições Municipais 2024 · 2º turno",
+      "complementares": 0,
+      "eleicoes": [
+        {
+          "codigo": 620,
+          "nome": "Eleição Ordinária Municipal - 2024 - 27/10/2024 2º Turno",
+          "local": "",
+          "turno": 2,
+          "tipo": "ordinaria",
+          "cargos": [
+            {
+              "codigo": 11,
+              "nome": "Prefeito"
+            }
+          ],
+          "ufs": [
+            "am",
+            "ba",
+            "ce",
+            "es",
+            "go",
+            "ma",
+            "mg",
+            "ms",
+            "mt",
+            "pa",
+            "pb",
+            "pe",
+            "pr",
+            "rj",
+            "rn",
+            "ro",
+            "rs",
+            "se",
+            "sp",
+            "to"
+          ],
+          "municipios": [
+            35,
+            2550,
+            4278,
+            5355,
+            8036,
+            13730,
+            13897,
+            17612,
+            19810,
+            20516,
+            24910,
+            25135,
+            31054,
+            34134,
+            41238,
+            54011,
+            56995,
+            58653,
+            58777,
+            62138,
+            63770,
+            64254,
+            64750,
+            64777,
+            66192,
+            66397,
+            66893,
+            68756,
+            69698,
+            70718,
+            70750,
+            70971,
+            70998,
+            71072,
+            71498,
+            71579,
+            71838,
+            73440,
+            75353,
+            76678,
+            77771,
+            85898,
+            85995,
+            87912,
+            88013,
+            88412,
+            90514,
+            90670,
+            92215,
+            92274,
+            93734
+          ]
+        }
+      ],
+      "ufs": [
+        "am",
+        "ba",
+        "ce",
+        "es",
+        "go",
+        "ma",
+        "mg",
+        "ms",
+        "mt",
+        "pa",
+        "pb",
+        "pe",
+        "pr",
+        "rj",
+        "rn",
+        "ro",
+        "rs",
+        "se",
+        "sp",
+        "to"
+      ],
+      "replay": true
+    },
+    {
+      "codigo": 452,
+      "ciclo": "ele2024",
+      "data": "06/10/2024",
+      "data_iso": "2024-10-06",
+      "ano": 2024,
+      "turno": 1,
+      "situacao": "encerrado",
+      "nome": "1º turno de 2024",
+      "titulo": "Eleições Municipais 2024 · 1º turno",
+      "complementares": 5,
+      "eleicoes": [
+        {
+          "codigo": 619,
+          "nome": "Eleição Ordinária Municipal - 2024 - 06/10/2024 1º Turno",
+          "local": "",
+          "turno": 1,
+          "tipo": "ordinaria",
+          "cargos": [
+            {
+              "codigo": 11,
+              "nome": "Prefeito"
+            }
+          ],
+          "ufs": [
+            "br"
+          ],
+          "municipios": []
+        },
+        {
+          "codigo": 635,
+          "nome": "Consulta Popular - São Luís",
+          "local": "São Luís (MA)",
+          "turno": 1,
+          "tipo": "consulta",
+          "cargos": [
+            {
+              "codigo": 51,
+              "nome": "Você é a favor da implantação do passe livre estudantil no Município de São Luís?"
+            }
+          ],
+          "ufs": [
+            "ma"
+          ],
+          "municipios": [
+            9210
+          ]
+        },
+        {
+          "codigo": 636,
+          "nome": "Consulta Popular - Governador Edison Lobão",
+          "local": "Governador Edison Lobão (MA)",
+          "turno": 1,
+          "tipo": "consulta",
+          "cargos": [
+            {
+              "codigo": 54,
+              "nome": "Você é a favor da mudança do nome do Município de Governador Edison Lobão para Ribeirãozinho do Maranhão?"
+            }
+          ],
+          "ufs": [
+            "ma"
+          ],
+          "municipios": [
+            7609
+          ]
+        },
+        {
+          "codigo": 634,
+          "nome": "Consulta Popular - Belo Horizonte",
+          "local": "Belo Horizonte (MG)",
+          "turno": 1,
+          "tipo": "consulta",
+          "cargos": [
+            {
+              "codigo": 53,
+              "nome": "Você aprova a alteração da bandeira  de Belo Horizonte?"
+            }
+          ],
+          "ufs": [
+            "mg"
+          ],
+          "municipios": [
+            41238
+          ]
+        },
+        {
+          "codigo": 633,
+          "nome": "Consulta Popular - São Luiz",
+          "local": "São Luiz (RR)",
+          "turno": 1,
+          "tipo": "consulta",
+          "cargos": [
+            {
+              "codigo": 55,
+              "nome": "Você é a favor da alteração do nome de São Luiz para São Luiz do Anauá?"
+            }
+          ],
+          "ufs": [
+            "rr"
+          ],
+          "municipios": [
+            3158
+          ]
+        },
+        {
+          "codigo": 637,
+          "nome": "Consulta Popular - Dois Lajeados",
+          "local": "Dois Lajeados (RS)",
+          "turno": 1,
+          "tipo": "consulta",
+          "cargos": [
+            {
+              "codigo": 52,
+              "nome": "Você é a favor que o Novo Centro Administrativo Municipal seja construído na área do Parque Municipal de Eventos João de Pizzol?"
+            }
+          ],
+          "ufs": [
+            "rs"
+          ],
+          "municipios": [
+            84824
+          ]
+        }
+      ],
+      "ufs": [
+        "br",
+        "ma",
+        "mg",
+        "rr",
+        "rs"
+      ],
+      "replay": true
+    }
+  ]
+}

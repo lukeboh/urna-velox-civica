@@ -1,7 +1,7 @@
 //! **Mapa das seções** (cartão da página, desde a `0.9.19`): cada seção totalizada acende um ponto no mapa. O servidor
 //! não sabe nada de geografia: dá a cada seção do catálogo um **índice** (a posição na lista ordenada pela chave
 //! município/zona/seção), conta quais já foram aplicadas e em que faixa de horário, e entrega isso à página por três
-//! caminhos (`docs/PROTOCOLO_WS.md` §4.8):
+//! caminhos (`docs/arquitetura/PROTOCOLO_WS.md` §4.8):
 //!
 //! * `GET /api/v1/mapa/secoes` — a lista das seções (fixa por processo, com `ETag`): para cada município, o código,
 //!   a UF e as seções de cada zona (primeira seção e diferenças), na ordem dos índices;
@@ -114,6 +114,9 @@ impl Mapa {
             n: watch::Sender::new(0), foto: Mutex::new(None), fotos: AtomicU64::new(0),
         }
     }
+
+    /// Índice de uma seção (chave `município << 32 | zona << 16 | seção`) na lista do mapa; None = fora do catálogo.
+    pub fn indice_de(&self, k: u64) -> Option<u32> { self.indice.get(&k).copied() }
 
     /// Nº de seções do catálogo (índices).
     pub fn total(&self) -> usize { self.indice.len() }

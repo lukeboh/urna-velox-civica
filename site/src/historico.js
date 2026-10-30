@@ -78,6 +78,18 @@ export class Historico {
   }
 
   /** Guarda um item do feed (os de `cat` definida). Repetido pelo id: atualiza o texto. */
+  /** Tira todos os itens (consulta de um pleito: o slider voltou no tempo). */
+  limpar() {
+    for (const x of this.itens) x.row?.remove();
+    this.itens = [];
+    this.porId.clear();
+    this.vis = [];
+    this.atual = -1;
+    this.conta = new Map();
+    this.contaSuja = true;
+    this.sujo = true;
+  }
+
   por(it) {
     if (!it.cat) return;
     const ja = this.porId.get(it.id);

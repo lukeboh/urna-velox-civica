@@ -1,4 +1,4 @@
-//! **uv-painel** — painel de monitoramento e gerenciamento dos nós (`docs/PAINEL.md`).
+//! **uv-painel** — painel de monitoramento e gerenciamento dos nós (`docs/operacao/PAINEL.md`).
 //!
 //! Um processo por nó, **separado do `uv-servico`**: lê a `saude.json`, o `/proc`, o `no.env` e o `federacao.json` do
 //! próprio nó e conversa com o painel do outro nó pela rede privada (pedidos assinados com HMAC). Uma queda ou um erro

@@ -69,8 +69,10 @@ export class Curva {
   }
   limpar() { this.pontos = []; this.sujo = true; }
   /** Pontos do servidor (substituem os que houver antes do último deles). */
-  semear(pontos) {
+  /** `relogio`: 'sistema' ou 'noite' (B-082: uma curva tem um relógio só; o do sistema manda); sem ele, sem conferência. */
+  semear(pontos, relogio) {
     if (!pontos.length) return;
+    if (!this.#mesmoRelogio(relogio)) return;
     const fim = pontos[pontos.length - 1].t;
     this.pontos = [...pontos, ...this.pontos.filter((p) => p.t > fim)];
     this.reposicionar(true);
@@ -86,8 +88,14 @@ export class Curva {
     this.reposicionar(false);
   }
   /** t = segundos com fração (relógio do sistema, M-003), s = % seções, cand = [[n, pct], …] */
-  ponto(t, s, cand) {
+  #mesmoRelogio(relogio) {
+    if (!relogio || !this.relogio || relogio === this.relogio) { if (relogio) this.relogio = relogio; return true; }
+    if (relogio === 'sistema') { this.pontos = []; this.relogio = relogio; return true; }
+    return false;
+  }
+  ponto(t, s, cand, relogio) {
     if (t == null) return;
+    if (!this.#mesmoRelogio(relogio)) return;
     const u = this.pontos[this.pontos.length - 1];
     if (u && t < u.t) return;
     const p = { t, s, c: new Map(cand.filter((x) => x[1] != null)) };

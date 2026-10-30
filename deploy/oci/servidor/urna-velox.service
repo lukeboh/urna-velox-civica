@@ -1,6 +1,6 @@
 [Unit]
 Description=Urna Velox — nó da federação (uv-servico --federacao)
-Documentation=https://github.com/lukeboh/urna-velox-civica/blob/main/docs/HANDOFF_IMPLANTACAO_OCI.md
+Documentation=https://github.com/lukeboh/urna-velox-civica/blob/main/docs/handoffs/HANDOFF_IMPLANTACAO_OCI.md
 Wants=network-online.target chrony.service
 After=network-online.target chrony.service
 
@@ -13,6 +13,8 @@ ExecStart=/opt/urna-velox/bin/uv-iniciar.sh
 # queda = reinício com retomada (pacotes + diário); depois da conferência final contra o simulador ele sai com 0
 Restart=on-failure
 RestartSec=5
+# 78: no.env sem PLEITO (multipleito: o uv-ciclo.sh escolhe o pleito); não adianta reiniciar
+RestartPreventExitStatus=78
 # parada limpa: SIGTERM → o serviço grava o último lote e serve os pares por uma carência antes de sair
 KillSignal=SIGTERM
 TimeoutStopSec=90

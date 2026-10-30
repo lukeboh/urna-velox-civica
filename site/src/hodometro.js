@@ -141,7 +141,21 @@ export class Hodometro {
       if (!x.classList.contains('vazio')) break;
       w += x.getBoundingClientRect().width; // fracionário (offsetWidth arredonda: erro somado de px)
     }
-    if (!(this.vis.offsetWidth > 0)) return; // fora da tela ainda (sem layout): mede na próxima vez
+    if (!(this.vis.offsetWidth > 0)) {
+      // fora do documento ou sem layout (o cartão sai e volta na mesma tarefa quando a consulta recomeça): mede no
+      // quadro seguinte e, se ainda não tiver tamanho, quando ganhar. B-085: antes ficava o deslocamento do valor
+      // anterior (o número saía do cartão)
+      this.medido = false;
+      if (!this.tentando) {
+        this.tentando = true;
+        requestAnimationFrame(() => { this.tentando = false; if (!this.medido && this.vis.offsetWidth > 0) this.#deslizar(); });
+      }
+      if (!this.olho && typeof ResizeObserver === 'function') {
+        this.olho = new ResizeObserver(() => { if (!this.medido && this.vis.offsetWidth > 0) this.#deslizar(); });
+        this.olho.observe(this.vis);
+      }
+      return;
+    }
     // sem a escala de algum ancestral (cartão entrando com scale): a medida volta para px de layout
     const esc = this.vis.offsetWidth / (this.vis.getBoundingClientRect().width || this.vis.offsetWidth);
     w = Math.round(w * esc * 100) / 100;

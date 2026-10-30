@@ -1,6 +1,6 @@
-//! Comparação Urna Velox × TSE (etapa 7, `docs/HANDOFF_0.7.0.md`): o `uv-servico` busca no site de resultados do TSE
+//! Comparação Urna Velox × TSE (etapa 7, `docs/handoffs/HANDOFF_0.7.0.md`): o `uv-servico` busca no site de resultados do TSE
 //! o arquivo de resultado (`<abr>-c<cargo>-e<eleição>-u.json`) **só da abrangência e cargo que algum cliente tem na
-//! tela com a comparação ligada** (inscrição no tópico `tse:<tópico>`, `docs/PROTOCOLO_WS.md` §4.6) e o distribui a
+//! tela com a comparação ligada** (inscrição no tópico `tse:<tópico>`, `docs/arquitetura/PROTOCOLO_WS.md` §4.6) e o distribui a
 //! todos os clientes desse tópico.
 //!
 //! Regra de rede (combinada com o Luciano em 16/10/2026, `CLAUDE.md`): no máximo uma busca a cada `--tse-intervalo`

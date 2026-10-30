@@ -1,4 +1,4 @@
-//! `uv-motor previsao`: backtest da previsão (etapa 8, `docs/HANDOFF_0.8.0.md`) numa noite reproduzida em ordem de
+//! `uv-motor previsao`: backtest da previsão (etapa 8, `docs/handoffs/HANDOFF_0.8.0.md`) numa noite reproduzida em ordem de
 //! chegada dos BUs. A cada `intervalo_s` do relógio da noite, a previsão roda só com o que se sabia naquele instante
 //! (e só para as abrangências que mudaram, como no `uv-servico`); no fim, compara com o que aconteceu: calibração da
 //! faixa P10–P90, erro do P50 por faixa de apuração e custo da rodada. Grava também os gabaritos da noite.

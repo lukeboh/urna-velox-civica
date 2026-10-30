@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 
-/// Estruturas para serialização/deserialização do formato `candidatos.json` (docs/FORMATO_CANDIDATOS.md).
+/// Estruturas para serialização/deserialização do formato `candidatos.json` (docs/arquitetura/FORMATO_CANDIDATOS.md).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CandidatoJson {
     pub numero: u32,
@@ -168,16 +168,18 @@ pub enum Sistema {
 
 impl Sistema {
     /// Sistema e se vale o art. 224 do Código Eleitoral (ninguém eleito quando o mais votado foi anulado ou os
-    /// anulados passam de 50 % da votação nominal) — observado nos oficiais de Prefeito de 2024, nos dois turnos.
+    /// anulados passam de 50 % da votação nominal): em **todo cargo majoritário**, nos dois turnos — observado nos
+    /// oficiais de Prefeito de 2024 e no suplementar de Governador de RR de 2026 (B-070, `docs/itens/B-070.md`;
+    /// antes da 1.0.35 valia só para Prefeito). Consultas populares não têm candidato: sem art. 224.
     pub fn para(cargo: u8, turno: u8, eleitorado: u64, vagas: u8, consulta: bool) -> (Sistema, bool) {
         if consulta { return (Sistema::MaioriaSimples { vagas: 1 }, false); }
-        let art224 = cargo == 11;
+        let art224 = matches!(cargo, 1 | 3 | 5 | 11);
         if turno >= 2 { return (Sistema::MaioriaSimples { vagas: 1 }, art224); }
         match cargo {
-            1 | 3 => (Sistema::MaioriaAbsoluta { base: Base::Aptos }, false),
+            1 | 3 => (Sistema::MaioriaAbsoluta { base: Base::Aptos }, art224),
             11 if eleitorado > LIMITE_2T_PREFEITO => (Sistema::MaioriaAbsoluta { base: Base::Nominal }, true),
             11 => (Sistema::MaioriaSimples { vagas: 1 }, true),
-            _ => (Sistema::MaioriaSimples { vagas: vagas.max(1) }, false),
+            _ => (Sistema::MaioriaSimples { vagas: vagas.max(1) }, art224),
         }
     }
 }
@@ -408,9 +410,13 @@ mod testes {
     use super::*;
     #[test]
     fn sistemas() {
-        assert_eq!(Sistema::para(1, 1, 0, 1, false), (Sistema::MaioriaAbsoluta { base: Base::Aptos }, false));
-        assert_eq!(Sistema::para(1, 2, 0, 1, false), (Sistema::MaioriaSimples { vagas: 1 }, false));
-        assert_eq!(Sistema::para(5, 1, 0, 2, false), (Sistema::MaioriaSimples { vagas: 2 }, false));
+        // art. 224 em todo cargo majoritário (B-070): Presidente, Governador, Senador e Prefeito, nos dois turnos
+        assert_eq!(Sistema::para(1, 1, 0, 1, false), (Sistema::MaioriaAbsoluta { base: Base::Aptos }, true));
+        assert_eq!(Sistema::para(3, 1, 0, 1, false), (Sistema::MaioriaAbsoluta { base: Base::Aptos }, true));
+        assert_eq!(Sistema::para(1, 2, 0, 1, false), (Sistema::MaioriaSimples { vagas: 1 }, true));
+        assert_eq!(Sistema::para(3, 2, 0, 1, false), (Sistema::MaioriaSimples { vagas: 1 }, true));
+        assert_eq!(Sistema::para(5, 1, 0, 2, false), (Sistema::MaioriaSimples { vagas: 2 }, true));
+        assert_eq!(Sistema::para(25, 1, 0, 1, false), (Sistema::MaioriaSimples { vagas: 1 }, false), "Conselheiro Distrital: fora");
         assert_eq!(Sistema::para(11, 1, 200_000, 1, false), (Sistema::MaioriaSimples { vagas: 1 }, true));
         assert_eq!(Sistema::para(11, 1, 200_001, 1, false), (Sistema::MaioriaAbsoluta { base: Base::Nominal }, true));
         assert_eq!(Sistema::para(11, 2, 900_000, 1, false), (Sistema::MaioriaSimples { vagas: 1 }, true));

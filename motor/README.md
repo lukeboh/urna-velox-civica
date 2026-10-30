@@ -2,7 +2,7 @@
 
 Crate do motor de totalização (`urna-velox`; binário **`uv-motor`**) do Urna Velox: leitor de BU, catálogo, estado denso, agregador, candidatos, situação dos
 candidatos, matematicamente eleito / 2º turno e publicação do resultado em JSON
-([docs/FORMATO_RESULTADO.md](../docs/FORMATO_RESULTADO.md)). Arquitetura: [ARCHITECTURE.md §2.5](../ARCHITECTURE.md).
+([docs/arquitetura/FORMATO_RESULTADO.md](../docs/arquitetura/FORMATO_RESULTADO.md)). Arquitetura: [ARCHITECTURE.md §2.5](../ARCHITECTURE.md).
 A aquisição dos BUs (rede, ≤ 100 req/s) fica em [`aquisicao/`](../aquisicao) (`uv-coletor`); o motor não faz rede.
 
 ## Binário
@@ -19,7 +19,7 @@ uv-motor previsao --dados … --oficial … --chegadas <csv> --nome 2024-2t --ca
 ```
 
 * `previsao` (módulo `previsao`): estimativa, com faixa P10–P90, do horário do "matematicamente" e do fim da apuração;
-  as três noites de uma vez: `scripts/backtest_previsao.sh` (relatório em `docs/RELATORIO_0.8.0.md`).
+  as três noites de uma vez: `scripts/backtest_previsao.sh` (relatório em `docs/relatorios/RELATORIO_0.8.0.md`).
 
 * `--oficial`: arquivos de divulgação (`-u.json`), de onde vêm os **candidatos** nesta etapa (destinação, nascimento,
   eleitorado, turno, vagas); na etapa 2 virá dos dados publicados antes da apuração.

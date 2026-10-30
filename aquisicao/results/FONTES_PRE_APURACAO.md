@@ -1,6 +1,6 @@
 # Fontes Pré-Apuração — Levantamento e Evidências
 
-Este documento registra a sondagem e identificação das fontes de dados disponíveis **antes da apuração** (pré-eleição) para o Urna Velox, em cumprimento ao Passo 1 do [HANDOFF_0.2.0.md](../../docs/HANDOFF_0.2.0.md).
+Este documento registra a sondagem e identificação das fontes de dados disponíveis **antes da apuração** (pré-eleição) para o Urna Velox, em cumprimento ao Passo 1 do [HANDOFF_0.2.0.md](../../docs/handoffs/HANDOFF_0.2.0.md).
 
 Data do levantamento: 12/10/2026.
 Ambiente de testes: WSL2 Ubuntu-24.04, conectado aos serviços públicos do TSE (CDN de resultados e arquivos de urna).

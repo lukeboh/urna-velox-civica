@@ -564,7 +564,7 @@ checksum = "d245f478577f809a851594d02313b640fb437e0bb33866753cff937863096954"
 
 [[package]]
 name = "urnabench"
-version = "1.0.12"
+version = "1.1.1"
 dependencies = [
  "dashmap",
  "hashbrown 0.17.1",

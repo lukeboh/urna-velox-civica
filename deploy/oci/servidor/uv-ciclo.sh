@@ -1,18 +1,24 @@
 #!/usr/bin/env bash
-# uv-ciclo — ciclo diário de simulações com dados reais (docs/CICLO_DIARIO.md).
+# uv-ciclo — ciclo diário de simulações com dados reais (docs/operacao/CICLO_DIARIO.md).
 #
 # Roda nos dois nós da OCI em rotação contínua e circular:
 #   452 (1ºT 2024) -> 453 (2ºT 2024) -> 3220 (1ºT 2026) -> 3221 (2ºT 2026) -> 452...
 # Após cada totalização concluída (apuracao.encerrada == true), o sistema mantém o resultado
-# em exibição e inicia a próxima eleição pontualmente na próxima hora fechada (ex: 17h, 18h, 19h...).
-# O pleito 3221 fica em exibição por 1 hora fechada (modo espera) e é substituído na seguinte.
-# Para cada eleição simulada (452, 453, 3220), os modos alternam entre rápido (500×) e cadência (1×).
+# em exibição e inicia a próxima eleição pontualmente na próxima virada: a meia hora redonda (17h00, 17h30...; desde a
+# 1.0.35, antes a hora fechada; PASSO_MIN no ciclo.env).
+# Para cada eleição (452, 453, 3220 e, desde 26/10/2026, 3221), os modos alternam entre rápido (500×) e cadência (1×).
+# O replay repete a noite real como foi, inclusive as pausas do TSE (no 3221, 2 h sem BU de 17:09 a 19:08).
+# O modo "espera" (vitrine sem coleta, com $CAND_3221) continua aceito, mas não entra mais na rotação.
 #
-#   uv-ciclo.sh avancar [pleito] [modo] # avança para o próximo da rotação (chamado pelo vigia na hora fechada)
-#   uv-ciclo.sh iniciar <pleito> [rapido|cadencia] # iniciação manual
+#   uv-ciclo.sh avancar [pleito] [modo] # avança para o próximo da rotação (chamado pelo vigia na virada da meia hora)
+#   uv-ciclo.sh iniciar <pleito> [rapido|cadencia|aovivo] # iniciação manual (aovivo: pleito em curso, contra o TSE)
 #   uv-ciclo.sh acelerar               # (nó A) termina a noite simulada sem intervalo
 #   uv-ciclo.sh parar                  # para tudo e arquiva (sem religar a produção)
 #   uv-ciclo.sh estado                 # unidades, rotação, execução atual e histórico
+#
+# Multipleito (1.1, desde a 1.0.35): os pleitos da rotação e os dados de cada um (ciclo, nome, data, corte, duração da
+# cadência) vêm do pleitos.json e do acervo.json de cada acervo (uv_pleitos.py, ao lado deste script); todo pleito
+# encerrado com o acervo pronto (/srv/urna-velox/acervo/<pleito>/.completo, montado pelo uv-pleitos.sh) entra.
 set -uo pipefail
 export TZ=America/Sao_Paulo
 source /etc/urna-velox/ciclo.env      # PAPEL (A|B), NO_ID, A_PRIV, B_PRIV, FED_PORTA, BUCKET, NS, INICIO, FIM, CAND_3221
@@ -22,26 +28,30 @@ mkdir -p $C/historico
 chown -R urnavelox:urnavelox $C 2>/dev/null || true
 log() { echo "$(date -Iseconds) [$NO_ID] $*" | tee -a $C/ciclo.log >&2; }
 
-declare -A CICLO=([452]=ele2024 [453]=ele2024 [3220]=ele2026 [3221]=ele2026)
-declare -A NOME=([452]="1º turno de 2024" [453]="2º turno de 2024" [3220]="1º turno de 2026" [3221]="2º turno de 2026")
-declare -A DATA=([452]="06/10/2024" [453]="27/10/2024" [3220]="04/10/2026" [3221]="25/10/2026")
-declare -A CORTE=([452]="07/10/2024 02:00:00" [453]="28/10/2024 02:00:00" [3220]="05/10/2026 02:00:00")
-# tempo máximo em cadência a 1× antes de acelerar no Nó A (3h45 para 452 e 3220; 2h para 453)
-declare -A TEMPO_CADENCIA_S=([452]=13500 [453]=7200 [3220]=13500)
+# ciclo, nome, data, corte e tempo máximo em cadência a 1× antes de acelerar no nó A (uv_pleitos.py: os valores de
+# antes para 452, 453, 3220 e 3221 — 3h45, 2h, 3h45 e 4h15 —; para os outros, o acervo.json do montar_acervo.sh)
+declare -A CICLO NOME DATA CORTE TEMPO_CADENCIA_S
+info_pleito() {
+  local k v
+  [ -n "${CICLO[$1]:-}" ] && return 0
+  while IFS='=' read -r k v; do
+    case "$k" in
+      ciclo) CICLO[$1]=$v ;; nome) NOME[$1]=$v ;; data_br) DATA[$1]=$v ;; corte) CORTE[$1]=$v ;; tempo_cadencia_s) TEMPO_CADENCIA_S[$1]=$v ;;
+    esac
+  done < <(python3 "$BIN/uv_pleitos.py" info "$1" 2>/dev/null)
+  [ -n "${CICLO[$1]:-}" ]
+}
 
 proximo_pleito() {
-  case "${1:-}" in
-    452)  echo 453 ;;
-    453)  echo 3220 ;;
-    3220) echo 3221 ;;
-    3221) echo 452 ;;
-    *)    echo 452 ;;
-  esac
+  python3 "$BIN/uv_pleitos.py" seguinte "${1:-}" 2>/dev/null || echo 452
+}
+
+primeiro_pleito() {
+  local p; p=$(python3 "$BIN/uv_pleitos.py" replays 2>/dev/null | head -1); echo "${p:-452}"
 }
 
 modo_do_pleito() {
   local p="${1:-}"
-  [ "$p" = 3221 ] && { echo "espera"; return; }
   for rf in "$C/rotacao.json" "$C/atual/rotacao.json"; do
     if [ -f "$rf" ]; then
       local m
@@ -59,6 +69,12 @@ modo_do_pleito() {
   else
     echo rapido
   fi
+}
+
+# depois de uma partida que não pegou (aovivo sem candidatos, sem configuração): o vigia volta, para tentar de novo
+reerguer_vigia() {
+  systemd-run --quiet --unit uv-ciclo-vigia -p Restart=on-failure -p StandardError=append:$C/atual/vigia.err \
+    python3 $BIN/uv-ciclo-vigia.py $C $NO_ID 10 2>/dev/null || true
 }
 
 parar_unidades() {
@@ -111,7 +127,7 @@ EOF
 
 iniciar() {
   local P="$1" MODO="${2:-rapido}" T0; T0=$(date +%s)
-  [ -n "${CICLO[$P]:-}" ] || { log "pleito desconhecido: $P"; exit 2; }
+  info_pleito "$P" || { log "pleito desconhecido: $P (fora do pleitos.json e sem acervo.json)"; exit 2; }
   printf 'uv-ciclo %s %s\n' "$P" "$(date -Iseconds)" > /etc/urna-velox/controle-manual   # o uv-atualizador não mexe
   parar_unidades
   arquivar
@@ -119,7 +135,7 @@ iniciar() {
   # A e B gravarem a execução com o mesmo ID (e as evidências caírem no mesmo ciclo/<ID>/ do bucket)
   local CARIMBO="${CICLO_CARIMBO:-$(date +%Y%m%d-%H%M)}"
   [[ "$CARIMBO" =~ ^[0-9]{8}-[0-9]{4}$ ]] || CARIMBO=$(date +%Y%m%d-%H%M)
-  local ID; ID="$CARIMBO-$P-$MODO"; [ "$P" = 3221 ] && ID="$CARIMBO-3221-espera"
+  local ID; ID="$CARIMBO-$P-$MODO"
   [ -e "$C/historico/$ID" ] && ID="$ID-$(date +%S)"   # carimbo repetido (dois comandos no mesmo minuto)
   mkdir -p $C/atual/{dados,saida,federacao,sim}
   echo "$ID" > $C/atual/id
@@ -127,14 +143,53 @@ iniciar() {
   local ESPERA=$(( 60 - ($(date +%s) - T0) )); [ "$ESPERA" -gt 0 ] && [ -z "${SEM_ESPERA:-}" ] && sleep $ESPERA
   chown -R urnavelox:urnavelox $C 2>/dev/null || true
   local N=$C/atual ROT ACEL RPS
-  if [ "$P" = 3221 ]; then
-    # 2º turno de 2026: só os candidatos já carregados (sem coleta) até a apuração real de 25/10; comparação com o TSE
-    # só da tela aberta (uma busca a cada 30–60 s por tópico, regra de 16/10/2026)
+  # multipleito (1.1): a página mostra todos os pleitos (GET /api/v1/pleitos), do pleitos.json do uv-pleitos.sh
+  local PLT=(); [ -s /srv/urna-velox/pleitos/pleitos.json ] && $BIN/uv-servico --help 2>/dev/null | grep -q -- '--pleitos' \
+    && PLT=(--pleitos /srv/urna-velox/pleitos/pleitos.json)
+  # multipleito (1.1): as séries de consulta dos encerrados (/consulta/*), geradas pelo uv-pleitos.sh
+  [ -d /srv/urna-velox/consulta ] && $BIN/uv-servico --help 2>/dev/null | grep -q -- '--consulta' && PLT+=(--consulta /srv/urna-velox/consulta)
+  if [ "$MODO" = espera ]; then
+    # vitrine (até 25/10/2026, a espera do 2º turno): só os candidatos já carregados, sem coleta; comparação com o TSE
+    # só da tela aberta (uma busca a cada 30–60 s por tópico, regra de 16/10/2026). Fora da rotação desde 26/10/2026.
+    [ "$P" = 3221 ] || { log "modo espera só existe para o 3221"; exit 2; }
     printf 'pleito=3221\nmodo=espera\ninicio=%s\n' "$(date -Iseconds)" > $N/params
     systemd-run --quiet --unit uv-ciclo-no --uid urnavelox -p WorkingDirectory=$N -p LimitNOFILE=65536 -p Restart=on-failure -p RestartSec=10 \
       -p StandardOutput=append:$N/servico.out -p StandardError=append:$N/servico.err \
       $BIN/uv-servico --pleito 3221 --ciclo ele2026 --candidatos "$CAND_3221" --dados $N/dados --saida $N/saida \
-      --sem-coleta --continuar --http 0.0.0.0:8080 --aceitar-incompleto
+      --sem-coleta --continuar --http 0.0.0.0:8080 --aceitar-incompleto "${PLT[@]}"
+  elif [ "$MODO" = aovivo ]; then
+    # multipleito (1.1): pleito em curso no ele-c.json, totalizado ao vivo contra o site do TSE (autorizado pelo Luciano
+    # em 29/10/2026, CLAUDE.md). A configuração do nó é a da produção (/etc/urna-velox/no.env e federacao.json: servidor,
+    # ≤ 95 req/s, IP de saída, o B só recebendo quando os dois são do mesmo órgão), pelo uv-iniciar.sh; daqui vêm só o
+    # pleito, o ciclo, as UFs do pleito e as pastas desta execução.
+    [ -s /etc/urna-velox/no.env ] && [ -s /etc/urna-velox/federacao.json ] \
+      || { log "aovivo: falta a configuração de produção do nó (/etc/urna-velox/no.env e federacao.json)"; reerguer_vigia; exit 4; }
+    local UFSP BASE_TSE AMB_TSE; UFSP=$(python3 "$BIN/uv_pleitos.py" ufs "$P" 2>/dev/null || true)
+    BASE_TSE=$(. /etc/urna-velox/no.env; echo "${BASE:-https://resultados.tse.jus.br}")
+    AMB_TSE=$(. /etc/urna-velox/no.env; echo "${AMBIENTE:-oficial}")
+    printf 'pleito=%s\nmodo=aovivo\nufs=%s\ninicio=%s\n' "$P" "${UFSP:-todas}" "$(date -Iseconds)" > $N/params
+    mkdir -p $N/preparo $AC/$P/fontes-aovivo; chown -R urnavelox:urnavelox $N $AC/$P 2>/dev/null || true
+    # candidatos.json do pleito (≤ 5 req/s, para no 1º HTTP 429; código 2 = fontes ainda incompletas: o serviço aceita)
+    sudo -u urnavelox $BIN/uv-coletor preparar --base "$BASE_TSE" --ambiente "$AMB_TSE" --ciclo "${CICLO[$P]}" --pleito "$P" \
+      --saida $N/preparo --fontes $AC/$P/fontes-aovivo > $N/preparo/preparar.log 2>&1; local RCP=$?
+    chown -R urnavelox:urnavelox $N $AC/$P 2>/dev/null || true
+    # reserva: o catálogo pré-eleição montado pelo uv-pleitos.sh antes da noite (§3.6)
+    if [ ! -s $N/preparo/candidatos.json ] && [ -s $AC/$P/preparo/candidatos.json ]; then
+      cp $AC/$P/preparo/candidatos.json $N/preparo/candidatos.json; chown urnavelox:urnavelox $N/preparo/candidatos.json 2>/dev/null || true
+      log "aovivo: preparo da noite falhou (código $RCP); usando o catálogo pré-eleição de $AC/$P/preparo"; RCP=2
+    fi
+    if [ ! -s $N/preparo/candidatos.json ]; then
+      log "aovivo: candidatos.json do $P não saiu (código $RCP; $N/preparo/preparar.log); o vigia tenta de novo em 10 min"
+      reerguer_vigia; exit 5
+    fi
+    [ "$RCP" = 0 ] || log "aovivo: candidatos.json do $P com fontes incompletas (código $RCP): o serviço aceita e segue"
+    systemd-run --quiet --unit uv-ciclo-no --uid urnavelox -p WorkingDirectory=$N -p LimitNOFILE=65536 -p Restart=on-failure -p RestartSec=10 \
+      -p StandardOutput=append:$N/servico.out -p StandardError=append:$N/servico.err \
+      --setenv=UV_PLEITO="$P" --setenv=UV_CICLO="${CICLO[$P]}" --setenv=UV_CANDIDATOS=$N/preparo/candidatos.json \
+      --setenv=UV_DADOS=$N/dados --setenv=UV_SAIDA=$N/saida --setenv=UV_ARMAZEM=$N/federacao --setenv=UV_UFS="$UFSP" \
+      --setenv=UV_EXTRA="--continuar --aceitar-incompleto" \
+      $BIN/uv-iniciar.sh
+    log "AO VIVO: $P (${NOME[$P]}, eleição de ${DATA[$P]}) contra $BASE_TSE, UFs ${UFSP:-todas}"
   else
     local D=$AC/$P
     [ -f $D/.completo ] || { log "acervo $D incompleto"; exit 3; }
@@ -167,7 +222,7 @@ iniciar() {
       $BIN/uv-servico --pleito $P --ciclo ${CICLO[$P]} --candidatos $D/candidatos.json --dados $N/dados --saida $N/saida \
       --base http://127.0.0.1:$PSIM --aceleracao-local $ACEL --rps $RPS --ordem $D/linha-do-tempo.csv \
       --federacao /etc/urna-velox/federacao-ciclo.json --no $NO_ID --armazem $N/federacao --federacao-escuta 0.0.0.0:$FED_PORTA \
-      --http 0.0.0.0:8080 --continuar --simulacao "$ROT" "${IPL[@]}"
+      --http 0.0.0.0:8080 --continuar --simulacao "$ROT" "${IPL[@]}" "${PLT[@]}"
     if [ "$PAPEL" = A ] && [ "$MODO" = cadencia ]; then
       local TC=${TEMPO_CADENCIA_S[$P]:-13500}
       systemd-run --quiet --unit uv-ciclo-acel --on-active="${TC}s" $BIN/uv-ciclo.sh acelerar \
@@ -183,7 +238,7 @@ iniciar() {
 
 case "${1:-}" in
   avancar)
-    # Chamado pelo uv-ciclo-vigia na hora fechada ou manualmente pelo operador
+    # Chamado pelo uv-ciclo-vigia na virada (meia hora redonda) ou manualmente pelo operador
     P="${2:-}"; M="${3:-}"
     if [ -z "$P" ]; then
       for rf in "$C/rotacao.json" "$C/atual/rotacao.json"; do
@@ -194,7 +249,7 @@ case "${1:-}" in
         fi
       done
     fi
-    [ -n "$P" ] || P=452
+    [ -n "$P" ] || P=$(primeiro_pleito)
     [ -n "$M" ] || M=$(modo_do_pleito "$P")
     log "avançando para próximo pleito da rotação: $P ($M)"
     iniciar "$P" "$M" ;;
@@ -205,7 +260,7 @@ case "${1:-}" in
       P_ATUAL=$(grep '^pleito=' "$C/atual/params" | cut -d= -f2)
       P=$(proximo_pleito "$P_ATUAL")
     else
-      P=452
+      P=$(primeiro_pleito)
     fi
     M=$(modo_do_pleito "$P")
     iniciar "$P" "$M" ;;

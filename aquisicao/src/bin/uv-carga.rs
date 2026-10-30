@@ -1,4 +1,4 @@
-//! `uv-carga` — cliente de carga e de conferência da difusão do `uv-servico` (`docs/PROTOCOLO_WS.md`, etapa 4).
+//! `uv-carga` — cliente de carga e de conferência da difusão do `uv-servico` (`docs/arquitetura/PROTOCOLO_WS.md`, etapa 4).
 //!
 //! Abre N conexões WebSocket (em rampa), inscreve cada uma num conjunto de tópicos, mede **BU → cliente**
 //! (`agora − t_bu`) e **servidor → cliente** (`agora − t_envio`), conta `seq` pulados, regressões de `seq` e conexões

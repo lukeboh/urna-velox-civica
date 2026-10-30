@@ -4,7 +4,7 @@ RELATORIO.md, summary.csv e os gráficos.
 
 Uso:  python3 bench/scripts/relatorio.py [--resultados bench/results] [--img <pasta>]
       (por padrão os gráficos vão para <resultados>/graficos/; docs/img/ guarda a cópia
-       de referência usada em docs/ESTIMATIVAS_MEMORIA_E_TEMPO.md)
+       de referência usada em docs/arquitetura/ESTIMATIVAS_MEMORIA_E_TEMPO.md)
 Requer matplotlib. Cores: paleta categórica de referência, ordem fixa por linguagem
 (Rust=azul, Java=laranja, Node=verde-água, Bun=amarelo) — a cor segue a linguagem em todos os gráficos.
 """
@@ -219,8 +219,8 @@ md = []
 _dt = re.search(r"^# (\S+)", MACHINE, re.M)
 md.append("# Relatório do benchmark — " + (_dt.group(1) if _dt else ""))
 md.append("")
-md.append("Gerado por `bench/scripts/relatorio.py`. Significado dos termos: [docs/GLOSSARIO.md](../../docs/GLOSSARIO.md). "
-          "Análise completa da execução de referência: [docs/ESTIMATIVAS_MEMORIA_E_TEMPO.md](../../docs/ESTIMATIVAS_MEMORIA_E_TEMPO.md).")
+md.append("Gerado por `bench/scripts/relatorio.py`. Significado dos termos: [docs/arquitetura/GLOSSARIO.md](../../docs/arquitetura/GLOSSARIO.md). "
+          "Análise completa da execução de referência: [docs/arquitetura/ESTIMATIVAS_MEMORIA_E_TEMPO.md](../../docs/arquitetura/ESTIMATIVAS_MEMORIA_E_TEMPO.md).")
 md.append("")
 BUS_NOTA = "" if BUS_REF == ELEICAO_BUS else (f"> **Atenção:** esta execução totalizou {BUS_REF:,} BUs por medição (modo rápido ou `UV_BUS`); ".replace(",", ".") +
             "os tempos foram escalados linearmente para 500 mil BUs. Com poucos BUs, o custo fixo (criar threads/workers, aquecer o JIT) pesa mais, "

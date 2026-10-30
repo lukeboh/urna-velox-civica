@@ -1,6 +1,6 @@
 //! Difusão em tempo real (etapa 4): o `uv-servico` publica o resultado por **WebSocket** (instantâneo na inscrição +
 //! atualização a cada publicação) e por um **REST mínimo**, para muitos clientes ao mesmo tempo, sem atrasar a
-//! totalização. Contrato: `docs/PROTOCOLO_WS.md`; decisão: ADR-026.
+//! totalização. Contrato: `docs/arquitetura/PROTOCOLO_WS.md`; decisão: ADR-026.
 //!
 //! Caminho de um resultado: thread do motor (gera o JSON uma vez) → thread `uv-gravacao` (converte em `Bytes` e entrega
 //! aqui **antes** de gravar o arquivo; canal sem limite, nunca espera) → thread `uv-difusao` ([`difundir`]: monta a
@@ -22,7 +22,7 @@ use axum::Router;
 use bytes::Bytes;
 use futures::{SinkExt, StreamExt};
 use serde_json::{json, Value};
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::fmt::Write as _;
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering::Relaxed};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
@@ -36,7 +36,7 @@ pub fn agora_us() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_micros() as u64).unwrap_or(0)
 }
 
-/// Limites e parâmetros da camada (ver `docs/PROTOCOLO_WS.md` §8).
+/// Limites e parâmetros da camada (ver `docs/arquitetura/PROTOCOLO_WS.md` §8).
 #[derive(Clone, Debug)]
 pub struct Opcoes {
     /// `endereço:porta` de escuta (ex.: `127.0.0.1:8080`)
@@ -63,6 +63,11 @@ pub struct Opcoes {
     pub handshake: Duration,
     /// mensagem `estado` pelo menos a cada este intervalo
     pub estado_max: Duration,
+    /// multipleito (1.1): `pleitos.json` do `uv-coletor pleitos`, servido em `GET /api/v1/pleitos` (relido quando muda)
+    pub pleitos: Option<std::path::PathBuf>,
+    /// pasta das séries de consulta (multipleito 1.1, `crate::serie`): `<pasta>/<pleito>/serie/*.json` e o índice
+    /// `<pasta>/indice.json`, servidos em `GET /consulta/*` (com o `.json.gz` pré-comprimido quando o cliente aceita)
+    pub consulta: Option<std::path::PathBuf>,
 }
 
 impl Opcoes {
@@ -71,6 +76,7 @@ impl Opcoes {
             endereco: endereco.to_string(), max_clientes: 7500, threads: 4, max_topicos: 200, msgs_s: 20.0, rajada: 40.0, excessos: 40,
             max_msg: 4096, buffer_escrita: 4 << 20, ping: Duration::from_secs(20), sem_pong: Duration::from_secs(60),
             lento: Duration::from_secs(30), handshake: Duration::from_secs(10), estado_max: Duration::from_secs(10),
+            pleitos: None, consulta: None,
         }
     }
 }
@@ -206,10 +212,16 @@ pub enum Entrada {
     /// previsões do "matematicamente" e do fim da apuração (etapa 8, `crate::previsao::mensagem`): guarda só a última
     /// de cada tópico; o `historico` vai só na mensagem da inscrição
     Previsoes(Vec<Value>),
+    /// sondas (`crate::sonda`, corpo de [`crate::sonda::Sonda::json`]) que passaram pela gravação: só para quem pediu
+    /// `op: sonda` (`docs/arquitetura/PROTOCOLO_WS.md` §4.9)
+    Sonda(Vec<Value>),
     /// seções aplicadas (chave `município << 32 | zona << 16 | seção`, horário do BU) para o mapa das seções
     /// (`crate::mapa`): as do lote e, na partida, as do diário
     Secoes(Vec<(u64, i64)>),
 }
+
+/// Sondas guardadas para o `GET /api/v1/sonda`.
+pub const SONDAS_GUARDADAS: usize = 20;
 
 /// Última previsão de um tópico: versão (global, crescente), a mensagem das atualizações (sem o histórico), a da
 /// inscrição (com o histórico) e o valor (para o REST).
@@ -241,6 +253,10 @@ pub struct Medidas {
     pub lat_envio: Mutex<Amostra>,
     /// BU recebido → mensagem montada (ms), por versão de tópico
     pub lat_difusao: Mutex<Amostra>,
+    /// sonda injetada → mensagem `sonda` escrita no socket (ms; só as deste serviço, por conexão inscrita)
+    pub lat_sonda: Mutex<Amostra>,
+    /// mensagens `sonda` escritas nos sockets
+    pub sondas_enviadas: AtomicU64,
     ant: Mutex<Option<(Instant, u64, u64)>>,
 }
 
@@ -250,7 +266,9 @@ pub const CURVA_PASSO_S: i64 = 60;
 /// Desde a M-003 o eixo `t` é o **relógio do sistema** (segundos com fração, hora de Brasília: o `totalizado_em` da
 /// publicação); o passo continua sendo um minuto **da noite** (no simulado a 500×, 0,12 s do sistema). Publicação sem
 /// `totalizado_em` (as do motor e dos testes antigos) usa o `ultimo_bu`, como antes.
-struct PontoCurva { t: f64, ap: u64, tot: u64, cand: Vec<(u32, f64)> }
+/// `sistema`: o `t` é do relógio do sistema (`totalizado_em`); senão, a hora da noite (`ultimo_bu`). Uma curva tem um
+/// relógio só (B-082).
+struct PontoCurva { t: f64, ap: u64, tot: u64, cand: Vec<(u32, f64)>, sistema: bool }
 /// O que a curva lê de um arquivo publicado (o resto do JSON é ignorado).
 #[derive(serde::Deserialize)]
 struct PubCurva { ultimo_bu: Option<String>, #[serde(default)] totalizado_em: Option<String>, secoes: Option<SecCurva>, #[serde(default)] cand: Vec<CandCurva> }
@@ -301,8 +319,14 @@ pub struct Hub {
     prev_ver: watch::Sender<u64>,
     /// relógio do sistema do serviço (M-003): a curva anda por ele, com o passo de um minuto da noite
     relogio: OnceLock<Arc<crate::relogio::Relogio>>,
+    /// sondas (`crate::sonda`): as últimas [`SONDAS_GUARDADAS`] (corpo com `t_difusao`) e a contagem, que acorda as
+    /// conexões inscritas
+    sondas: RwLock<VecDeque<Arc<Value>>>,
+    n_sondas: watch::Sender<u64>,
     /// mapa das seções (`crate::mapa`): índices do catálogo e seções acesas; definido na partida do motor
     mapa: OnceLock<Arc<crate::mapa::Mapa>>,
+    /// `GET /api/v1/pleitos`: data de modificação, corpo e `ETag` do último `pleitos.json` lido ([`Opcoes::pleitos`])
+    pleitos: Mutex<Option<(std::time::SystemTime, Bytes, String)>>,
     pub med: Medidas,
 }
 
@@ -315,6 +339,7 @@ impl Hub {
             saude: Mutex::new(Value::Null), saude_pedida: AtomicBool::new(false), marcos: RwLock::default(), n_marcos: watch::Sender::new(0),
             faltam: RwLock::default(), faltam_ver: watch::Sender::new(0), nomes: RwLock::new(None), replay: OnceLock::new(), curvas: Mutex::default(), tse: OnceLock::new(), med: Medidas::default(),
             previsoes: RwLock::default(), prev_ver: watch::Sender::new(0), relogio: OnceLock::new(), mapa: OnceLock::new(),
+            sondas: RwLock::default(), n_sondas: watch::Sender::new(0), pleitos: Mutex::new(None),
         };
         (Arc::new(h), rx)
     }
@@ -344,10 +369,14 @@ impl Hub {
             None => p.ultimo_bu.as_deref().and_then(segundos_iso).map(|x| x as f64),
         };
         let (Some(ts), Some(s)) = (ts, p.secoes) else { return };
-        let passo = self.passo_curva(p.totalizado_em.is_some());
-        let ponto = PontoCurva { t: ts, ap: s.apuradas, tot: s.total, cand: p.cand.iter().filter_map(|c| c.pct.map(|x| (c.n, x))).collect() };
+        let sistema = p.totalizado_em.is_some();
+        let passo = self.passo_curva(sistema);
+        let ponto = PontoCurva { t: ts, ap: s.apuradas, tot: s.total, cand: p.cand.iter().filter_map(|c| c.pct.map(|x| (c.n, x))).collect(), sistema };
         let mut m = self.curvas.lock().unwrap();
         let v = m.entry(t.clone()).or_default();
+        // B-082: um relógio só por curva. O do sistema manda (a curva da noite que veio antes, de uma publicação sem
+        // `totalizado_em` como a da retomada, sai); depois dele, publicação com a hora da noite é ignorada
+        if let Some(u) = v.last() { if u.sistema != sistema { if sistema { v.clear(); } else { return; } } }
         let n = v.len();
         if n > 0 && ts < v[n - 1].t { return; }
         // o último ponto é provisório (é trocado pela publicação seguinte) enquanto estiver a menos de um passo do
@@ -439,8 +468,39 @@ impl Hub {
             "desconexoes": m.desconexoes.lock().unwrap().clone(), "topicos": self.n_topicos(), "eventos": self.eventos.read().unwrap().len(),
             "marcos": self.n_marcos(), "faltam_circunscricoes": self.faltam.read().unwrap().len(),
             "mapa": self.mapa.get().map(|mp| { let (n, fora) = mp.contagem(); json!({"secoes": mp.total(), "acesas": n, "fora_do_catalogo": fora, "fotografias": mp.fotos.load(Relaxed)}) }),
-            "latencias_ms": {"bu_envio": m.lat_envio.lock().unwrap().json(), "bu_difusao": m.lat_difusao.lock().unwrap().json()}})
+            "sondas_enviadas": m.sondas_enviadas.load(Relaxed),
+            "latencias_ms": {"bu_envio": m.lat_envio.lock().unwrap().json(), "bu_difusao": m.lat_difusao.lock().unwrap().json(),
+                "sonda_envio": m.lat_sonda.lock().unwrap().json()}})
     }
+
+    /// Recebe as sondas na thread de difusão: carimba `t_difusao` e guarda as últimas.
+    fn guardar_sondas(&self, v: Vec<Value>) {
+        if v.is_empty() { return; }
+        let (t, n) = (agora_us(), v.len() as u64);
+        let mut g = self.sondas.write().unwrap();
+        for mut x in v {
+            x["t_difusao"] = json!(t);
+            g.push_back(Arc::new(x));
+            while g.len() > SONDAS_GUARDADAS { g.pop_front(); }
+        }
+        drop(g);
+        self.n_sondas.send_modify(|x| *x += n);
+    }
+
+    /// `GET /api/v1/sonda`: as últimas sondas (a mais nova no fim) e a latência até o socket.
+    pub fn sondas_json(&self) -> Value {
+        let v: Vec<Value> = self.sondas.read().unwrap().iter().map(|x| (**x).clone()).collect();
+        json!({"ultimas": v, "enviadas": self.med.sondas_enviadas.load(Relaxed), "latencia_envio_ms": self.med.lat_sonda.lock().unwrap().json()})
+    }
+}
+
+/// Mensagem `sonda` de uma sonda guardada, para uma conexão (com `t_envio`; `instantaneo` na inscrição).
+fn msg_sonda(x: &Value, instantaneo: bool) -> Utf8Bytes {
+    let mut m = x.clone();
+    m["tipo"] = json!("sonda");
+    m["instantaneo"] = json!(instantaneo);
+    m["t_envio"] = json!(agora_us());
+    Utf8Bytes::from(m.to_string())
 }
 
 // ------------------------------------------------------------------ thread de difusão
@@ -565,6 +625,7 @@ pub fn difundir(h: Arc<Hub>, rx: crossbeam_channel::Receiver<Entrada>) {
                 drop(ps);
                 h.prev_ver.send_replace(ver);
             }
+            Entrada::Sonda(v) => h.guardar_sondas(v),
             Entrada::Secoes(v) => { if let Some(m) = h.mapa.get() { m.aplicar(&v); } }
         } }
         if !lat.is_empty() { let mut l = h.med.lat_difusao.lock().unwrap(); for x in lat { l.por(x); } }
@@ -591,8 +652,11 @@ pub async fn servir(h: Arc<Hub>, pronto: impl FnOnce(std::net::SocketAddr)) -> a
         .route("/api/v1/nomes", get(rest_nomes))
         .route("/api/v1/curva/{topico}", get(rest_curva))
         .route("/api/v1/previsao/{topico}", get(rest_previsao))
+        .route("/api/v1/sonda", get(rest_sonda))
         .route("/api/v1/mapa/secoes", get(rest_mapa_secoes))
         .route("/api/v1/mapa/estado", get(rest_mapa_estado))
+        .route("/api/v1/pleitos", get(rest_pleitos))
+        .route("/consulta/{*caminho}", get(rest_consulta))
         // controle de velocidade do replay (só com --controle-replay; 404 sem ele)
         .route("/api/v1/replay", get(rest_replay))
         .route("/api/v1/replay/velocidade", post(rest_replay_velocidade))
@@ -703,6 +767,64 @@ async fn rest_nomes(State(h): State<Arc<Hub>>, cab: HeaderMap) -> Response {
     (cors(), [(header::ETAG, etag_v), cache], corpo).into_response()
 }
 
+/// Corpo e `ETag` do `pleitos.json`, relido só quando a data de modificação muda; `None` sem o arquivo (ou ilegível).
+fn pleitos_atual(h: &Hub) -> Option<(Bytes, String)> {
+    use sha2::Digest;
+    let p = h.op.pleitos.as_ref()?;
+    let modif = std::fs::metadata(p).and_then(|m| m.modified()).ok()?;
+    let mut c = h.pleitos.lock().unwrap();
+    if let Some((m, corpo, etag)) = c.as_ref() { if *m == modif { return Some((corpo.clone(), etag.clone())); } }
+    let corpo = std::fs::read(p).ok()?;
+    serde_json::from_slice::<Value>(&corpo).ok()?["pleitos"].as_array()?;
+    let etag = format!("\"{}\"", sha2::Sha256::digest(&corpo).iter().take(8).map(|b| format!("{b:02x}")).collect::<String>());
+    let corpo = Bytes::from(corpo);
+    *c = Some((modif, corpo.clone(), etag.clone()));
+    Some((corpo, etag))
+}
+
+/// `GET /api/v1/pleitos` (multipleito, 1.1): os pleitos do `ele-c.json` com a situação de cada um (`crate::pleitos`).
+async fn rest_pleitos(State(h): State<Arc<Hub>>, cab: HeaderMap) -> Response {
+    h.med.rest.fetch_add(1, Relaxed);
+    let Some((corpo, etag)) = pleitos_atual(&h) else {
+        return (StatusCode::NOT_FOUND, cors(), "{\"erro\":\"sem lista de pleitos (uv-servico --pleitos)\"}").into_response();
+    };
+    let etag_v = HeaderValue::from_str(&etag).unwrap_or(HeaderValue::from_static("\"0\""));
+    let cache = (header::CACHE_CONTROL, HeaderValue::from_static("public, max-age=60"));
+    if cab.get(header::IF_NONE_MATCH).and_then(|v| v.to_str().ok()).is_some_and(|v| v.split(',').any(|x| x.trim() == etag)) {
+        h.med.rest_304.fetch_add(1, Relaxed);
+        return (StatusCode::NOT_MODIFIED, cors(), [(header::ETAG, etag_v), cache]).into_response();
+    }
+    (cors(), [(header::ETAG, etag_v), cache], corpo).into_response()
+}
+
+/// `GET /consulta/<caminho>` (multipleito 1.1): os arquivos estáticos das séries de consulta (`--consulta <pasta>`), só
+/// `.json` com nome simples (letras, dígitos, `-`, `_`, `.` e `/`, sem `..`), com o `.json.gz` pré-comprimido para quem
+/// aceita gzip. Cache: 5 min no índice geral, 1 h nos arquivos de um pleito (imutáveis depois de gerados).
+async fn rest_consulta(State(h): State<Arc<Hub>>, Path(c): Path<String>, cab: HeaderMap) -> Response {
+    h.med.rest.fetch_add(1, Relaxed);
+    let nao = || (StatusCode::NOT_FOUND, cors(), "{\"erro\":\"nao_encontrado\"}").into_response();
+    let Some(raiz) = h.op.consulta.clone() else { return nao() };
+    let simples = !c.is_empty() && c.len() <= 200 && c.ends_with(".json")
+        && c.bytes().all(|b| b.is_ascii_alphanumeric() || b"-_./".contains(&b))
+        && c.split('/').all(|p| !p.is_empty() && !p.starts_with('.'));
+    if !simples { return nao(); }
+    let p = raiz.join(&c);
+    let gzip = cab.get(header::ACCEPT_ENCODING).and_then(|v| v.to_str().ok()).is_some_and(|v| v.contains("gzip"));
+    // série de um pleito em curso (marcador EM_CURSO do uv-serie --em-curso): refeita a cada poucos minutos, cache curto
+    let em_curso = c.split('/').next().is_some_and(|p| raiz.join(p).join("serie").join("EM_CURSO").exists());
+    let cache = HeaderValue::from_static(if em_curso { "public, max-age=30" } else if c == "indice.json" { "public, max-age=300" } else { "public, max-age=3600" });
+    let vary = (header::VARY, HeaderValue::from_static("Accept-Encoding"));
+    if gzip {
+        if let Ok(b) = tokio::fs::read(format!("{}.gz", p.display())).await {
+            return (cors(), [(header::CACHE_CONTROL, cache), (header::CONTENT_ENCODING, HeaderValue::from_static("gzip")), vary], b).into_response();
+        }
+    }
+    match tokio::fs::read(&p).await {
+        Ok(b) => (cors(), [(header::CACHE_CONTROL, cache), vary], b).into_response(),
+        Err(_) => nao(),
+    }
+}
+
 /// `GET /api/v1/mapa/secoes` (mapa das seções, `crate::mapa`): a lista das seções do catálogo, fixa por processo.
 async fn rest_mapa_secoes(State(h): State<Arc<Hub>>, cab: HeaderMap) -> Response {
     h.med.rest.fetch_add(1, Relaxed);
@@ -746,6 +868,14 @@ async fn rest_previsao(State(h): State<Arc<Hub>>, Path(t): Path<String>) -> Resp
         Some(p) => (cors(), [(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"))], p.corpo.clone()).into_response(),
         None => (StatusCode::NOT_FOUND, cors(), "{\"erro\":\"sem_previsao\"}").into_response(),
     }
+}
+
+async fn rest_sonda(State(h): State<Arc<Hub>>) -> Response {
+    h.med.rest.fetch_add(1, Relaxed);
+    let mut r = (StatusCode::OK, cors(), h.sondas_json().to_string()).into_response();
+    r.headers_mut().insert(header::CONTENT_TYPE, HeaderValue::from_static("application/json"));
+    r.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+    r
 }
 
 fn cab_replay() -> [(header::HeaderName, HeaderValue); 2] {
@@ -996,6 +1126,10 @@ async fn conexao_laco(h: &Arc<Hub>, tx: &mut futures::stream::SplitSink<WebSocke
     // previsão (etapa 8): versão da última mensagem `previsao` mandada por tópico inscrito
     let mut pv_rx = h.prev_ver.subscribe();
     let mut pv_env: HashMap<Arc<str>, u64> = HashMap::new();
+    // sondas (`op: sonda`, §4.9): ligadas nesta conexão e quantas guardadas já se viu (o contador do hub)
+    let mut sd_ligada = false;
+    let mut sd_rx = h.n_sondas.subscribe();
+    let mut sd_visto = 0u64;
     // mapa das seções (`op: mapa`, `crate::mapa`): nº de seções acesas já mandadas, mensagem pendente e o instante a
     // partir do qual pode sair a próxima (no máximo uma a cada `INTERVALO_MS`)
     let mut mp_rx: Option<watch::Receiver<usize>> = None;
@@ -1132,6 +1266,15 @@ async fn conexao_laco(h: &Arc<Hub>, tx: &mut futures::stream::SplitSink<WebSocke
                                 .map(|(_, f)| (f.ver, f.msg.clone())).collect();
                             for (v, m) in fs { fa_ver = fa_ver.max(v); enviar!(Message::Text(m)); }
                         }
+                        Some("sonda") => {
+                            // {"op":"sonda"} liga (manda a última, com `instantaneo: true`); {"op":"sonda","ligar":false} desliga
+                            sd_ligada = v["ligar"].as_bool().unwrap_or(true);
+                            sd_visto = *sd_rx.borrow_and_update();
+                            if sd_ligada {
+                                let ult = h.sondas.read().unwrap().back().cloned();
+                                if let Some(x) = ult { enviar!(Message::Text(msg_sonda(&x, true))); }
+                            }
+                        }
                         Some("mapa") => {
                             // `desde`: quantas seções acesas o cliente já tem (do `GET /api/v1/mapa/estado` ou das mensagens);
                             // `epoca` de outro processo: a numeração mudou, o cliente busca a fotografia de novo
@@ -1154,7 +1297,7 @@ async fn conexao_laco(h: &Arc<Hub>, tx: &mut futures::stream::SplitSink<WebSocke
                             for x in msgs { enviar!(Message::Text(Utf8Bytes::from(x))); }
                             mp_pode = tokio::time::Instant::now() + Duration::from_millis(crate::mapa::INTERVALO_MS);
                         }
-                        _ => { h.med.erros_cliente.fetch_add(1, Relaxed); enviar!(Message::Text(msg_erro("op_desconhecida", "ops: inscrever, cancelar, eventos, marcos, mapa"))); }
+                        _ => { h.med.erros_cliente.fetch_add(1, Relaxed); enviar!(Message::Text(msg_erro("op_desconhecida", "ops: inscrever, cancelar, eventos, marcos, mapa, sonda"))); }
                     }
                 }
             },
@@ -1240,6 +1383,18 @@ async fn conexao_laco(h: &Arc<Hub>, tx: &mut futures::stream::SplitSink<WebSocke
                     enviar!(Message::Text(m));
                 }
             }
+            Ok(()) = sd_rx.changed(), if sd_ligada => {
+                let n = *sd_rx.borrow_and_update();
+                // as novas desde a última vista (o contador do hub soma as sondas guardadas; no máximo as guardadas)
+                let novas = n.saturating_sub(sd_visto) as usize;
+                sd_visto = n;
+                let lista: Vec<Arc<Value>> = { let g = h.sondas.read().unwrap(); let k = g.len().min(novas); g.iter().skip(g.len() - k).cloned().collect() };
+                for x in lista {
+                    enviar!(Message::Text(msg_sonda(&x, false)));
+                    h.med.sondas_enviadas.fetch_add(1, Relaxed);
+                    if x["local"] == true { if let Some(t) = x["t_injecao"].as_u64() { h.med.lat_sonda.lock().unwrap().por(agora_us().saturating_sub(t) as f64 / 1e3); } }
+                }
+            }
             _ = ping.tick() => {
                 let desde = t0.elapsed().as_millis() as u64 - ultimo.load(Relaxed);
                 if desde > h.op.sem_pong.as_millis() as u64 { let m = fechar(h, tx, 1001, "sem_pong").await; return fim(&subs, m); }
@@ -1299,6 +1454,28 @@ mod testes {
         assert_eq!(v.iter().map(|p| p.ap).collect::<Vec<_>>(), vec![1, 4, 5]);
         assert_eq!(v[2].cand, vec![(22, 54.0)]);
         assert_eq!(segundos_iso("2026-10-04T19:54:46-03:00"), urna_velox::metricas::segundos("04/10/2026 19:54:46"));
+    }
+
+    /// B-082: depois de um reinício (retomada), uma publicação sem `totalizado_em` (hora da noite, `ultimo_bu`) entrava
+    /// na curva e as seguintes, com `totalizado_em` (relógio do sistema, M-003), continuavam nela: o eixo misturava os
+    /// dois relógios (19:12 da noite e 10:50 de agora) e a curva ficava espremida na beirada. Uma curva tem um relógio
+    /// só: o do sistema vale mais (a noite que veio antes sai); depois dele, a hora da noite é ignorada.
+    #[test]
+    fn curva_b082_um_relogio_so() {
+        let (h, _rx) = Hub::novo(Opcoes::padrao("127.0.0.1:0"));
+        let t: Arc<str> = "br-c0001".into();
+        let noite = |ap: u64| format!(r#"{{"ultimo_bu":"2026-10-04T19:12:09-03:00","secoes":{{"total":100,"apuradas":{ap}}},"cand":[{{"n":22,"pct":50.0}}]}}"#);
+        let sist = |hms: &str, ap: u64| format!(r#"{{"ultimo_bu":"2026-10-04T19:13:00-03:00","totalizado_em":"2026-10-30T{hms}.000-03:00","secoes":{{"total":100,"apuradas":{ap}}},"cand":[{{"n":22,"pct":50.0}}]}}"#);
+        h.amostrar_curva(&t, noite(10).as_bytes());
+        h.amostrar_curva(&t, sist("09:54:12", 11).as_bytes());
+        h.amostrar_curva(&t, sist("09:55:20", 12).as_bytes());
+        h.amostrar_curva(&t, noite(13).as_bytes());
+        h.amostrar_curva_superada("br-c0001-e006257.json", noite(14).as_bytes());
+        let m = h.curvas.lock().unwrap();
+        let v = &m[&t];
+        let dia = |p: &PontoCurva| (p.t / 86400.0).floor() as i64;
+        assert!(v.iter().all(|p| dia(p) == dia(&v[0])), "relógios misturados na curva: {:?}", v.iter().map(|p| (p.t, p.ap)).collect::<Vec<_>>());
+        assert_eq!(v.iter().map(|p| p.ap).collect::<Vec<_>>(), vec![11, 12]);
     }
 
     /// Rajada (retotalização do replay): as versões superadas fecham os pontos; a curva fica igual à de publicações
@@ -1467,6 +1644,84 @@ mod testes {
         let _ = tokio::time::timeout(Duration::from_secs(5), srv2).await;
     }
 
+    /// Multipleito (1.1): `GET /consulta/*` serve as séries de consulta (gzip pré-comprimido, cache) e só nomes simples.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn consulta_estatica_com_gzip() {
+        use std::io::Write as _;
+        let dir = std::env::temp_dir().join(format!("uv-difusao-consulta-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("3237/serie/t")).unwrap();
+        std::fs::write(dir.join("indice.json"), "{\"pleitos\":[{\"pleito\":3237}]}").unwrap();
+        std::fs::write(dir.join("3237/serie/t/rr-c0003.json"), "{\"v\":1}").unwrap();
+        let mut g = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        g.write_all(b"{\"v\":1}").unwrap();
+        std::fs::write(dir.join("3237/serie/t/rr-c0003.json.gz"), g.finish().unwrap()).unwrap();
+        let mut op = Opcoes::padrao("127.0.0.1:0");
+        op.consulta = Some(dir.clone());
+        let (h, rx) = Hub::novo(op);
+        { let h = h.clone(); std::thread::spawn(move || difundir(h, rx)); }
+        let (atx, arx) = tokio::sync::oneshot::channel();
+        let srv = tokio::spawn(servir(h.clone(), move |a| { let _ = atx.send(a); }));
+        let end = arx.await.unwrap().to_string();
+        let c = reqwest::Client::builder().no_gzip().build().unwrap();
+        let r = c.get(format!("http://{end}/consulta/indice.json")).send().await.unwrap();
+        assert_eq!(r.status().as_u16(), 200);
+        assert_eq!(r.headers()["cache-control"], "public, max-age=300");
+        let r = c.get(format!("http://{end}/consulta/3237/serie/t/rr-c0003.json")).header("Accept-Encoding", "gzip").send().await.unwrap();
+        assert_eq!(r.headers().get("content-encoding").map(|v| v.to_str().unwrap()), Some("gzip"));
+        let r = c.get(format!("http://{end}/consulta/3237/serie/t/rr-c0003.json")).send().await.unwrap();
+        assert_eq!(r.headers()["cache-control"], "public, max-age=3600");
+        assert_eq!(r.text().await.unwrap(), "{\"v\":1}");
+        std::fs::write(dir.join("3237/serie/EM_CURSO"), "").unwrap();
+        let r = c.get(format!("http://{end}/consulta/3237/serie/t/rr-c0003.json")).send().await.unwrap();
+        assert_eq!(r.headers()["cache-control"], "public, max-age=30", "série em curso: cache curto");
+        for ruim in ["/consulta/../segredo.json", "/consulta/3237/serie/t/rr-c0003.json.gz", "/consulta/.x.json", "/consulta/x%2F..%2Fy.json"] {
+            let r = c.get(format!("http://{end}{ruim}")).send().await.unwrap();
+            assert_eq!(r.status().as_u16(), 404, "{ruim}");
+        }
+        srv.abort();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Multipleito (1.1): `GET /api/v1/pleitos` serve o `pleitos.json` (ETag/304), relê quando o arquivo muda e dá 404
+    /// sem ele ou com um arquivo que não é a lista.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn rest_pleitos_relido_quando_muda() {
+        let dir = std::env::temp_dir().join(format!("uv-difusao-pleitos-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let arq = dir.join("pleitos.json");
+        let mut op = Opcoes::padrao("127.0.0.1:0");
+        op.pleitos = Some(arq.clone());
+        let (h, _rx) = Hub::novo(op);
+        let (atx, arx) = tokio::sync::oneshot::channel();
+        let srv = tokio::spawn(servir(h.clone(), move |a| { let _ = atx.send(a); }));
+        let end = arx.await.unwrap().to_string();
+        let c = reqwest::Client::new();
+        let url = format!("http://{end}/api/v1/pleitos");
+        assert_eq!(c.get(&url).send().await.unwrap().status().as_u16(), 404, "sem o arquivo");
+        std::fs::write(&arq, "{\"nada\":1}").unwrap();
+        assert_eq!(c.get(&url).send().await.unwrap().status().as_u16(), 404, "não é a lista");
+        let um = r#"{"versao":1,"pleitos":[{"codigo":3221}]}"#;
+        std::fs::write(&arq, um).unwrap();
+        let r = c.get(&url).send().await.unwrap();
+        assert_eq!(r.status().as_u16(), 200);
+        let etag = r.headers()["etag"].to_str().unwrap().to_string();
+        assert_eq!(r.text().await.unwrap(), um);
+        let r = c.get(&url).header("If-None-Match", &etag).send().await.unwrap();
+        assert_eq!(r.status().as_u16(), 304);
+        // o uv-coletor pleitos regrava o arquivo (rename): a resposta muda sem reiniciar o serviço
+        std::thread::sleep(Duration::from_millis(20));
+        let dois = r#"{"versao":1,"pleitos":[{"codigo":3221},{"codigo":3250}]}"#;
+        crate::pleitos::gravar_atomico(&arq, dois.as_bytes()).unwrap();
+        let r = c.get(&url).header("If-None-Match", &etag).send().await.unwrap();
+        assert_eq!(r.status().as_u16(), 200);
+        assert_eq!(r.text().await.unwrap(), dois);
+        h.desligar();
+        let _ = srv.await;
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// Protocolo de ponta a ponta num servidor de verdade (porta livre): REST com ETag/304, inscrição → instantâneo,
     /// atualização byte a byte, seq que só sobe, eventos, erros e limites (tópicos, taxa, clientes) e o desligamento.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -1561,5 +1816,104 @@ mod testes {
         let d = h.med.desconexoes.lock().unwrap().clone();
         assert_eq!((d.get("taxa"), d.get("mensagem_grande"), d.get("desligamento")), (Some(&1), Some(&1), Some(&3)), "{d:?}");
         assert_eq!(h.med.recusadas.load(Relaxed), 1);
+    }
+    /// Sonda que passou pelo motor e pela gravação até 0,8 ms antes de `agora` (injetada 1 ms antes).
+    fn corpo_sonda(id: u64, local: bool, agora: u64) -> Value {
+        let t_inj = agora - 1_000;
+        let mut s = crate::sonda::Sonda::nova(id, 1, t_inj);
+        if !local { s = crate::sonda::Sonda::remota("no-b", id, 1, t_inj, t_inj + 10); }
+        s.t_motor = Some(t_inj + 100);
+        s.t_gravacao = Some(t_inj + 200);
+        s.json()
+    }
+
+    /// Sondas na difusão: carimbo `t_difusao`, guarda só as últimas [`SONDAS_GUARDADAS`], contador por sonda.
+    #[test]
+    fn sondas_guardadas_e_rest() {
+        let (h, _rx) = Hub::novo(Opcoes::padrao("127.0.0.1:0"));
+        assert_eq!(h.sondas_json()["ultimas"], json!([]));
+        h.guardar_sondas(vec![]);
+        assert_eq!(*h.n_sondas.borrow(), 0, "lista vazia não acorda ninguém");
+        let t = agora_us();
+        h.guardar_sondas((1..=SONDAS_GUARDADAS as u64 + 5).map(|i| corpo_sonda(i, true, t)).collect());
+        assert_eq!(*h.n_sondas.borrow(), SONDAS_GUARDADAS as u64 + 5);
+        let j = h.sondas_json();
+        let u = j["ultimas"].as_array().unwrap();
+        assert_eq!(u.len(), SONDAS_GUARDADAS);
+        assert_eq!((u[0]["id"].as_u64(), u.last().unwrap()["id"].as_u64()), (Some(6), Some(SONDAS_GUARDADAS as u64 + 5)));
+        assert!(u[0]["t_difusao"].as_u64().unwrap() >= t);
+        assert_eq!(j["enviadas"], 0);
+        let m: Value = serde_json::from_str(msg_sonda(&u[0], true).as_str()).unwrap();
+        assert_eq!((m["tipo"].as_str(), m["instantaneo"].as_bool()), (Some("sonda"), Some(true)));
+        assert!(m["t_envio"].as_u64().unwrap() >= m["t_difusao"].as_u64().unwrap());
+        assert_eq!(h.saude_json()["sondas_enviadas"], 0);
+        assert_eq!(h.saude_json()["latencias_ms"]["sonda_envio"]["n"], 0);
+    }
+
+    /// `op: sonda` num servidor de verdade: só quem pede recebe; a inscrição traz a última (`instantaneo`); as novas
+    /// chegam na ordem; desligar para; as dos pares chegam marcadas e não entram na latência deste serviço; REST.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn sonda_pelo_websocket() {
+        let (h, rx) = Hub::novo(Opcoes::padrao("127.0.0.1:0"));
+        { let h = h.clone(); std::thread::spawn(move || difundir(h, rx)); }
+        h.entregar(Entrada::Arquivos(vec![("br-c0001-e006257.json".into(), Bytes::from_static(ARQ.as_bytes()), None)]));
+        let t = Instant::now();
+        while h.n_topicos() < 1 { assert!(t.elapsed() < Duration::from_secs(5)); tokio::time::sleep(Duration::from_millis(5)).await; }
+        let (atx, arx) = tokio::sync::oneshot::channel();
+        let srv = tokio::spawn(servir(h.clone(), move |a| { let _ = atx.send(a); }));
+        let end = arx.await.unwrap().to_string();
+        // sem nenhuma sonda ainda: ligar não manda nada
+        let (mut ws, _) = tokio_tungstenite::connect_async(format!("ws://{end}/ws")).await.unwrap();
+        let (mut outro, _) = tokio_tungstenite::connect_async(format!("ws://{end}/ws")).await.unwrap();
+        outro.send(M::text(r#"{"op":"inscrever","topicos":["br-c0001"]}"#)).await.unwrap();
+        prox(&mut outro, "instantaneo").await;
+        ws.send(M::text(r#"{"op":"sonda"}"#)).await.unwrap();
+        // ida e volta (um erro) para o `op: sonda` já estar valendo antes da entrega
+        ws.send(M::text(r#"{"op":"apagar"}"#)).await.unwrap();
+        prox(&mut ws, "erro").await;
+        h.entregar(Entrada::Sonda(vec![corpo_sonda(1, true, agora_us())]));
+        let (v, _) = prox(&mut ws, "sonda").await;
+        assert_eq!((v["id"].as_u64(), v["instantaneo"].as_bool(), v["local"].as_bool()), (Some(1), Some(false), Some(true)));
+        let ts: Vec<u64> = ["t_injecao", "t_motor", "t_gravacao", "t_difusao", "t_envio"].iter().map(|k| v[*k].as_u64().unwrap()).collect();
+        assert!(ts.windows(2).all(|w| w[0] <= w[1]), "carimbos em ordem: {ts:?}");
+        // duas de uma vez (e uma do par): todas, na ordem
+        h.entregar(Entrada::Sonda(vec![corpo_sonda(2, true, agora_us()), corpo_sonda(9, false, agora_us()), corpo_sonda(3, true, agora_us())]));
+        let ids: Vec<(u64, bool)> = { let mut v = vec![]; for _ in 0..3 { let (m, _) = prox(&mut ws, "sonda").await; v.push((m["id"].as_u64().unwrap(), m["local"].as_bool().unwrap())); } v };
+        assert_eq!(ids, vec![(2, true), (9, false), (3, true)]);
+        // nova conexão: a inscrição traz a última guardada com instantaneo = true
+        let (mut w2, _) = tokio_tungstenite::connect_async(format!("ws://{end}/ws")).await.unwrap();
+        w2.send(M::text(r#"{"op":"sonda"}"#)).await.unwrap();
+        let (v, _) = prox(&mut w2, "sonda").await;
+        assert_eq!((v["id"].as_u64(), v["instantaneo"].as_bool()), (Some(3), Some(true)));
+        // desligar: a próxima não chega a ws, chega a w2
+        ws.send(M::text(r#"{"op":"sonda","ligar":false}"#)).await.unwrap();
+        // garante que o desligar foi processado antes da próxima entrega (ida e volta por um erro)
+        ws.send(M::text(r#"{"op":"apagar"}"#)).await.unwrap();
+        prox(&mut ws, "erro").await;
+        h.entregar(Entrada::Sonda(vec![corpo_sonda(4, true, agora_us())]));
+        assert_eq!(prox(&mut w2, "sonda").await.0["id"], 4);
+        h.entregar(Entrada::Arquivos(vec![("br-c0001-e006257.json".into(), Bytes::from(ARQ.replace("\"seq\":99", "\"seq\":100")), None)]));
+        // ws está inscrita em nada: a próxima mensagem de ws não pode ser sonda; outro (só resultado) nunca vê sonda
+        h.entregar(Entrada::Estado(json!({"estado": "acompanhando", "encerrada": false, "pausa_429": {"ativa": false}, "conferencias": 0, "alertas": {}})));
+        loop {
+            let m = tokio::time::timeout(Duration::from_secs(5), ws.next()).await.unwrap().unwrap().unwrap();
+            if let M::Text(t) = m { let v: Value = serde_json::from_str(t.as_str()).unwrap(); assert_ne!(v["tipo"], "sonda"); if v["tipo"] == "estado" { break; } }
+        }
+        loop {
+            let m = tokio::time::timeout(Duration::from_secs(5), outro.next()).await.unwrap().unwrap().unwrap();
+            if let M::Text(t) = m { let v: Value = serde_json::from_str(t.as_str()).unwrap(); assert_ne!(v["tipo"], "sonda", "a página não pede sonda"); if v["tipo"] == "estado" { break; } }
+        }
+        // medidas: enviadas = 4 (ws) + 1 (w2, a 4; a instantânea não conta); latência só das locais (3 + 1)
+        assert_eq!(h.med.sondas_enviadas.load(Relaxed), 5);
+        assert_eq!(h.med.lat_sonda.lock().unwrap().n, 4);
+        // REST
+        let r = reqwest::get(format!("http://{end}/api/v1/sonda")).await.unwrap();
+        assert_eq!(r.headers()["cache-control"], "no-cache");
+        assert_eq!(r.headers()["access-control-allow-origin"], "*");
+        let j: Value = serde_json::from_str(&r.text().await.unwrap()).unwrap();
+        assert_eq!(j["ultimas"].as_array().unwrap().iter().map(|x| x["id"].as_u64().unwrap()).collect::<Vec<_>>(), vec![1, 2, 9, 3, 4]);
+        assert_eq!(j["enviadas"], 5);
+        h.desligar();
+        tokio::time::timeout(Duration::from_secs(5), srv).await.expect("servir não terminou").unwrap().unwrap();
     }
 }

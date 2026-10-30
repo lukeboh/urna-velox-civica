@@ -220,7 +220,7 @@ function medir() {
   const hb = document.querySelector('#feed-hist'), hi = hb?.querySelector('svg');
   out.menu = hb ? { botao: R(hb), icone: hi ? R(hi) : null } : null;
   // B-037: fundo da pílula dos termos (alfa da cor computada)
-  const ta = document.querySelector('.termos a');
+  const ta = document.querySelector('.termos-caixa'); // desde a 0.9.19 (M-013) a pílula é a caixa, não o link
   if (ta && visivel(ta)) {
     const c = getComputedStyle(ta).backgroundColor, m = /\/\s*([\d.]+)\s*\)$/.exec(c) || /rgba\([^)]*,\s*([\d.]+)\)$/.exec(c);
     out.termos = { cor: c, alfa: m ? +m[1] : (/^rgb\(/.test(c) || /^color\([^/]*\)$/.test(c) ? 1 : 0) };
@@ -331,7 +331,8 @@ async function conferirRolagem(p, tag) {
   for (const y of [700, 780]) {
     await p.evaluate((yy) => window.scrollTo(0, yy), y);
     await p.waitForTimeout(500);
-    const topo = await p.evaluate(() => (document.querySelector('.ident.preso .ident-barra')?.getBoundingClientRect().top ?? null));
+    // M-025: a barra da eleição presa no alto (antes, a barra do cartão de identificação da M-001)
+    const topo = await p.evaluate(() => (document.querySelector('.eleicao.presa .el-cartao')?.getBoundingClientRect().top ?? null));
     if (topo == null || topo < 2) { fotos.push(null); continue; }
     fotos.push(await p.screenshot({ clip: { x: 0, y: 0, width: p.viewportSize().width, height: Math.floor(topo) } }));
   }

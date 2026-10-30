@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""uv-ciclo-resumo — RESUMO.json de uma execução do ciclo diário (docs/CICLO_DIARIO.md).
+"""uv-ciclo-resumo — RESUMO.json de uma execução do ciclo diário (docs/operacao/CICLO_DIARIO.md).
 
   uv-ciclo-resumo.py <pasta-da-execução> <pasta-do-histórico>   → JSON na saída padrão
 

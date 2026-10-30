@@ -1,6 +1,6 @@
 [package]
 name = "uv-aquisicao"
-version = "1.0.12"
+version = "1.1.1"
 edition = "2021"
 description = "Urna Velox — fase de aquisição: coleta de BUs do TSE e entrega ao núcleo de totalização"
 license = "PolyForm-Noncommercial-1.0.0"
@@ -28,6 +28,14 @@ path = "src/bin/uv-carga.rs"
 [[bin]]
 name = "uv-painel"
 path = "src/bin/uv-painel.rs"
+
+[[bin]]
+name = "uv-sonda"
+path = "src/bin/uv-sonda.rs"
+
+[[bin]]
+name = "uv-serie"
+path = "src/bin/uv-serie.rs"
 
 [dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "fs", "io-util", "net", "signal"] }

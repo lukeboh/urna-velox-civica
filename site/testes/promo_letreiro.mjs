@@ -70,7 +70,8 @@ for (const [agora, quando, re] of [['2026-10-24T21:50:00', 'antes da 01h', /BUs 
     const c = await chip.boundingBox(), faixa = await p.locator('#faixa').boundingBox();
     const ritmo = await p.locator('.faixa .chip.ritmo').boundingBox();
     conferir(c.x >= faixa.x && c.x + c.width <= largura - 10, `${t}: o chip dentro da tela (${Math.round(c.x)}–${Math.round(c.x + c.width)} de ${largura})`);
-    conferir(!ritmo || c.x + c.width <= ritmo.x, `${t}: não cobre o BUs/min`);
+    // desde o B-077 (1.0.50) o ritmo vem antes da promo na faixa: vale não se sobreporem, de qualquer lado
+    conferir(!ritmo || c.x + c.width <= ritmo.x || ritmo.x + ritmo.width <= c.x, `${t}: não cobre o BUs/min`);
     // o selo AO VIVO fica parado e inteiro, à esquerda
     const selo = await p.locator('.faixa .chip.promo .vivo').boundingBox();
     conferir(selo && selo.x >= c.x && selo.x + selo.width <= c.x + c.width, `${t}: o selo AO VIVO inteiro dentro do chip`);

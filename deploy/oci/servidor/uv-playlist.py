@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""uv-playlist — Playlist de Replays das Eleições (antes "de Simulados"; M-004) (docs/CICLO_DIARIO.md, seção "Playlist de simulados").
+"""uv-playlist — Playlist de Replays das Eleições (antes "de Simulados"; M-004) (docs/operacao/CICLO_DIARIO.md, seção "Playlist de simulados").
 
 Roda só no nó A (o do uv-simulador), em 127.0.0.1:8090, atrás do Caddy (rotas /playlist e /api/v1/playlist).
 
-* Mostra a agenda dos simulados: o que está no ar, a fila prevista (início na hora fechada e previsão de fim) e as
-  seis opções votáveis (1º/2º turno de 2024 e 1º turno de 2026, cada um "tempo real" ou "mesma ordem, acelerado").
+* Mostra a agenda dos simulados: o que está no ar, a fila prevista (início na virada — hh:00 ou hh:30 — e previsão de fim) e as
+  oito opções votáveis (1º/2º turno de 2024 e 1º/2º turno de 2026, cada um "tempo real" ou "mesma ordem, acelerado";
+  o 2º turno de 2026 era a vitrine "espera" até 25/10/2026 e virou replay em 26/10/2026).
 * Um voto por IP (IPv6: por /64), que a pessoa pode trocar ou retirar. O mais votado é o próximo; empate: quem chegou
   primeiro a esse número de votos. Sem votos, vale a rotação de sempre (452 → 453 → 3220 → 3221, modos alternados).
   Os votos do simulado escolhido são consumidos quando ele entra na fila de execução.
@@ -13,6 +14,12 @@ Roda só no nó A (o do uv-simulador), em 127.0.0.1:8090, atrás do Caddy (rotas
   simulado mesmo que votos cheguem entre os dois pedidos.
 * Suspensão: de um dia antes até três dias depois de cada eleição oficial (`UV_ELEICOES_OFICIAIS`, padrão
   2026-10-25), nada é decidido nem votado; a página explica e diz quando a playlist volta.
+
+* **Multipleito (1.1, desde a 1.0.35):** os pleitos vêm do `pleitos.json` (`uv-coletor pleitos`, módulo `uv_pleitos`):
+  todo pleito encerrado com o acervo pronto é votável nos dois modos e entra na rotação (do mais antigo para o mais
+  novo); os agendados e em curso dão as datas da suspensão (ordinária: de um dia antes a três dias depois; suplementar
+  e consulta: só o dia da eleição até as 8 h do dia seguinte) e da "próxima eleição ao vivo", somadas às de
+  `UV_ELEICOES_OFICIAIS`. Sem o `pleitos.json`, vale a lista fixa de antes.
 
 Só biblioteca padrão do Python. Estado em `playlist.json` (gravação atômica); IPs guardados só como hash com sal.
 """
@@ -29,14 +36,13 @@ import time
 from datetime import date, datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import uv_pleitos  # noqa: E402  (ao lado deste arquivo, em /opt/urna-velox/bin)
+
 BR = timezone(timedelta(hours=-3))
 
-PLEITOS = {
-    '452': {'turno': 1, 'ano': 2024, 'data': '2024-10-06', 'eleicao': 'Eleições Municipais 2024', 'nome': '1º turno de 2024'},
-    '453': {'turno': 2, 'ano': 2024, 'data': '2024-10-27', 'eleicao': 'Eleições Municipais 2024', 'nome': '2º turno de 2024'},
-    '3220': {'turno': 1, 'ano': 2026, 'data': '2026-10-04', 'eleicao': 'Eleições Gerais 2026', 'nome': '1º turno de 2026'},
-    '3221': {'turno': 2, 'ano': 2026, 'data': '2026-10-25', 'eleicao': 'Eleições Gerais 2026', 'nome': '2º turno de 2026'},
-}
+# a lista fixa de antes da 1.1 (sem o pleitos.json); os dados de cada pleito vêm do uv_pleitos.Catalogo
+PLEITOS = uv_pleitos.FIXOS
 MODOS = {
     'cadencia': {'nome': 'Tempo real',
                  'descricao': 'Os boletins de urna entram no mesmo ritmo e na mesma ordem em que chegaram à Justiça '
@@ -44,18 +50,24 @@ MODOS = {
     'rapido': {'nome': 'Mesma ordem, acelerado',
                'descricao': 'Os boletins de urna entram na mesma ordem em que chegaram à Justiça Eleitoral, o mais '
                             'rápido que o Urna Velox consegue totalizar.'},
+    # multipleito (1.1): pleito em curso no ele-c.json, totalizado ao vivo (não é replay nem votável)
+    'aovivo': {'nome': 'Ao vivo',
+               'descricao': 'A apuração oficial acontecendo agora: os boletins de urna totalizados à medida que o TSE os publica.'},
     'espera': {'nome': 'Vitrine do 2º turno de 2026',
                'descricao': 'Os candidatos do 2º turno de 2026 já carregados, à espera da apuração oficial.'},
 }
-VOTAVEIS = [f'{p}-{m}' for p in ('452', '453', '3220') for m in ('cadencia', 'rapido')]
-SEQUENCIA = {'452': '453', '453': '3220', '3220': '3221', '3221': '452'}
-# duração até a apuração encerrar (s), enquanto não houver medida (CICLO_DIARIO.md, execuções de prova de 17/10)
-DURACAO_PADRAO = {'452-rapido': 480, '453-rapido': 120, '3220-rapido': 600,
-                  '452-cadencia': 14100, '453-cadencia': 7380, '3220-cadencia': 14100}
-MARGEM_RAPIDA_S = 180    # o vigia: encerrou a menos de 3 min da virada, fica para a hora seguinte
-MARGEM_ESPERA_S = 120    # o vigia, no 3221
+MODOS_REPLAY = ('cadencia', 'rapido')
+VOTAVEIS = [f'{p}-{m}' for p in ('452', '453', '3220', '3221') for m in MODOS_REPLAY]   # sem o pleitos.json
+# duração até a apuração encerrar (s), enquanto não houver medida (CICLO_DIARIO.md, execuções de prova de 17/10; o
+# 3221 como o 3220 no rápido e, na cadência, 4h15 a 1× (17:00–21:15) mais o fim acelerado)
+DURACAO_PADRAO = {'452-rapido': 480, '453-rapido': 120, '3220-rapido': 600, '3221-rapido': 600,
+                  '452-cadencia': 14100, '453-cadencia': 7380, '3220-cadencia': 14100, '3221-cadencia': 15900}
+MARGEM_RAPIDA_S = 180    # o vigia: encerrou a menos de 3 min da virada, fica para a virada seguinte
+MARGEM_ESPERA_S = 120    # o vigia, no modo espera
 PARTIDA_S = 60           # o uv-ciclo.sh espera o minuto seguinte ao disparo antes de subir
 MAX_FILA = 8
+PARTIDA_RAPIDA_S, SECOES_POR_S_RAPIDO = 120, 1000   # duração do rápido sem medida: 2 min + 1 s a cada mil seções
+CATALOGO = uv_pleitos.Catalogo()
 LIMITE_POSTS = (20, 600)  # por IP: 20 escritas a cada 10 min
 
 
@@ -63,10 +75,17 @@ def agora_br():
     return datetime.now(BR)
 
 
-def proxima_hora(t, margem_s):
-    base = t.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+# virada da rotação: a cada PASSO_MIN minutos redondos (desde a 1.0.35, 30 min: hh:00 e hh:30, pedido do Luciano em
+# 29/10/2026; antes, a hora fechada); UV_PASSO_MIN troca (60 = a hora fechada de antes)
+PASSO_MIN = int(os.environ.get('UV_PASSO_MIN', '30') or 30)
+
+
+def proxima_hora(t, margem_s, passo_min=None):
+    """A próxima virada (hh:00 ou hh:30 com o passo de 30 min) depois de `t`, com pelo menos `margem_s` de folga."""
+    p = passo_min or PASSO_MIN
+    base = t.replace(minute=(t.minute // p) * p, second=0, microsecond=0) + timedelta(minutes=p)
     if (base - t).total_seconds() < margem_s:
-        base += timedelta(hours=1)
+        base += timedelta(minutes=p)
     return base
 
 
@@ -80,26 +99,31 @@ def eleicoes_oficiais(texto=None):
     return sorted(r)
 
 
-def janelas_suspensao(eleicoes):
-    """[início, fim) de cada suspensão: 00:00 do dia anterior até 00:00 do 4º dia depois (3 dias depois inclusive)."""
+def janelas_suspensao(eleicoes, curtas=()):
+    """[início, fim) de cada suspensão, em ordem: eleição ordinária (`eleicoes`), de 00:00 do dia anterior até 00:00 do
+    4º dia depois (3 dias depois inclusive); suplementar ou consulta (`curtas`, multipleito), de 00:00 do dia até as
+    8 h do dia seguinte (a noite da apuração)."""
     r = []
     for d in eleicoes:
         ini = datetime(d.year, d.month, d.day, tzinfo=BR) - timedelta(days=1)
         fim = datetime(d.year, d.month, d.day, tzinfo=BR) + timedelta(days=4)
         r.append((ini, fim, d))
-    return r
+    for d in curtas:
+        ini = datetime(d.year, d.month, d.day, tzinfo=BR)
+        r.append((ini, ini + timedelta(hours=32), d))
+    return sorted(r)
 
 
-def suspensao_em(t, eleicoes):
-    for ini, fim, d in janelas_suspensao(eleicoes):
+def suspensao_em(t, eleicoes, curtas=()):
+    for ini, fim, d in janelas_suspensao(eleicoes, curtas):
         if ini <= t < fim:
             return ini, fim, d
     return None
 
 
-def fora_da_suspensao(t, eleicoes):
+def fora_da_suspensao(t, eleicoes, curtas=()):
     """O instante, ou o fim da suspensão em que ele cai (a playlist retoma na virada desse dia)."""
-    s = suspensao_em(t, eleicoes)
+    s = suspensao_em(t, eleicoes, curtas)
     return s[1] if s else t
 
 
@@ -113,20 +137,23 @@ def inicio_apuracao(texto=None):
 DURACAO_AO_VIVO = timedelta(hours=15)   # a noite da apuração ao vivo: das 17h às 8h do dia seguinte
 
 
-def proxima_ao_vivo(agora, eleicoes, hora=None):
+def proxima_ao_vivo(agora, eleicoes, hora=None, catalogo=None):
     """A próxima eleição oficial com totalização ao vivo (ou a que está acontecendo agora): M-004, a contagem
     regressiva da página. `ao_vivo` = a noite da apuração já começou e ainda não acabou."""
     h, m = hora or inicio_apuracao()
-    for d in eleicoes:
+    for d in sorted(set(eleicoes)):
         ini = datetime(d.year, d.month, d.day, h, m, tzinfo=BR)
         fim = ini + DURACAO_AO_VIVO
         if agora < fim:
-            return {'eleicao': d.isoformat(), 'nome': nome_eleicao_oficial(d), 'inicio': iso(ini), 'fim': iso(fim),
+            return {'eleicao': d.isoformat(), 'nome': nome_eleicao_oficial(d, catalogo), 'inicio': iso(ini), 'fim': iso(fim),
                     'ao_vivo': ini <= agora}
     return None
 
 
-def nome_eleicao_oficial(d):
+def nome_eleicao_oficial(d, catalogo=None):
+    for dia, _ord, nome in (catalogo or CATALOGO).ao_vivo():
+        if dia == d:
+            return nome
     for info in PLEITOS.values():
         if info['data'] == d.isoformat():
             return f"{info['turno']}º turno das {info['eleicao']}"
@@ -145,15 +172,24 @@ def chave_ip(ip_txt, sal):
     return hashlib.sha256((sal + '|' + norm).encode()).hexdigest()[:32]
 
 
-def descrever(item):
+def descrever(item, catalogo=None):
+    cat = catalogo or CATALOGO
     p, m = item.split('-', 1)
-    info = PLEITOS[p]
+    info = cat.info(p) or {'turno': 1, 'ano': None, 'eleicao': f'pleito {p}', 'nome': f'pleito {p}', 'data': None, 'tipo': 'outra'}
+    ordinaria = info.get('tipo') == 'ordinaria'
     return {
         'item': item, 'pleito': p, 'modo': m, 'turno': info['turno'], 'ano': info['ano'],
-        'eleicao': info['eleicao'], 'nome': info['nome'], 'titulo': f"{info['turno']}º turno · {info['ano']}",
+        'eleicao': info['eleicao'], 'nome': info['nome'],
+        'titulo': f"{info['turno']}º turno · {info['ano']}" if ordinaria else info['nome'],
+        'tipo': info.get('tipo'),
         'data_eleicao': info['data'], 'modo_nome': MODOS[m]['nome'], 'modo_descricao': MODOS[m]['descricao'],
-        'votavel': item in VOTAVEIS,
+        'votavel': item in votaveis(cat),
     }
+
+
+def votaveis(catalogo=None):
+    """Os itens votáveis (`<pleito>-<modo>`): os pleitos da rotação nos dois modos, do mais antigo para o mais novo."""
+    return [f'{p}-{m}' for p in (catalogo or CATALOGO).replays() for m in MODOS_REPLAY]
 
 
 def iso(t):
@@ -171,10 +207,11 @@ def ler_json(p):
 class Playlist:
     """Votos, decisões e agenda. Toda mudança de estado passa pelo `trava` e é gravada em `caminho` na hora."""
 
-    def __init__(self, ciclo_dir, caminho=None, eleicoes=None, relogio=agora_br):
+    def __init__(self, ciclo_dir, caminho=None, eleicoes=None, relogio=agora_br, catalogo=None):
         self.c = ciclo_dir
         self.caminho = caminho or os.path.join(ciclo_dir, 'playlist.json')
-        self.eleicoes = eleicoes if eleicoes is not None else eleicoes_oficiais()
+        self.cat = catalogo or CATALOGO
+        self._eleicoes = eleicoes if eleicoes is not None else eleicoes_oficiais()
         self.relogio = relogio
         self.trava = threading.Lock()
         self.posts = {}
@@ -187,6 +224,35 @@ class Playlist:
             'tocados': e.get('tocados') or [],      # últimas decisões, para a página
         }
         self._gravar()
+
+    # ------------------------------------------------------------------ catálogo (multipleito)
+    @property
+    def eleicoes(self):
+        """Datas das eleições ordinárias com noite ao vivo: as de UV_ELEICOES_OFICIAIS e as do pleitos.json."""
+        return sorted(set(self._eleicoes) | {d for d, ordi, _ in self.cat.ao_vivo() if ordi})
+
+    @property
+    def curtas(self):
+        """Datas das suplementares e consultas com noite ao vivo (do pleitos.json): suspensão curta."""
+        return sorted({d for d, ordi, _ in self.cat.ao_vivo() if not ordi} - set(self.eleicoes))
+
+    def votaveis(self):
+        return votaveis(self.cat)
+
+    def descrever(self, item):
+        return descrever(item, self.cat)
+
+    def duracao_padrao(self, item):
+        if item in DURACAO_PADRAO:
+            return DURACAO_PADRAO[item]
+        p, m = item.split('-', 1)
+        i = self.cat.info(p) or {}
+        if m == 'cadencia':
+            return int(i.get('tempo_cadencia_s') or 13500) + 600
+        return PARTIDA_RAPIDA_S + int((i.get('secoes') or 100000) / SECOES_POR_S_RAPIDO)
+
+    def seguinte(self, p):
+        return self.cat.seguinte(p) or '452'
 
     # ------------------------------------------------------------------ estado em disco
     def _gravar(self):
@@ -216,14 +282,14 @@ class Playlist:
     # ------------------------------------------------------------------ regras
     def duracao(self, item):
         med = self.e['duracoes'].get(item) or []
-        return int(statistics.median(med[-5:])) if med else DURACAO_PADRAO.get(item, 3600)
+        return int(statistics.median(med[-5:])) if med else self.duracao_padrao(item)
 
     def contagem(self, excluir=None):
         """item -> (votos, instante em que chegou a essa contagem)."""
-        r = {}
+        r, vot = {}, set(self.votaveis())
         for v in self.e['votos'].values():
             it = v.get('item')
-            if it not in VOTAVEIS or it == excluir:
+            if it not in vot or it == excluir:
                 continue
             n, t = r.get(it, (0, ''))
             r[it] = (n + 1, max(t, v.get('em', '')))
@@ -231,22 +297,19 @@ class Playlist:
 
     def ranking(self, excluir=None):
         """Votados, do mais para o menos votado; empate: quem chegou antes à contagem; depois, a ordem da lista."""
-        c = self.contagem(excluir)
-        return sorted(c, key=lambda it: (-c[it][0], c[it][1], VOTAVEIS.index(it)))
+        c, vot = self.contagem(excluir), self.votaveis()
+        return sorted(c, key=lambda it: (-c[it][0], c[it][1], vot.index(it)))
 
-    @staticmethod
-    def padrao_seguinte(pleito, hist):
+    def padrao_seguinte(self, pleito, hist):
         """A rotação de sempre (sem votos): pleito seguinte da sequência, modo alternado em relação à última vez."""
-        p = SEQUENCIA.get(str(pleito), '452')
-        if p == '3221':
-            return p, 'espera'
+        p = self.seguinte(pleito)
         ult = hist.get(p)
         return p, ('rapido' if ult == 'cadencia' else 'cadencia' if ult == 'rapido' else 'rapido')
 
     def no_ar(self):
         pa, rot = self._params(), self._rotacao()
         p, m = pa.get('pleito'), pa.get('modo')
-        if p not in PLEITOS or m not in MODOS:
+        if not self.cat.info(p) or m not in MODOS:
             return None
         at, pr = rot.get('atual') or {}, rot.get('proximo') or {}
         try:
@@ -254,7 +317,7 @@ class Playlist:
         except (TypeError, ValueError):
             inicio = None
         saude = ler_json(os.path.join(self.c, 'atual', 'saida', 'saude.json')) or {}
-        encerrada = bool((saude.get('apuracao') or {}).get('encerrada')) or (p == '3221')
+        encerrada = bool((saude.get('apuracao') or {}).get('encerrada')) or (m == 'espera')
         conc = None
         if at.get('concluido') and at.get('concluido_em'):
             try:
@@ -270,8 +333,8 @@ class Playlist:
         item = f'{p}-{m}'
         prev_fim = conc
         if prev_fim is None and inicio is not None:
-            prev_fim = inicio + timedelta(seconds=(3600 - PARTIDA_S if p == '3221' else self.duracao(item)))
-        d = descrever(item)
+            prev_fim = inicio + timedelta(seconds=(PASSO_MIN * 60 - PARTIDA_S if m == 'espera' else self.duracao(item)))
+        d = self.descrever(item)
         exec_id = None
         try:
             with open(os.path.join(self.c, 'atual', 'id'), encoding='utf-8') as f:
@@ -301,7 +364,7 @@ class Playlist:
             else:
                 fim = datetime.fromisoformat(no_ar['previsao_fim']) if no_ar.get('previsao_fim') else agora
                 fim = max(fim, agora)
-                inicio = proxima_hora(fim, MARGEM_ESPERA_S if ult == '3221' else MARGEM_RAPIDA_S)
+                inicio = proxima_hora(fim, MARGEM_ESPERA_S if no_ar['modo'] == 'espera' else MARGEM_RAPIDA_S)
         else:
             ult, inicio = '3221', proxima_hora(agora, MARGEM_RAPIDA_S)
         cont = self.contagem(excluir=no_ar['item'] if no_ar else None)
@@ -314,14 +377,14 @@ class Playlist:
             else:
                 p, m = self.padrao_seguinte(ult, hist)
                 it, origem = f'{p}-{m}', 'rotacao'
-            inicio = fora_da_suspensao(inicio, self.eleicoes)
+            inicio = fora_da_suspensao(inicio, self.eleicoes, self.curtas)
             if m == 'espera':
                 fim = proxima_hora(inicio + timedelta(seconds=PARTIDA_S), MARGEM_ESPERA_S)
                 prox = fim
             else:
                 fim = inicio + timedelta(seconds=PARTIDA_S + self.duracao(it))
                 prox = proxima_hora(fim, MARGEM_RAPIDA_S)
-            d = descrever(it)
+            d = self.descrever(it)
             d.update({'posicao': len(r) + 1, 'origem': origem, 'votos': cont.get(it, (0, ''))[0] if origem == 'votos' else 0,
                       'inicio_previsto': iso(inicio), 'fim_previsto': iso(fim),
                       'duracao_estimada_s': None if m == 'espera' else self.duracao(it)})
@@ -334,15 +397,15 @@ class Playlist:
 
     def suspensao(self, agora=None):
         agora = agora or self.relogio()
-        s = suspensao_em(agora, self.eleicoes)
+        s = suspensao_em(agora, self.eleicoes, self.curtas)
         if not s:
-            prox = [j for j in janelas_suspensao(self.eleicoes) if j[0] > agora]
+            prox = [j for j in janelas_suspensao(self.eleicoes, self.curtas) if j[0] > agora]
             if not prox:
                 return None, None
             ini, fim, d = prox[0]
-            return None, {'eleicao': d.isoformat(), 'nome': nome_eleicao_oficial(d), 'de': iso(ini), 'ate': iso(fim)}
+            return None, {'eleicao': d.isoformat(), 'nome': nome_eleicao_oficial(d, self.cat), 'de': iso(ini), 'ate': iso(fim)}
         ini, fim, d = s
-        return {'eleicao': d.isoformat(), 'nome': nome_eleicao_oficial(d), 'de': iso(ini), 'ate': iso(fim),
+        return {'eleicao': d.isoformat(), 'nome': nome_eleicao_oficial(d, self.cat), 'de': iso(ini), 'ate': iso(fim),
                 'retoma_em': iso(fim)}, None
 
     def publico(self, chave=None):
@@ -352,15 +415,15 @@ class Playlist:
             no_ar = self.no_ar()
             cont = self.contagem()
             opcoes = []
-            for it in VOTAVEIS:
-                d = descrever(it)
+            for it in self.votaveis():
+                d = self.descrever(it)
                 d.update({'votos': cont.get(it, (0, ''))[0], 'no_ar': bool(no_ar and no_ar['item'] == it),
                           'duracao_estimada_s': self.duracao(it)})
                 opcoes.append(d)
             meu = self.e['votos'].get(chave, {}).get('item') if chave else None
             return {
                 'agora': iso(agora), 'suspensao': susp, 'proxima_suspensao': prox_susp,
-                'proxima_ao_vivo': proxima_ao_vivo(agora, self.eleicoes),
+                'proxima_ao_vivo': proxima_ao_vivo(agora, self.eleicoes + self.curtas, catalogo=self.cat),
                 'no_ar': no_ar, 'fila': [] if susp else self.fila(agora, no_ar), 'opcoes': opcoes,
                 'meu_voto': meu, 'total_votos': sum(n for n, _ in cont.values()),
                 'tocados': self.e['tocados'][-6:][::-1],
@@ -384,13 +447,13 @@ class Playlist:
         """(status, mensagem). Um voto por IP: votar de novo troca o voto; item None retira."""
         agora = self.relogio()
         with self.trava:
-            if suspensao_em(agora, self.eleicoes):
+            if suspensao_em(agora, self.eleicoes, self.curtas):
                 return 423, 'A playlist está suspensa durante o período da eleição oficial.'
             if item is None:
                 self.e['votos'].pop(chave, None)
                 self._gravar()
                 return 200, 'Voto retirado.'
-            if item not in VOTAVEIS:
+            if item not in self.votaveis():
                 return 400, 'Replay desconhecido.'
             na = self.no_ar()
             if na and na['item'] == item:
@@ -408,11 +471,11 @@ class Playlist:
         with self.trava:
             if exec_id in self.e['decisoes']:
                 return dict(self.e['decisoes'][exec_id], repetida=True)
-            s = suspensao_em(agora, self.eleicoes)
+            s = suspensao_em(agora, self.eleicoes, self.curtas)
             if s:
                 return {'suspensa': True, 'ate': iso(s[1]), 'eleicao': s[2].isoformat()}
             item_atual = f'{pleito}-{modo}'
-            if item_atual in VOTAVEIS and inicio and concluido_em:
+            if item_atual in self.votaveis() and inicio and concluido_em:
                 try:
                     dur = (datetime.fromisoformat(concluido_em) - datetime.fromisoformat(inicio)).total_seconds()
                     if 0 < dur < 12 * 3600:
@@ -439,7 +502,7 @@ class Playlist:
             self.e['decisoes'][exec_id] = dec
             for k in sorted(self.e['decisoes'], key=lambda k: self.e['decisoes'][k].get('em', ''))[:-50]:
                 del self.e['decisoes'][k]
-            self.e['tocados'] = (self.e['tocados'] + [dict(descrever(f'{p}-{m}'), origem=origem, votos=votos,
+            self.e['tocados'] = (self.e['tocados'] + [dict(self.descrever(f'{p}-{m}'), origem=origem, votos=votos,
                                                            decidido_em=iso(agora))])[-20:]
             self._gravar()
             return dict(dec)
@@ -537,7 +600,7 @@ def criar_tratador(pl, html_path, segredo):
                 if not segredo or not hmac.compare_digest(dado.encode(), segredo.encode()):
                     return self.responder(403, {'erro': 'proibido'})
                 c = self.corpo_json()
-                if not isinstance(c, dict) or not c.get('id') or str(c.get('pleito')) not in PLEITOS:
+                if not isinstance(c, dict) or not c.get('id') or not pl.cat.info(str(c.get('pleito'))):
                     return self.responder(400, {'erro': 'pedido inválido'})
                 return self.responder(200, pl.decidir(str(c['id']), str(c['pleito']), str(c.get('modo') or ''),
                                                       c.get('inicio'), c.get('concluido_em'), c.get('no')))
@@ -563,8 +626,9 @@ def main():
     ap.add_argument('--ciclo', default='/srv/urna-velox/ciclo')
     ap.add_argument('--escuta', default='127.0.0.1:8090')
     ap.add_argument('--html', default=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uv-playlist.html'))
+    ap.add_argument('--pleitos', default=None, help=f'pleitos.json (padrão: $UV_PLEITOS ou {uv_pleitos.CAMINHO})')
     a = ap.parse_args()
-    pl = Playlist(a.ciclo)
+    pl = Playlist(a.ciclo, catalogo=uv_pleitos.Catalogo(a.pleitos))
     segredo = ler_segredo()
     if not segredo:
         print('uv-playlist: sem segredo (/etc/urna-velox/playlist.segredo): as decisões ficam desligadas; '
@@ -572,8 +636,9 @@ def main():
     host, _, porta = a.escuta.rpartition(':')
     srv = ThreadingHTTPServer((host or '127.0.0.1', int(porta)), criar_tratador(pl, a.html, segredo))
     srv.daemon_threads = True
-    print(f'uv-playlist em http://{a.escuta} (ciclo {a.ciclo}; eleições oficiais: '
-          f"{', '.join(d.isoformat() for d in pl.eleicoes)})", file=sys.stderr, flush=True)
+    print(f'uv-playlist em http://{a.escuta} (ciclo {a.ciclo}; pleitos: {pl.cat.caminho}'
+          f"{'' if pl.cat.tem_lista() else ' (ausente: lista fixa)'}, {len(pl.votaveis()) // 2} na rotação; eleições ao vivo: "
+          f"{', '.join(d.isoformat() for d in pl.eleicoes + pl.curtas)})", file=sys.stderr, flush=True)
     srv.serve_forever()
 
 

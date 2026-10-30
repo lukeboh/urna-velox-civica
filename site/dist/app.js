@@ -64,6 +64,7 @@ var Conexao = class {
       this.#mandarInscricoes([...this.topicos]);
       this.#mandar({ op: "eventos", escopo: "uf" });
       this.#mandar({ op: "marcos", escopo: "uf", faltam: this.faltam });
+      this.#mandar({ op: "sonda" });
       if (this.mapa) this.#mandar({ op: "mapa", ...this.mapa() });
     };
     ws.onmessage = (e) => {
@@ -405,7 +406,23 @@ var Hodometro = class {
       if (!x.classList.contains("vazio")) break;
       w += x.getBoundingClientRect().width;
     }
-    if (!(this.vis.offsetWidth > 0)) return;
+    if (!(this.vis.offsetWidth > 0)) {
+      this.medido = false;
+      if (!this.tentando) {
+        this.tentando = true;
+        requestAnimationFrame(() => {
+          this.tentando = false;
+          if (!this.medido && this.vis.offsetWidth > 0) this.#deslizar();
+        });
+      }
+      if (!this.olho && typeof ResizeObserver === "function") {
+        this.olho = new ResizeObserver(() => {
+          if (!this.medido && this.vis.offsetWidth > 0) this.#deslizar();
+        });
+        this.olho.observe(this.vis);
+      }
+      return;
+    }
     const esc = this.vis.offsetWidth / (this.vis.getBoundingClientRect().width || this.vis.offsetWidth);
     w = Math.round(w * esc * 100) / 100;
     if (this.op.centro) w /= 2;
@@ -539,8 +556,10 @@ var Curva = class {
     this.sujo = true;
   }
   /** Pontos do servidor (substituem os que houver antes do último deles). */
-  semear(pontos) {
+  /** `relogio`: 'sistema' ou 'noite' (B-082: uma curva tem um relógio só; o do sistema manda); sem ele, sem conferência. */
+  semear(pontos, relogio) {
     if (!pontos.length) return;
+    if (!this.#mesmoRelogio(relogio)) return;
     const fim = pontos[pontos.length - 1].t;
     this.pontos = [...pontos, ...this.pontos.filter((p) => p.t > fim)];
     this.reposicionar(true);
@@ -557,8 +576,21 @@ var Curva = class {
     this.reposicionar(false);
   }
   /** t = segundos com fração (relógio do sistema, M-003), s = % seções, cand = [[n, pct], …] */
-  ponto(t, s, cand) {
+  #mesmoRelogio(relogio) {
+    if (!relogio || !this.relogio || relogio === this.relogio) {
+      if (relogio) this.relogio = relogio;
+      return true;
+    }
+    if (relogio === "sistema") {
+      this.pontos = [];
+      this.relogio = relogio;
+      return true;
+    }
+    return false;
+  }
+  ponto(t, s, cand, relogio) {
     if (t == null) return;
+    if (!this.#mesmoRelogio(relogio)) return;
     const u = this.pontos[this.pontos.length - 1];
     if (u && t < u.t) return;
     const p = { t, s, c: new Map(cand.filter((x) => x[1] != null)) };
@@ -671,7 +703,10 @@ var Feed = class {
     raiz.addEventListener("pointerleave", (e) => {
       if (e.pointerType === "mouse") pausar("mouse", false);
     });
-    raiz.addEventListener("focusin", () => pausar("foco", true));
+    this.pausar = pausar;
+    raiz.addEventListener("focusin", (e) => {
+      if (e.target.matches?.(":focus-visible")) pausar("foco", true);
+    });
     raiz.addEventListener("focusout", () => pausar("foco", false));
     raiz.addEventListener("pointerdown", (e) => {
       if (e.pointerType === "mouse") return;
@@ -687,10 +722,29 @@ var Feed = class {
   get largura() {
     return this.trilho.clientWidth;
   }
+  /** B-089: o detalhe de uma notícia fechou — o letreiro volta a andar (sai o foco e a pausa do toque; no aparelho de
+   *  toque, também a do "mouse", que lá não existe). */
+  retomar() {
+    clearTimeout(this.tToque);
+    this.pausar("toque", false);
+    this.pausar("foco", false);
+    if (window.matchMedia?.("(hover: none)").matches) this.pausar("mouse", false);
+    const a = document.activeElement;
+    if (a && this.raiz.contains(a) && !a.matches?.(":focus-visible")) a.blur();
+  }
   /**
    * Acrescenta (ou atualiza, pelo id) um item. `it` = { id, ic, texto, t, detalhe, fixo, hod, anunciar, cls }.
    * `fixo`: item de largura fixa cujo conteúdo muda (ex.: eleitores que faltam), atualizado no lugar.
    */
+  /** Tira todos os itens (consulta de um pleito: o slider voltou no tempo). */
+  limpar() {
+    for (const i of this.itens) i.el.remove();
+    this.itens = [];
+    this.porId.clear();
+    this.atual = 0;
+    this.filaAnuncio = [];
+    this.vazio.style.opacity = "";
+  }
   por(it) {
     const ja = this.porId.get(it.id);
     if (ja) {
@@ -732,9 +786,10 @@ var Feed = class {
    * fecham o espaço; à vista, só quando passar pela borda esquerda. */
   #limitar() {
     const W = this.largura;
+    const max = Math.min(MAX, Math.max(16, Math.ceil(W / 25)));
     let vivos = this.itens.filter((x) => !x.sair).length;
     for (const v of this.itens) {
-      if (vivos <= MAX) break;
+      if (vivos <= max) break;
       if (v.fixo || v.sair) continue;
       vivos--;
       if (v.x > this.offset + W) {
@@ -839,8 +894,10 @@ var Folha = class {
     this.raiz.setAttribute("aria-hidden", "false");
   }
   fechar() {
+    const estava = this.raiz.classList.contains("aberta");
     this.raiz.classList.remove("aberta");
     this.raiz.setAttribute("aria-hidden", "true");
+    if (estava) this.aoFechar?.();
   }
 };
 
@@ -1146,9 +1203,9 @@ function itemConfirmou(N, circ, cargo, sit, emUv, geracao, cmp, anc) {
   const sim = anc && (anc.x !== 1 || Math.abs(cmp.tse - (segundosHora(geracao) ?? cmp.tse)) > 3600);
   const o = sit === "2t" ? "o 2º turno" : "o matematicamente";
   const tseTxt = sim ? `${hhmm(geracao)} do TSE (≙ ${horaDe(cmp.tse).slice(0, 5)} aqui)` : hhmm(geracao);
-  const linhas = [["Urna Velox (relógio do sistema)", hora(emUv)], ["TSE (arquivo gerado às, relógio do TSE)", hora(geracao)]];
-  if (sim) linhas.push(["TSE no relógio do sistema", `${horaDe(cmp.tse)} — a noite do TSE ${anc.x !== 1 ? `a ${String(anc.x).replace(".", ",")}× ` : ""}a partir do início deste replay`]);
-  linhas.push(
+  const linhas2 = [["Urna Velox (relógio do sistema)", hora(emUv)], ["TSE (arquivo gerado às, relógio do TSE)", hora(geracao)]];
+  if (sim) linhas2.push(["TSE no relógio do sistema", `${horaDe(cmp.tse)} — a noite do TSE ${anc.x !== 1 ? `a ${String(anc.x).replace(".", ",")}× ` : ""}a partir do início deste replay`]);
+  linhas2.push(
     ["Antecedência do Urna Velox", `${ante}${sim && anc.x !== 1 ? ` (${distancia(cmp.noite)} no tempo da noite)` : ""}`],
     ["Como se compara", "o arquivo de resultado do TSE desta disputa (buscado a cada 30–60 s) passou a mostrar a mesma situação"]
   );
@@ -1160,7 +1217,7 @@ function itemConfirmou(N, circ, cargo, sit, emUv, geracao, cmp, anc) {
     destaque: true,
     texto: `TSE confirmou ${o} às ${tseTxt} — Urna Velox às ${hhmm(emUv)}, ${ante} · ${d}`,
     anunciar: `${d}: o TSE confirmou ${o} às ${tseTxt}; o Urna Velox às ${hhmm(emUv)}, ${ante}.`,
-    detalhe: { titulo: `TSE confirmou ${o} — ${d}`, linhas }
+    detalhe: { titulo: `TSE confirmou ${o} — ${d}`, linhas: linhas2 }
   };
 }
 function segundosHora(s) {
@@ -1267,6 +1324,17 @@ var Historico = class {
     this.botao.setAttribute("aria-expanded", "false");
   }
   /** Guarda um item do feed (os de `cat` definida). Repetido pelo id: atualiza o texto. */
+  /** Tira todos os itens (consulta de um pleito: o slider voltou no tempo). */
+  limpar() {
+    for (const x of this.itens) x.row?.remove();
+    this.itens = [];
+    this.porId.clear();
+    this.vis = [];
+    this.atual = -1;
+    this.conta = /* @__PURE__ */ new Map();
+    this.contaSuja = true;
+    this.sujo = true;
+  }
   por(it) {
     if (!it.cat) return;
     const ja = this.porId.get(it.id);
@@ -1531,6 +1599,7 @@ function coresDaDisputa(cands) {
 var VELOCIDADES = [1, 2, 5, 10, 20, 30, 60, 120, 180, 240, 300];
 var hms = (t) => new Date(t * 1e3).toISOString().slice(11, 19);
 var hm = (t) => new Date(t * 1e3).toISOString().slice(11, 16);
+var MARCA_MIN = 26;
 var vezes = (x) => `${String(x).replace(".", ",")}×`;
 async function postar(caminho, corpo) {
   const r = await fetch(caminho, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo) });
@@ -1572,11 +1641,10 @@ var Player = class {
     this.el.setAttribute("aria-label", "Controle do replay");
     this.veu = el("div", "pl-veu", [el("div", "pl-veu-txt", "")]);
     this.veu.hidden = true;
-    const span = info.fim - info.inicio;
-    for (let h = Math.ceil(info.inicio / 3600) * 3600; h < info.fim; h += 3600) {
-      const m = el("span", null, hm(h).slice(0, 2));
-      m.style.left = `${(h - info.inicio) / span * 100}%`;
-      this.marcas.append(m);
+    this.desenharMarcas();
+    try {
+      new ResizeObserver(() => this.desenharMarcas()).observe(this.marcas);
+    } catch {
     }
     this.play.addEventListener("click", () => this.velocidade(this.info.acelerar === 0 ? this.ultima : 0));
     this.vel.addEventListener("change", () => this.velocidade(+this.vel.value));
@@ -1633,6 +1701,30 @@ var Player = class {
     else if (b) e = `avançando até ${hm(b.alvo)} · ${Math.round(100 * Math.min(1, Math.max(0, (t - b.de) / Math.max(1, b.alvo - b.de))))}%`;
     else if (this.info.acelerar === 0) e = "pausado";
     if (this.estado.textContent !== e) this.estado.textContent = e;
+  }
+  /** B-083: marcas de hora sem encostar umas nas outras: o menor passo (1, 2, 3, 6, 12 ou 24 h) com pelo menos
+   *  MARCA_MIN px entre elas; numa noite de mais de um dia, a virada do dia aparece como "dd/mm". */
+  desenharMarcas() {
+    const { inicio, fim } = this.info;
+    const span = fim - inicio;
+    const larg = this.marcas.clientWidth || 300;
+    if (!(span > 0)) {
+      this.marcas.replaceChildren();
+      return;
+    }
+    const chave = `${inicio}|${fim}|${Math.round(larg)}`;
+    if (this.marcasChave === chave) return;
+    this.marcasChave = chave;
+    const passo = [1, 2, 3, 6, 12, 24].find((h) => h * 3600 / span * larg >= MARCA_MIN) ?? 24;
+    const dias = span > 20 * 3600;
+    const m = [];
+    for (let h = Math.ceil(inicio / (passo * 3600)) * passo * 3600; h < fim; h += passo * 3600) {
+      const txt = dias && hm(h) === "00:00" ? new Date(h * 1e3).toISOString().slice(5, 10).split("-").reverse().join("/") : hm(h).slice(0, 2);
+      const s = el("span", null, txt);
+      s.style.left = `${(h - inicio) / span * 100}%`;
+      m.push(s);
+    }
+    this.marcas.replaceChildren(...m);
   }
   async consultar() {
     try {
@@ -2012,59 +2104,431 @@ var CartaoPrevisao = class {
 };
 
 // src/identificacao.js
-var $ = (s) => document.querySelector(s);
-var lembrar = (v) => {
-  try {
-    if (v == null) return localStorage.getItem("uv-ident");
-    localStorage.setItem("uv-ident", v);
-  } catch {
-  }
-  return null;
+var $ = (s, r = document) => r.querySelector(s);
+var DIAS = ["domingo", "segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado"];
+var DIAS_C = ["dom.", "seg.", "ter.", "qua.", "qui.", "sex.", "sáb."];
+var trocar = (e, s) => {
+  if (e && e.textContent !== s) e.textContent = s;
 };
-if (lembrar() === "recolhida") document.documentElement.classList.add("ident-recolhida");
 var Identificacao = class {
-  constructor() {
-    this.lugar = $("#ident");
-    const todos = (s) => [...this.lugar.querySelectorAll(s)];
-    this.el = { eleicao: todos(".id-eleicao"), tipo: todos(".id-tipo"), local: todos(".id-local"), cargo: todos(".id-cargo"), seg: todos(".id-seg") };
-    this.btns = todos(".id-recolher");
-    for (const b of this.btns) b.addEventListener("click", () => this.recolher(!document.documentElement.classList.contains("ident-recolhida")));
-    this.recolher(lembrar() === "recolhida", false);
+  /** `aoLocal(abr)`, `aoCargo(cargo)`: o visitante escolheu outro local / outro cargo (pelo "…") */
+  constructor({ aoLocal, aoCargo } = {}) {
+    this.raiz = $("#eleicao");
+    this.btn = $(".el-pleito", this.raiz);
+    this.el = {
+      nome: $(".el-nome", this.raiz),
+      turno: $(".el-turno", this.raiz),
+      dia: $(".el-dia", this.raiz),
+      diaC: $(".el-dia-c", this.raiz),
+      dd: $(".el-dd", this.raiz),
+      local: $(".el-local-txt", this.raiz)
+    };
+    this.localSel = $(".el-local select", this.raiz);
+    this.localSel.addEventListener("change", () => {
+      if (this.localSel.value) aoLocal?.(this.localSel.value);
+    });
+    this.cargos = $("#cargos", this.raiz);
+    this.mais = $(".el-mais", this.raiz);
+    this.maisSel = $("select", this.mais);
+    this.maisSel.addEventListener("change", () => {
+      const v = this.maisSel.value;
+      this.maisSel.value = "";
+      if (v) aoCargo?.(+v);
+    });
+    this.info = { nome: "", dataIso: "", turno: null, local: "", cargo: "" };
     const ver = () => {
-      const preso = this.lugar.getBoundingClientRect().bottom < 4;
-      if (this.lugar.classList.contains("preso") !== preso) this.lugar.classList.toggle("preso", preso);
+      const presa = window.scrollY > 0 && this.raiz.getBoundingClientRect().top <= 0.5;
+      if (this.raiz.classList.contains("presa") !== presa) this.raiz.classList.toggle("presa", presa);
     };
     window.addEventListener("scroll", ver, { passive: true });
-    window.addEventListener("resize", ver, { passive: true });
+    let pend = 0;
+    window.addEventListener("resize", () => {
+      ver();
+      cancelAnimationFrame(pend);
+      pend = requestAnimationFrame(() => this.ajustarCargos());
+    }, { passive: true });
     ver();
   }
-  recolher(sim, guardar = true) {
-    document.documentElement.classList.toggle("ident-recolhida", sim);
-    for (const b of this.btns) {
-      b.textContent = sim ? "⌄" : "⌃";
-      b.setAttribute("aria-expanded", String(!sim));
-      b.setAttribute("aria-label", sim ? "Mostrar a identificação da eleição" : "Recolher a identificação da eleição");
+  /** A eleição: { nome: "Eleições Gerais 2026", dataIso: "2026-10-04" (ou "") }. */
+  eleicao({ nome, dataIso }) {
+    if (nome) {
+      this.info.nome = nome;
+      trocar(this.el.nome, nome);
     }
-    if (guardar) lembrar(sim ? "recolhida" : "aberta");
+    if (dataIso !== void 0) {
+      this.info.dataIso = dataIso || "";
+      const m = /^(\d{4})-(\d\d)-(\d\d)$/.exec(dataIso || "");
+      const d = m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).getUTCDay() : null;
+      trocar(this.el.dia, m ? `${DIAS[d]}, ` : "");
+      trocar(this.el.diaC, m ? `${DIAS_C[d]} ` : "");
+      trocar(this.el.dd, m ? `${m[3]}/${m[2]}/${m[1]}` : "");
+    }
+    this.#rotulos();
   }
-  /** { ano, geral, turno, cargo, local } */
-  definir(x) {
-    const t = (es, s) => {
-      for (const e of es) if (e.textContent !== s) e.textContent = s;
-    };
-    t(this.el.eleicao, `Eleições ${x.ano || ""}`.trim());
-    t(this.el.tipo, x.geral ? "Gerais" : "Municipais");
-    t(this.el.cargo, x.cargo || "");
-    t(this.el.local, x.local || "");
-    for (const seg of this.el.seg) {
-      [...seg.children].forEach((i, k) => i.classList.toggle("sel", k + 1 === x.turno));
-      seg.setAttribute("aria-label", x.turno ? `${x.turno}º turno` : "");
+  /** O que está na tela: { turno, local, cargo }. */
+  definir({ turno, local, cargo }) {
+    Object.assign(this.info, { turno, local, cargo });
+    trocar(this.el.turno, turno ? `${turno}º turno` : "");
+    trocar(this.el.local, local || "");
+    this.#rotulos();
+    this.ajustarCargos();
+    document.title = `${cargo ? `${cargo} · ${local} · ` : ""}${turno ? `${turno}º turno · ` : ""}Urna Velox`;
+  }
+  #rotulos() {
+    const i = this.info;
+    const data = i.dataIso ? `${this.el.dia.textContent}${this.el.dd.textContent}` : "";
+    const t = [i.nome, i.turno ? `${i.turno}º turno` : "", data].filter(Boolean).join(" · ");
+    const dica = `${t}. Trocar de eleição: em curso, agendadas e encerradas`;
+    if (this.btn.title !== dica) {
+      this.btn.title = dica;
+      this.btn.setAttribute("aria-label", dica);
     }
-    document.title = `${x.cargo ? `${x.cargo} · ${x.local} · ` : ""}${x.turno ? `${x.turno}º turno · ` : ""}Urna Velox`;
+    this.raiz.classList.toggle("sem-data", !i.dataIso);
+  }
+  /** O seletor do local: `grupos` = [[rótulo do grupo ou null, [[valor, texto], …]], …], `atual` = valor da tela. */
+  locais(grupos, atual) {
+    const s = this.localSel;
+    s.replaceChildren();
+    let n = 0;
+    for (const [rot, itens] of grupos) {
+      if (!itens.length) continue;
+      const alvo = rot ? Object.assign(document.createElement("optgroup"), { label: rot }) : s;
+      for (const [v, t] of itens) {
+        alvo.append(new Option(t, v, false, v === atual));
+        n++;
+      }
+      if (rot) s.append(alvo);
+    }
+    s.disabled = n < 2;
+    this.raiz.classList.toggle("local-unico", n < 2);
+  }
+  /** Depois de as pílulas entrarem em #cargos: as que não cabem vão para o "…" (a da tela fica sempre). */
+  ajustarCargos() {
+    const pils = [...this.cargos.children];
+    for (const b of pils) b.hidden = false;
+    this.mais.classList.add("oculto");
+    const cabe = () => this.cargos.scrollWidth <= this.cargos.clientWidth + 1;
+    if (!cabe()) {
+      this.mais.classList.remove("oculto");
+      for (let k = pils.length - 1; k >= 0 && !cabe(); k--) if (pils[k].getAttribute("aria-selected") !== "true") pils[k].hidden = true;
+    }
+    const fora = pils.filter((b) => b.hidden);
+    this.maisSel.replaceChildren(new Option("Outros cargos…", ""), ...fora.map((b) => new Option(b.textContent, b.dataset.cargo)));
+    this.mais.classList.toggle("oculto", !fora.length);
+    this.maisSel.value = "";
+  }
+};
+
+// src/sonda.js
+var AMOSTRAS = 20;
+var INTERVALO_PADRAO_MS = 3e4;
+var mediana = (v) => {
+  if (!v.length) return null;
+  const s = [...v].sort((a, b) => a - b);
+  const m = s.length >> 1;
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+};
+var Telemetria = class {
+  constructor() {
+    this.suportada = false;
+    this.ultima = null;
+    this.emPagina = null;
+    this.ref = null;
+    this.recebidas = 0;
+    this.pulos = 0;
+    this.injecoes = [];
+    this.atrasos = [];
+    this.envios = [];
+    this.remotas = /* @__PURE__ */ new Map();
+  }
+  /** Conexão (re)aberta: a idade conta daqui até a primeira sonda nova. */
+  conectou(agora) {
+    this.ref = agora;
+  }
+  /** Uma mensagem `sonda`. Devolve true se era uma sonda nova deste servidor. */
+  receber(m, agora) {
+    if (!m || m.tipo !== "sonda" || !Number.isFinite(m.id) || !Number.isFinite(m.t_injecao)) return false;
+    this.suportada = true;
+    if (m.local === false) {
+      if (!m.instantaneo) this.remotas.set(m.origem, (this.remotas.get(m.origem) || 0) + 1);
+      return false;
+    }
+    const u = this.ultima;
+    const mesma = u && u.sessao === m.sessao;
+    if (mesma && m.id <= u.id) return false;
+    if (mesma && m.id > u.id + 1 && !m.instantaneo && this.recebidas > 0) this.pulos += m.id - u.id - 1;
+    this.ultima = m;
+    if (m.instantaneo) return false;
+    this.recebidas++;
+    this.emPagina = agora;
+    this.ref = agora;
+    const por = (v, x) => {
+      if (Number.isFinite(x) && x >= 0) {
+        v.push(x);
+        if (v.length > AMOSTRAS) v.shift();
+      }
+    };
+    if (!mesma) this.injecoes = [];
+    por(this.injecoes, m.t_injecao / 1e3);
+    if (Number.isFinite(m.t_difusao)) por(this.atrasos, (m.t_difusao - m.t_injecao) / 1e3);
+    if (Number.isFinite(m.t_envio)) por(this.envios, (m.t_envio - m.t_injecao) / 1e3);
+    return true;
+  }
+  /** Intervalo entre as sondas do servidor (ms): a mediana dos intervalos vistos, ou 30 s. */
+  intervaloMs() {
+    const v = this.injecoes, d = [];
+    for (let i = 1; i < v.length; i++) d.push(v[i] - v[i - 1]);
+    const m = mediana(d.filter((x) => x > 0));
+    return m || INTERVALO_PADRAO_MS;
+  }
+  /** Sem sonda nova por mais que isto, o caminho é dado como parado. */
+  limiteMs() {
+    const i = this.intervaloMs();
+    return Math.max(2.5 * i, i + 1e4);
+  }
+  /** Atraso de processamento da última sonda (ms) e a mediana das recentes. */
+  atrasoMs() {
+    return this.atrasos.length ? this.atrasos[this.atrasos.length - 1] : null;
+  }
+  atrasoMedianoMs() {
+    return mediana(this.atrasos);
+  }
+  envioMs() {
+    return this.envios.length ? this.envios[this.envios.length - 1] : null;
+  }
+  /** Segundos desde a última sonda nova (ou desde a conexão, se nenhuma veio). */
+  idadeMs(agora) {
+    return this.ref == null ? null : Math.max(0, agora - this.ref);
+  }
+  /**
+   * 'desconhecida' (servidor sem sonda, ainda nada, ou fora do ar), 'estavel' (sonda nova dentro do limite) ou
+   * 'atrasada' (o servidor tem sonda, a conexão está viva e nada novo chega há mais que o limite).
+   */
+  situacao(agora, conectado = true) {
+    if (!conectado || !this.suportada || this.ref == null) return "desconhecida";
+    if (this.idadeMs(agora) > this.limiteMs()) return "atrasada";
+    return this.emPagina != null ? "estavel" : "desconhecida";
+  }
+};
+function textoMs(ms) {
+  if (ms == null || !Number.isFinite(ms)) return "—";
+  if (ms < 1) return "<1 ms";
+  if (ms < 1e3) return `${Math.round(ms)} ms`;
+  if (ms < 6e4) return `${(ms / 1e3).toFixed(ms < 1e4 ? 1 : 0).replace(".", ",")} s`;
+  return `${Math.round(ms / 6e4)} min`;
+}
+function textoChip(t, agora, conectado = true) {
+  const s = t.situacao(agora, conectado);
+  if (s === "estavel") return { situacao: s, curto: "✓ ativo", longo: "✓ checkup ok · ativo" };
+  if (s === "atrasada") return { situacao: s, curto: `⚠ ${textoMs(t.idadeMs(agora))}`, longo: `⚠ sem confirmação há ${textoMs(t.idadeMs(agora))}` };
+  return null;
+}
+
+// src/telemetria.js
+var CX = 60;
+var CY = 62;
+var R = 48;
+var ponto = (f2) => [CX - R * Math.cos(Math.PI * f2), CY - R * Math.sin(Math.PI * f2)];
+function arco(f0, f1) {
+  const [x0, y0] = ponto(f0), [x1, y1] = ponto(f1);
+  return `M${x0.toFixed(2)} ${y0.toFixed(2)} A${R} ${R} 0 0 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`;
+}
+var Velocimetro = class {
+  /**
+   * @param {{titulo: string, escala?: 'lin'|'log', min?: number, max: number, faixas?: Array<[number, string]>,
+   *   marcas?: number[], rotuloMarca?: (v: number) => string, formatar: (v: number|null) => string}} op
+   * `faixas`: [até, cor] em ordem crescente (cores: 'ok' | 'alerta' | 'erro').
+   */
+  constructor(op) {
+    this.op = { escala: "lin", min: 0, faixas: [], marcas: [], rotuloMarca: String, ...op };
+    this.ptr = svg("g", { class: "ponteiro" });
+    this.ptr.append(svg("line", { x1: CX, y1: CY, x2: CX, y2: CY - R + 6 }), svg("circle", { cx: CX, cy: CY, r: 4 }));
+    this.zonas = svg("g", { class: "zonas" });
+    this.marcasG = svg("g", { class: "marcas" });
+    const s = svg("svg", { viewBox: "0 0 120 70", "aria-hidden": "true" });
+    s.append(svg("path", { class: "trilho", d: arco(0, 1) }), this.zonas, this.marcasG, this.ptr);
+    this.valor = el("div", "vel-valor", "—");
+    this.el = el("figure", "vel", [s, this.valor, el("figcaption", null, this.op.titulo)]);
+    this.f = 0;
+    this.desenharEscala();
+    this.definir(null);
+  }
+  /** Valor → fração da meia-volta (0 a 1). */
+  fracao(v) {
+    const { escala, min, max } = this.op;
+    if (v == null || !Number.isFinite(v)) return 0;
+    let f2;
+    if (escala === "log") {
+      const a = Math.log10(Math.max(min, 1e-9)), b = Math.log10(max);
+      f2 = (Math.log10(Math.max(v, min)) - a) / (b - a);
+    } else f2 = (v - min) / (max - min);
+    return Math.min(1, Math.max(0, f2));
+  }
+  desenharEscala() {
+    const { faixas, marcas, rotuloMarca } = this.op;
+    this.zonas.replaceChildren();
+    let ini = 0;
+    for (const [ate2, cor] of faixas) {
+      const f2 = this.fracao(ate2);
+      if (f2 > ini) this.zonas.append(svg("path", { class: `zona ${cor}`, d: arco(ini, f2) }));
+      ini = Math.max(ini, f2);
+    }
+    this.marcasG.replaceChildren();
+    for (const m of marcas) {
+      const f2 = this.fracao(m), a = Math.PI * f2;
+      const [x, y] = [CX - (R - 9) * Math.cos(a), CY - (R - 9) * Math.sin(a)];
+      const t = svg("text", { x: x.toFixed(1), y: (y + 2).toFixed(1), "text-anchor": f2 < 0.34 ? "start" : f2 > 0.66 ? "end" : "middle" });
+      t.textContent = rotuloMarca(m);
+      this.marcasG.append(t);
+    }
+  }
+  /** Novo máximo (escala linear que cresce com o valor): redesenha as faixas e as marcas. */
+  definirMax(max, marcas) {
+    if (max === this.op.max) return;
+    this.op.max = max;
+    if (marcas) this.op.marcas = marcas;
+    this.desenharEscala();
+  }
+  definir(v, texto) {
+    this.f = this.fracao(v);
+    this.ptr.style.transform = `rotate(${(this.f * 180 - 90).toFixed(2)}deg)`;
+    const txt = texto ?? this.op.formatar(v);
+    if (this.valor.textContent !== txt) this.valor.textContent = txt;
+    let cor = "";
+    if (v != null && Number.isFinite(v)) for (const [ate2, c] of this.op.faixas) {
+      cor = c;
+      if (v <= ate2) break;
+    }
+    if (this.el.dataset.cor !== cor) this.el.dataset.cor = cor;
+  }
+};
+function maxRitmo(v, atual = 0) {
+  const alvo = Math.max(1e3, v * 1.25);
+  const p = 10 ** Math.floor(Math.log10(alvo));
+  const m = [1, 2, 5, 10].map((k) => k * p).find((x) => x >= alvo);
+  return Math.max(atual, m);
+}
+var curto = (v) => v >= 1e6 ? `${mil(v / 1e6)} mi` : v >= 1e3 ? `${mil(v / 1e3)} mil` : String(v);
+var MS = [1, 10, 100, 1e3, 1e4];
+var rotMs = (v) => v >= 1e3 ? `${v / 1e3}s` : `${v}`;
+var PainelTelemetria = class {
+  constructor() {
+    this.ritmo = new Velocimetro({ titulo: "Ritmo (BUs/min)", max: 1e3, marcas: [0, 500, 1e3], rotuloMarca: curto, formatar: (v) => v == null ? "—" : mil(v) });
+    this.atraso = new Velocimetro({
+      titulo: "Atraso de processamento",
+      escala: "log",
+      min: 0.5,
+      max: 1e4,
+      marcas: MS,
+      rotuloMarca: rotMs,
+      faixas: [[200, "ok"], [2e3, "alerta"], [1e4, "erro"]],
+      formatar: textoMs
+    });
+    this.bu = new Velocimetro({
+      titulo: "BU recebido → publicado",
+      escala: "log",
+      min: 0.5,
+      max: 1e4,
+      marcas: MS,
+      rotuloMarca: rotMs,
+      faixas: [[500, "ok"], [3e3, "alerta"], [1e4, "erro"]],
+      formatar: textoMs
+    });
+    this.idade = new Velocimetro({
+      titulo: "Última confirmação",
+      max: 90,
+      marcas: [0, 30, 60, 90],
+      rotuloMarca: (v) => `${v}s`,
+      faixas: [[60, "ok"], [75, "alerta"], [90, "erro"]],
+      formatar: (v) => v == null ? "—" : textoMs(v * 1e3)
+    });
+    this.estado = el("p", "tele-estado", "");
+    this.linhas = el("dl", "tele-linhas");
+    const fechar = el("button", "icone-btn fechar", "✕");
+    fechar.type = "button";
+    fechar.setAttribute("aria-label", "Fechar");
+    fechar.addEventListener("click", () => this.fechar());
+    const titulo2 = el("h2", null, "Telemetria da apuração");
+    titulo2.id = "tele-titulo";
+    const nota = el("p", "tele-nota", "A cada ~30 s o servidor põe uma mensagem de teste (sonda) na mesma fila dos boletins de urna. Ela passa pela totalização, pela publicação e pela transmissão sem mudar nenhum voto. Se ela chega, o caminho está andando; o atraso dela é o que um BU recebido agora leva para ser processado e publicado.");
+    this.raiz = el("section", "tele vidro", [fechar, titulo2, this.estado, el("div", "tele-vels", [this.ritmo.el, this.atraso.el, this.bu.el, this.idade.el]), this.linhas, nota]);
+    this.raiz.id = "telemetria";
+    this.raiz.setAttribute("role", "dialog");
+    this.raiz.setAttribute("aria-modal", "false");
+    this.raiz.setAttribute("aria-labelledby", "tele-titulo");
+    this.raiz.setAttribute("aria-hidden", "true");
+    document.body.append(this.raiz);
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") this.fechar();
+    });
+    document.addEventListener("pointerdown", (e) => {
+      if (this.aberta() && !this.raiz.contains(e.target) && !e.target.closest?.(".chip.ritmo")) this.fechar();
+    });
+  }
+  aberta() {
+    return this.raiz.classList.contains("aberta");
+  }
+  /** Abre logo abaixo de `ancora` (o chip), sem passar do letreiro do rodapé. */
+  abrir(ancora2) {
+    const r = ancora2?.getBoundingClientRect();
+    if (r) {
+      const topo = Math.round(r.bottom + 8);
+      const feed2 = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--feed-h")) || 64;
+      this.raiz.style.top = `${topo}px`;
+      this.raiz.style.maxHeight = `${Math.max(200, innerHeight - topo - feed2 - 16)}px`;
+    }
+    this.raiz.classList.add("aberta");
+    this.raiz.setAttribute("aria-hidden", "false");
+  }
+  fechar() {
+    this.raiz.classList.remove("aberta");
+    this.raiz.setAttribute("aria-hidden", "true");
+  }
+  alternar(ancora2) {
+    if (this.aberta()) this.fechar();
+    else this.abrir(ancora2);
+  }
+  /**
+   * @param {{situacao: string, conectado: boolean, ritmo: number|null, atrasoMs: number|null, buMs: number|null,
+   *   buP99: number|null, idadeMs: number|null, limiteMs: number, intervaloMs: number, envioMs: number|null,
+   *   recebidas: number, pulos: number, ultima: object|null, seq: number|null, remotas: Map}} d
+   */
+  atualizar(d) {
+    const mx = maxRitmo(d.ritmo || 0, this.ritmo.op.max);
+    this.ritmo.definirMax(mx, [0, mx / 2, mx]);
+    this.ritmo.definir(d.ritmo);
+    if (d.situacao === "atrasada") this.atraso.definir(d.idadeMs, `> ${textoMs(d.idadeMs)}`);
+    else this.atraso.definir(d.situacao === "desconhecida" ? null : d.atrasoMs);
+    this.bu.definir(d.buMs);
+    const lim = Math.max(30, Math.round(d.limiteMs / 1e3));
+    const mxIdade = Math.round(lim * 1.5);
+    if (this.idade.op.max !== mxIdade) {
+      this.idade.op.faixas = [[lim * 0.8, "ok"], [lim, "alerta"], [mxIdade, "erro"]];
+      this.idade.definirMax(mxIdade, [0, Math.round(mxIdade / 3), Math.round(2 * mxIdade / 3), mxIdade]);
+    }
+    this.idade.definir(d.idadeMs == null || d.situacao === "desconhecida" && !d.recebidas ? null : d.idadeMs / 1e3);
+    const txt = !d.conectado ? "Sem conexão em tempo real: a sonda volta quando a conexão voltar." : d.situacao === "estavel" ? `✓ Sistema estável — sonda nº ${mil(d.ultima?.id)} confirmada há ${textoMs(d.idadeMs)}` : d.situacao === "atrasada" ? `⚠ Nenhuma sonda nova há ${textoMs(d.idadeMs)}: o processamento pode estar atrasado ou parado` : d.suportada ? "Aguardando a primeira sonda…" : "Este servidor não envia sondas.";
+    if (this.estado.textContent !== txt) this.estado.textContent = txt;
+    this.raiz.dataset.situacao = d.conectado ? d.situacao : "desconhecida";
+    const linhas2 = [
+      ["Atraso mediano (últimas sondas)", textoMs(d.atrasoMedMs)],
+      ["Sonda até esta conexão", textoMs(d.envioMs)],
+      ["BU recebido → publicado (p99)", textoMs(d.buP99)],
+      ["Intervalo das sondas", textoMs(d.intervaloMs)],
+      ["Sondas confirmadas nesta visita", `${mil(d.recebidas)}${d.pulos ? ` (${mil(d.pulos)} não chegaram)` : ""}`],
+      ["BUs aplicados", d.seq == null ? "—" : mil(d.seq)]
+    ];
+    if (d.remotas?.size) linhas2.push(["Outros nós da federação", [...d.remotas.keys()].join(", ")]);
+    const chave = JSON.stringify(linhas2);
+    if (this.linhas.dataset.k !== chave) {
+      this.linhas.dataset.k = chave;
+      this.linhas.replaceChildren(...linhas2.flatMap(([a, b]) => [el("dt", null, a), el("dd", null, b)]));
+    }
   }
 };
 
 // src/mapa.js
+var FX_GRANDES = 8;
 var PREF = "uv-mapa";
 var ler = () => {
   try {
@@ -2518,7 +2982,7 @@ var CartaoMapa = class {
     const nomes = this.op.nomes();
     const lugar2 = nomes ? nomes.local(`${m.uf}${String(m.municipio).padStart(5, "0")}`) : "";
     const txt = m.classe === "bu_marco" ? `BU nº ${mil(m.valor)} da noite: ${lugar2}` : m.classe === "ultima_secao" ? `Última seção: ${lugar2}` : m.abrangencia === "br" ? `1ª seção do Brasil: ${lugar2}` : `1ª seção ${nomes ? nomes.em(m.abrangencia) : ""}: ${lugar2}`;
-    if (!this.reduzido && !this.ext[i]) this.fx.push({ i, t0: performance.now(), r: 3.2, grande: true });
+    if (!this.reduzido && !this.ext[i] && this.fx.filter((f2) => f2.grande).length < FX_GRANDES) this.fx.push({ i, t0: performance.now(), r: 3.2, grande: true });
     this.marcos.push({ i, txt });
     if (this.marcos.length > 3) this.marcos.splice(0, this.marcos.length - 3);
     this.#pedirQuadro();
@@ -2545,7 +3009,17 @@ var CartaoMapa = class {
     return true;
   }
   #redesenhar() {
-    if (!this.carregado || !this.#dimensionar()) return;
+    if (!this.carregado) return;
+    if (!this.#dimensionar()) {
+      if (!this.redesenharDepois) {
+        this.redesenharDepois = true;
+        requestAnimationFrame(() => {
+          this.redesenharDepois = false;
+          if (this.palco.offsetWidth) this.#redesenhar();
+        });
+      }
+      return;
+    }
     const c = this.cv.base.getContext("2d"), d = this.dpr;
     c.setTransform(1, 0, 0, 1, 0, 0);
     c.clearRect(0, 0, this.W, this.H);
@@ -2721,12 +3195,12 @@ var CartaoMapa = class {
     }
     G.phi = Math.max(-80, Math.min(80, G.phi));
     const l0 = G.lam * rad, p0 = G.phi * rad, cl = Math.cos(l0), sl = Math.sin(l0), cp = Math.cos(p0), sp = Math.sin(p0);
-    const R = Math.min(W, H) * 0.41 * G.zoom, cx = W / 2, cy = H * 0.52;
+    const R2 = Math.min(W, H) * 0.41 * G.zoom, cx = W / 2, cy = H * 0.52;
     const P = [0, 0, 0];
     const proj = (x, y, z) => {
       const u = x * cl + y * sl, v = y * cl - x * sl;
-      P[0] = cx + R * v;
-      P[1] = cy - R * (cp * z - sp * u);
+      P[0] = cx + R2 * v;
+      P[1] = cy - R2 * (cp * z - sp * u);
       P[2] = sp * z + cp * u;
       return P;
     };
@@ -2734,27 +3208,27 @@ var CartaoMapa = class {
     c.globalCompositeOperation = "source-over";
     c.globalAlpha = 1;
     c.clearRect(0, 0, W, H);
-    const atm = c.createRadialGradient(cx, cy, R * 0.9, cx, cy, R * 1.22);
+    const atm = c.createRadialGradient(cx, cy, R2 * 0.9, cx, cy, R2 * 1.22);
     atm.addColorStop(0, "rgba(120,100,255,0.28)");
     atm.addColorStop(0.35, "rgba(79,195,255,0.10)");
     atm.addColorStop(1, "rgba(79,195,255,0)");
     c.fillStyle = atm;
     c.beginPath();
-    c.arc(cx, cy, R * 1.22, 0, 6.2832);
+    c.arc(cx, cy, R2 * 1.22, 0, 6.2832);
     c.fill();
     const claro = document.documentElement.dataset.tema === "claro";
-    const corpo = c.createRadialGradient(cx - R * 0.35, cy - R * 0.4, R * 0.1, cx, cy, R);
+    const corpo = c.createRadialGradient(cx - R2 * 0.35, cy - R2 * 0.4, R2 * 0.1, cx, cy, R2);
     corpo.addColorStop(0, claro ? "rgba(30,36,100,0.62)" : "rgba(60,70,150,0.16)");
     corpo.addColorStop(0.75, claro ? "rgba(14,18,56,0.78)" : "rgba(14,18,52,0.30)");
     corpo.addColorStop(1, claro ? "rgba(10,14,44,0.88)" : "rgba(10,14,44,0.55)");
     c.fillStyle = corpo;
     c.beginPath();
-    c.arc(cx, cy, R, 0, 6.2832);
+    c.arc(cx, cy, R2, 0, 6.2832);
     c.fill();
     c.strokeStyle = "rgba(170,180,255,0.30)";
     c.lineWidth = d;
     c.stroke();
-    const sz = Math.max(1, 1.5 * d * Math.sqrt(G.zoom) * Math.min(1.2, R / (300 * d)));
+    const sz = Math.max(1, 1.5 * d * Math.sqrt(G.zoom) * Math.min(1.2, R2 / (300 * d)));
     const MV = this.MV;
     c.fillStyle = "rgb(170,182,255)";
     for (let i = 0; i < MV.length; i += 3) {
@@ -2765,7 +3239,7 @@ var CartaoMapa = class {
     }
     c.globalCompositeOperation = "lighter";
     c.fillStyle = "rgb(150,205,255)";
-    const kb = Math.min(1.4, R / (320 * d)) * d, BV = this.BV;
+    const kb = Math.min(1.4, R2 / (320 * d)) * d, BV = this.BV;
     for (const b of this.binAtivos) {
       const n = this.binN[b];
       proj(BV[b * 3], BV[b * 3 + 1], BV[b * 3 + 2]);
@@ -2825,7 +3299,7 @@ var CartaoMapa = class {
       ay = P[1];
       for (let s = 1; s <= 36; s++) {
         const q = pt(cauda + (cab - cauda) * s / 36), f2 = s / 36;
-        const vis = q[2] > 0 || Math.hypot(q[0] - cx, q[1] - cy) > R;
+        const vis = q[2] > 0 || Math.hypot(q[0] - cx, q[1] - cy) > R2;
         c.globalAlpha = (vis ? 0.85 : 0.18) * f2 * (1 - Math.max(0, e - 0.8) / 0.2);
         c.strokeStyle = f2 > 0.7 ? "rgb(150,220,255)" : "rgb(255,110,215)";
         c.lineWidth = (0.8 + 1.2 * f2) * d;
@@ -3210,8 +3684,8 @@ function quandoTxt(inicio, agora) {
   const hora2 = `${+p.hour}h${p.minute !== "00" ? p.minute : ""}`;
   const d = dataBr(inicio);
   const dia = d === dataBr(agora) ? "hoje" : d === dataBr(agora + 864e5) ? "amanhã" : p.weekday;
-  const curto = `${p.day}/${p.month}, ${hora2}`;
-  return { dia, curto, longo: `${dia} (${p.day}/${p.month}), ${hora2}`, ddmm: `${p.day}/${p.month}`, hora: hora2 };
+  const curto2 = `${p.day}/${p.month}, ${hora2}`;
+  return { dia, curto: curto2, longo: `${dia} (${p.day}/${p.month}), ${hora2}`, ddmm: `${p.day}/${p.month}`, hora: hora2 };
 }
 var dd = (n) => String(n).padStart(2, "0");
 function contagemPartes(ms) {
@@ -3224,6 +3698,642 @@ function contagemPartes(ms) {
 function diaLocal(ms = Date.now()) {
   const d = new Date(ms);
   return `${d.getFullYear()}-${dd(d.getMonth() + 1)}-${dd(d.getDate())}`;
+}
+
+// src/serie.js
+var pad4 = (c) => String(c).padStart(4, "0");
+var iso = (t) => new Date(t * 1e3).toISOString();
+var textoBr = (t) => {
+  const s = iso(t);
+  return `${s.slice(8, 10)}/${s.slice(5, 7)}/${s.slice(0, 4)} ${s.slice(11, 19)}`;
+};
+function rotaConsulta(hash2) {
+  const m = /^#\/p\/(\d+)(?:\/([a-z]{2}(?:\d{5})?)\/c(\d{4}))?$/.exec(hash2 || "");
+  return m ? { pleito: +m[1], abr: m[2] || null, cargo: m[3] ? +m[3] : null } : null;
+}
+function ate(v, t) {
+  let lo = 0, hi = v.length - 1, r = -1;
+  while (lo <= hi) {
+    const m = lo + hi >> 1;
+    if ((v[m][0] ?? -Infinity) <= t) {
+      r = m;
+      lo = m + 1;
+    } else hi = m - 1;
+  }
+  return r;
+}
+function linhas(j) {
+  if (!j?.colunas) return [];
+  const c = j.colunas;
+  return j.linhas.map((l) => Object.fromEntries(c.map((k, i) => [k, l[i]]))).sort((a, b) => (a.t ?? -Infinity) - (b.t ?? -Infinity));
+}
+var num = (x) => x === "" || x == null ? null : Number.isNaN(+x) ? x : +x;
+function basesConsulta() {
+  const m = (typeof document !== "undefined" ? document.querySelector('meta[name="uv-dados"]')?.content || "" : "").trim().replace(/\/+$/, "");
+  const o = typeof location !== "undefined" ? location.origin : "";
+  return m && m !== o ? [`${m}/consulta`, "/consulta"] : ["/consulta"];
+}
+async function carregarSerie(pleito, bases = basesConsulta()) {
+  let raiz = null, indice = null;
+  const ler3 = (rz, n) => fetch(`${rz}/${n}.json`, { credentials: "omit" }).then((r) => r.ok ? r.json() : null).catch(() => null);
+  for (const b of bases) {
+    indice = await ler3(`${b}/${pleito}/serie`, "indice");
+    if (indice) {
+      raiz = `${b}/${pleito}/serie`;
+      break;
+    }
+  }
+  if (!indice) return null;
+  const j = (n) => ler3(raiz, n);
+  const [nomes, topicos, marcos, eventos, mapa] = await Promise.all([j("nomes"), j("topicos"), j("marcos"), j("eventos"), j("mapa")]);
+  return { raiz, pleito, indice, nomes, topicos: topicos || [], marcos: linhas(marcos), eventos: linhas(eventos), mapa };
+}
+var ConexaoSerie = class {
+  /** @param {(m: object) => void} aoReceber  @param {(e: string, info?: object) => void} aoEstado */
+  constructor(aoReceber, aoEstado, serie, rotulo) {
+    this.aoReceber = aoReceber;
+    this.aoEstado = aoEstado;
+    this.s = serie;
+    this.ind = serie.indice;
+    this.rotulo = rotulo;
+    this.topicos = /* @__PURE__ */ new Set();
+    this.series = /* @__PURE__ */ new Map();
+    this.t = -Infinity;
+    this.epoca = 1;
+    this.iMa = 0;
+    this.iEv = 0;
+    this.nMapa = 0;
+    this.seq = 0;
+    this.mapaF = null;
+    this.aoReiniciar = null;
+    this.aoConsultar = null;
+    this.aoIndice = null;
+    this.#prepararMapa();
+    if (this.ind.em_curso) setInterval(() => this.#atualizarIndice(), globalThis.__uvSerie?.atualizarMs || 6e4);
+  }
+  async #atualizarIndice() {
+    const ler3 = (n) => fetch(`${this.s.raiz}/${n}.json`, { credentials: "omit", cache: "no-cache" }).then((r) => r.ok ? r.json() : null).catch(() => null);
+    const j = await ler3("indice");
+    if (!j || !(j.fim > this.ind.fim)) return;
+    const [ma, ev, mp] = await Promise.all([ler3("marcos"), ler3("eventos"), ler3("mapa")]);
+    this.ind = j;
+    this.s.indice = j;
+    const ate_t = (l) => l.filter((x) => (x.t ?? -Infinity) <= this.t).length;
+    if (ma) {
+      this.s.marcos = linhas(ma);
+      this.iMa = ate_t(this.s.marcos);
+    }
+    if (ev) {
+      this.s.eventos = linhas(ev);
+      this.iEv = ate_t(this.s.eventos);
+    }
+    if (mp) {
+      this.s.mapa = mp;
+      this.#prepararMapa();
+      this.nMapa = 0;
+      this.#mapaAte(this.t, false);
+      this.epoca++;
+      if (this.mapaF) this.aoReceber({ tipo: "mapa", reiniciar: true, epoca: this.epoca });
+    }
+    for (const t of this.topicos) {
+      this.series.delete(t);
+      this.#carregar(t);
+    }
+    this.aoIndice?.(j);
+  }
+  // ---------------------------------------------------------------- mapa das seções (protocolo §4.8, sem servidor)
+  #prepararMapa() {
+    const m = this.s.mapa;
+    this.ordem = [];
+    if (!m?.m) return;
+    const b = Uint8Array.from(atob(m.m), (c) => c.charCodeAt(0));
+    for (let i = 0; i < m.total; i++) {
+      const min = b[2 * i] | b[2 * i + 1] << 8;
+      if (!min) continue;
+      const hora2 = m.inicio + (min - 1) * 60;
+      this.ordem.push([hora2, i, Math.min(240, Math.floor((hora2 % 86400 + 86400) % 86400 / 360) + 1)]);
+    }
+    this.ordem.sort((a, b2) => a[0] - b2[0] || a[1] - b2[1]);
+  }
+  #fotografia() {
+    const m = this.s.mapa;
+    const h = new Uint8Array(m.total);
+    for (let k = 0; k < this.nMapa; k++) h[this.ordem[k][1]] = this.ordem[k][2];
+    let bin = "";
+    for (let i = 0; i < h.length; i += 32768) bin += String.fromCharCode.apply(null, h.subarray(i, i + 32768));
+    return { v: 1, epoca: this.epoca, total: m.total, n: this.nMapa, fora: 0, ret: [], h: btoa(bin) };
+  }
+  #mapaAte(t, mandar) {
+    const de2 = this.nMapa;
+    while (this.nMapa < this.ordem.length && this.ordem[this.nMapa][0] <= t) this.nMapa++;
+    if (!mandar || !this.mapaF || this.nMapa === de2) return;
+    const s = [];
+    for (let k = de2; k < this.nMapa; k++) s.push(this.ordem[k][1], this.ordem[k][2]);
+    this.aoReceber({ tipo: "mapa", epoca: this.epoca, de: de2, n: this.nMapa, total: this.s.mapa.total, s });
+  }
+  // ---------------------------------------------------------------- interface da Conexao
+  abrir() {
+    this.aoEstado("vivo");
+    this.#estado(true);
+  }
+  definirFaltam(lista) {
+    this.faltam = lista;
+  }
+  pedirMapa(f2) {
+    this.mapaF = f2;
+    const { desde, epoca } = f2();
+    if (epoca !== this.epoca) {
+      this.aoReceber({ tipo: "mapa", reiniciar: true, epoca: this.epoca });
+      return;
+    }
+    if (desde < this.nMapa) {
+      const s = [];
+      for (let k = desde; k < this.nMapa; k++) s.push(this.ordem[k][1], this.ordem[k][2]);
+      this.aoReceber({ tipo: "mapa", epoca: this.epoca, de: desde, n: this.nMapa, total: this.s.mapa.total, s });
+    }
+  }
+  async obter(caminho) {
+    if (caminho.startsWith("/api/v1/mapa/secoes")) return fetch(`${this.s.raiz}/mapa-secoes.json`, { credentials: "omit" }).catch(() => null);
+    if (caminho.startsWith("/api/v1/mapa/estado")) return this.s.mapa ? new Response(JSON.stringify(this.#fotografia())) : null;
+    return fetch(caminho).catch(() => null);
+  }
+  definirTopicos(lista) {
+    this.topicos = new Set(lista);
+    for (const t of lista) {
+      const s = this.series.get(t);
+      if (!s) this.#carregar(t);
+      else if (s.v) this.#emitir(t, true);
+    }
+  }
+  async #carregar(t) {
+    this.series.set(t, { carregando: true });
+    const tse = t.startsWith("tse:");
+    const nome = tse ? `tse/${t.slice(4)}` : `t/${t}`;
+    const j = await fetch(`${this.s.raiz}/${nome}.json`, { credentials: "omit" }).then((r) => r.ok ? r.json() : null).catch(() => null);
+    this.series.set(t, j ? { v: j.versoes, i: -1, arquivo: j.arquivo, fonte: j.fonte } : { v: [], i: -1, falta: true });
+    if (tse && !j) {
+      this.aoReceber({ tipo: "tse", instantaneo: true, topico: t, ver: 0, estado: "indisponivel", motivo: "sem_serie", arquivo: null, buscado: null, novo_em: null, dados: null });
+      return;
+    }
+    if (this.topicos.has(t)) this.#emitir(t, true);
+  }
+  /** Manda a versão em vigor no instante atual (se mudou, ou sempre com `forcar`). */
+  #emitir(t, forcar) {
+    const s = this.series.get(t);
+    if (!s?.v) return;
+    const i = ate(s.v, t.startsWith("tse:") && this.t >= this.ind.fim ? Infinity : this.t);
+    if (i < 0 || i === s.i && !forcar) return;
+    s.i = i;
+    const [tv, d] = s.v[i];
+    if (t.startsWith("tse:")) {
+      this.aoReceber({
+        tipo: "tse",
+        instantaneo: true,
+        topico: t,
+        ver: this.epoca * 1e6 + i + 1,
+        estado: "ok",
+        motivo: null,
+        arquivo: s.arquivo,
+        buscado: textoBr(Math.max(this.t, tv ?? this.t)),
+        novo_em: tv != null ? textoBr(tv) : null,
+        dados: d,
+        reconstrucao: !!d?.reconstrucao,
+        fonte: s.fonte
+      });
+      return;
+    }
+    const seq = d.seq ?? 0;
+    if (d.totalizado_em && d.ultimo_bu) d.totalizado_em = d.ultimo_bu;
+    this.seq = Math.max(this.seq, seq);
+    this.aoReceber({ tipo: "resultado", topico: t, seq, txt: `{"tipo":"instantaneo","topico":${JSON.stringify(t)},"seq":${seq},"resultado":${JSON.stringify(d)}}` });
+  }
+  #estado(forcar) {
+    const agora = performance.now();
+    if (!forcar && agora - (this.ultEstado || 0) < 500) return;
+    this.ultEstado = agora;
+    const t = Number.isFinite(this.t) ? this.t : this.ind.inicio;
+    const txt = textoBr(t);
+    this.aoReceber({
+      tipo: "estado",
+      relogio_site: txt,
+      ultimo_bu: { seq: this.seq, site: txt },
+      secoes: { aplicadas: this.seq },
+      encerrada: t >= this.ind.fim,
+      simulacao: { rotulo: this.rotulo },
+      consulta: { pleito: this.s.pleito, t, inicio: this.ind.inicio, fim: this.ind.fim }
+    });
+  }
+  #marco(r) {
+    const cargo = num(r.cargo);
+    const m = {
+      tipo: "marco",
+      classe: r.classe,
+      seq: num(r.seq) ?? 0,
+      horario: r.horario,
+      abrangencia: r.abrangencia,
+      cargo,
+      topico: cargo != null && r.abrangencia ? `${r.abrangencia}-c${pad4(cargo)}` : null,
+      uf: r.uf || null,
+      municipio: num(r.municipio),
+      municipio_nome: r.municipio ? this.s.nomes?.municipios?.[r.municipio] ?? this.s.nomes?.municipios?.[`${r.uf}${String(r.municipio).padStart(5, "0")}`] ?? null : null,
+      zona: num(r.zona),
+      secao: num(r.secao),
+      estado: r.estado || null,
+      valor: num(r.valor),
+      lote_bus: num(r.lote_bus)
+    };
+    if (r.classe === "faltam_para_mat") m.faltam = num(r.valor);
+    if (r.classe === "virada" && /^\d+:\d+$/.test(r.estado || "")) {
+      const [a, b] = r.estado.split(":");
+      m.candidato = +a;
+      m.anterior = +b;
+    }
+    return m;
+  }
+  #evento(r) {
+    const cargo = num(r.cargo);
+    return {
+      tipo: "evento",
+      classe: "matematicamente",
+      seq: num(r.seq) ?? 0,
+      horario: r.horario,
+      sistema: null,
+      abrangencia: r.abrangencia,
+      cargo,
+      topico: cargo != null ? `${r.abrangencia}-c${pad4(cargo)}` : null,
+      candidato: num(r.candidato),
+      estado: r.estado,
+      motivo: ""
+    };
+  }
+  /** O slider andou para a frente até `t` (para trás: [`reposicionar`]). */
+  avancar(t) {
+    if (t < this.t) {
+      this.reposicionar(t);
+      return;
+    }
+    if (t === this.t) {
+      this.#estado(false);
+      return;
+    }
+    this.t = t;
+    for (const x of this.topicos) this.#emitir(x, false);
+    for (; this.iEv < this.s.eventos.length && (this.s.eventos[this.iEv].t ?? -Infinity) <= t; this.iEv++) this.aoReceber(this.#evento(this.s.eventos[this.iEv]));
+    for (; this.iMa < this.s.marcos.length && (this.s.marcos[this.iMa].t ?? -Infinity) <= t; this.iMa++) this.aoReceber(this.#marco(this.s.marcos[this.iMa]));
+    this.#mapaAte(t, true);
+    this.#estado(false);
+  }
+  /** Ir a um instante qualquer: a página recomeça (aoReiniciar) e recebe tudo de novo até lá. */
+  reposicionar(t) {
+    this.epoca++;
+    this.iMa = 0;
+    this.iEv = 0;
+    this.nMapa = 0;
+    this.seq = 0;
+    for (const s of this.series.values()) if (s.v) s.i = -1;
+    this.t = t;
+    this.#mapaAte(t, false);
+    this.aoReiniciar?.();
+    this.t = -Infinity;
+    this.avancar(t);
+    this.#estado(true);
+    if (this.mapaF) this.aoReceber({ tipo: "mapa", reiniciar: true, epoca: this.epoca });
+  }
+  /** Curva da apuração do tópico até o instante atual (o corpo de GET /api/v1/curva, no relógio da noite). */
+  curva(t) {
+    const s = this.series.get(t);
+    const v = s?.v || [];
+    const n = ate(v, this.t);
+    const pontos = [];
+    for (let i = 0; i <= n; i++) {
+      const [tv, d] = v[i];
+      if (tv == null || !d?.secoes) continue;
+      pontos.push([tv, d.secoes.apuradas, d.secoes.total, (d.cand || []).filter((c) => c.pct != null).map((c) => [c.n, c.pct])]);
+    }
+    return { topico: t, passo_s: 60, relogio: "site", pontos };
+  }
+  /** Garante a série do tópico carregada (a curva é pedida logo depois da inscrição). */
+  async pronto(t) {
+    for (let k = 0; k < 50 && !this.series.get(t)?.v; k++) await new Promise((ok) => setTimeout(ok, 40));
+  }
+};
+var PlayerLocal = class extends Player {
+  constructor(indice, aoIr) {
+    super({ inicio: indice.inicio, fim: indice.fim, acelerar: 0, t: indice.fim, real: 0, sessao: null });
+    this.aoIr = aoIr;
+    this.ultima = 60;
+    this.el.setAttribute("aria-label", "Linha do tempo da noite");
+    this.vel.value = "60";
+    this.aoVivo = null;
+    if (indice.em_curso) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "pl-aovivo";
+      b.textContent = "● ao vivo";
+      b.title = "Voltar à apuração em tempo real";
+      b.addEventListener("click", () => this.aoVivo?.());
+      this.play.after(b);
+      this.botaoAoVivo = b;
+    }
+  }
+  /** A noite em curso avançou: o fim do slider anda junto (e o tempo, se estava no fim). */
+  estender(fim) {
+    const noFim = this.agora() >= this.info.fim;
+    this.info.fim = fim;
+    this.tempo.max = String(fim);
+    this.fim.textContent = new Date(fim * 1e3).toISOString().slice(11, 16);
+    this.desenharMarcas();
+    if (noFim && this.info.acelerar === 0) {
+      this.aplicar({ ...this.info, t: fim });
+      this.aoIr(fim);
+    }
+  }
+  async consultar() {
+  }
+  estadoWs() {
+  }
+  agora() {
+    return Math.min(this.info.fim, super.agora());
+  }
+  async velocidade(x) {
+    let t = this.agora();
+    if (x > 0 && t >= this.info.fim) {
+      t = this.info.inicio;
+      this.aoIr(t);
+    }
+    this.aplicar({ ...this.info, t, acelerar: x, real: x });
+  }
+  async ir(t) {
+    this.arrastando = false;
+    this.el.classList.remove("com-dica");
+    this.aplicar({ ...this.info, t, real: this.info.acelerar });
+    this.aoIr(t);
+  }
+  desenhar() {
+    super.desenhar();
+    if (this.info.acelerar > 0 && this.agora() >= this.info.fim) this.aplicar({ ...this.info, t: this.info.fim, acelerar: 0, real: 0 });
+  }
+};
+
+// src/pleitos.js
+var SITUACOES = [
+  ["em_curso", "Em curso", "Do dia da eleição até as 8 h do dia seguinte: a apuração da noite."],
+  ["agendado", "Agendados", "Já publicados pelo TSE, com a data marcada."],
+  ["encerrado", "Encerrados", "Apuração terminada. Os que estão na playlist podem ser vistos de novo em replay, com os dados reais."]
+];
+async function buscarConsultas() {
+  for (const b of basesConsulta()) {
+    try {
+      const r = await fetch(`${b}/indice.json`, { credentials: "omit" });
+      if (!r.ok) continue;
+      const j = await r.json();
+      return new Set((j.pleitos || []).map((x) => String(x.pleito)));
+    } catch {
+    }
+  }
+  return /* @__PURE__ */ new Set();
+}
+async function buscarPleitos() {
+  try {
+    const r = await fetch("/api/v1/pleitos");
+    if (!r.ok) return null;
+    const j = await r.json();
+    return j && Array.isArray(j.pleitos) ? j : null;
+  } catch {
+    return null;
+  }
+}
+var DIAS2 = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
+function diasAte(iso2, hoje) {
+  const a = Date.UTC(+iso2.slice(0, 4), +iso2.slice(5, 7) - 1, +iso2.slice(8, 10));
+  const b = Date.UTC(+hoje.slice(0, 4), +hoje.slice(5, 7) - 1, +hoje.slice(8, 10));
+  return Math.round((a - b) / 864e5);
+}
+function dataTxt(p) {
+  const d = new Date(Date.UTC(+p.data_iso.slice(0, 4), +p.data_iso.slice(5, 7) - 1, +p.data_iso.slice(8, 10)));
+  return `${DIAS2[d.getUTCDay()]}, ${p.data}`;
+}
+function cargosTxt(p) {
+  const cargos = /* @__PURE__ */ new Map();
+  let consultas = 0;
+  for (const e of p.eleicoes || []) {
+    for (const c of e.cargos || []) {
+      if (e.tipo === "consulta") consultas++;
+      else if (c.nome && !cargos.has(c.codigo)) cargos.set(c.codigo, c.nome);
+    }
+  }
+  const v = [...cargos].sort((a, b) => a[0] - b[0]).map((x) => x[1]);
+  if (consultas) v.push(consultas === 1 ? "consulta popular" : `${consultas} consultas populares`);
+  return v.join(" · ");
+}
+function ondeTxt(p) {
+  if ((p.ufs || []).includes("br")) return p.complementares ? `Brasil, com ${p.complementares} ${p.complementares === 1 ? "eleição suplementar ou consulta" : "eleições suplementares e consultas"} no mesmo dia` : "Brasil";
+  const locais = (p.eleicoes || []).map((e) => e.local).filter(Boolean);
+  if (locais.length) return locais.length > 3 ? `${locais.length} lugares` : juntar(locais);
+  const ufs = (p.ufs || []).map((u) => u.toUpperCase());
+  return ufs.length > 3 ? `${ufs.length} UFs` : juntar(ufs);
+}
+function juntar(v) {
+  return v.length < 2 ? v[0] || "" : `${v.slice(0, -1).join(", ")} e ${v[v.length - 1]}`;
+}
+function faltaTxt(p, hoje) {
+  if (p.situacao !== "agendado") return "";
+  const n = diasAte(p.data_iso, hoje);
+  return n <= 0 ? "hoje" : n === 1 ? "amanhã" : `faltam ${mil(n)} dias`;
+}
+function resumoTxt(lista) {
+  const c = lista?.contagem || {};
+  const v = [];
+  if (c.em_curso) v.push(`${c.em_curso} em curso`);
+  if (c.agendado) v.push(`${c.agendado} ${c.agendado === 1 ? "agendado" : "agendados"}`);
+  if (c.encerrado) v.push(`${c.encerrado} ${c.encerrado === 1 ? "encerrado" : "encerrados"}`);
+  return v.join(" · ");
+}
+var hojeBr = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(/* @__PURE__ */ new Date());
+var PainelPleitos = class {
+  /** `consultas()`: os códigos dos pleitos com a série de consulta (`/consulta/indice.json`; 1.1, serie.js) */
+  /** `naTela()`: o pleito na tela (o da consulta ou o que o serviço totaliza); `emConsulta()`: a página está numa consulta */
+  constructor({ noAr, comPlaylist, consultas = () => /* @__PURE__ */ new Set(), naTela: naTela2 = noAr, emConsulta = () => false }) {
+    this.noAr = noAr;
+    this.naTela = naTela2;
+    this.emConsulta = emConsulta;
+    this.comPlaylist = comPlaylist;
+    this.consultas = consultas;
+    this.lista = null;
+    this.busca = "";
+    this.raiz = null;
+  }
+  definir(lista) {
+    this.lista = lista;
+    if (this.aberto) this.#desenhar();
+  }
+  get aberto() {
+    return !!this.raiz?.classList.contains("aberta");
+  }
+  #montar() {
+    const fechar = el("button", "icone-btn fechar", "✕");
+    fechar.type = "button";
+    fechar.setAttribute("aria-label", "Fechar a lista de pleitos");
+    fechar.addEventListener("click", () => this.fechar());
+    this.busca = "";
+    const busca = el("input", "hist-busca");
+    busca.type = "search";
+    busca.placeholder = "Filtrar: cidade, UF, ano, cargo…";
+    busca.setAttribute("aria-label", "Filtrar os pleitos");
+    busca.autocomplete = "off";
+    busca.addEventListener("input", () => {
+      this.busca = busca.value.trim().toLowerCase();
+      this.#desenhar();
+    });
+    this.sub = el("p", "pl-sub", "");
+    this.corpo = el("div", "pl-lista");
+    this.corpo.setAttribute("role", "list");
+    this.raiz = el("section", "pleitos vidro", [
+      el("header", "hist-cab", [el("h2", null, "Escolha a eleição"), fechar]),
+      // M-024: o que se faz aqui, em uma linha
+      el("div", null, [el("p", "pl-intro", "Toque numa eleição para ver o resultado e reviver a noite da apuração."), this.sub]),
+      el("div", "hist-filtros", busca),
+      this.corpo
+    ]);
+    this.raiz.id = "pleitos";
+    this.raiz.setAttribute("role", "dialog");
+    this.raiz.setAttribute("aria-modal", "false");
+    this.raiz.setAttribute("aria-label", "Escolha a eleição (pleitos do TSE)");
+    this.raiz.setAttribute("aria-hidden", "true");
+    document.body.append(this.raiz);
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && this.aberto) this.fechar();
+    });
+  }
+  abrir() {
+    if (!this.lista) return;
+    if (!this.raiz) this.#montar();
+    this.#desenhar();
+    this.raiz.classList.add("aberta");
+    this.raiz.setAttribute("aria-hidden", "false");
+  }
+  fechar() {
+    if (!this.aberto) return;
+    this.raiz.classList.remove("aberta");
+    this.raiz.setAttribute("aria-hidden", "true");
+  }
+  #desenhar() {
+    const l = this.lista;
+    const noAr = this.noAr();
+    const hoje = hojeBr();
+    this.sub.textContent = `Pleitos do TSE: ${resumoTxt(l)}${l.ele_c?.dg ? ` · lista atualizada pelo TSE em ${l.ele_c.dg}` : ""}`;
+    const filtro = (p) => !this.busca || [p.titulo, p.nome, p.data, String(p.codigo), cargosTxt(p), ondeTxt(p), ...p.ufs || []].join(" ").toLowerCase().includes(this.busca);
+    const blocos = [];
+    for (const [sit, nome, dica] of SITUACOES) {
+      let itens = l.pleitos.filter((p) => p.situacao === sit && filtro(p));
+      if (sit === "agendado") itens = [...itens].sort((a, b) => a.data_iso.localeCompare(b.data_iso));
+      if (!itens.length) continue;
+      const cab = el("h3", "pl-grupo", [nome, el("small", null, ` ${mil(itens.length)}`)]);
+      cab.title = dica;
+      blocos.push(cab, ...itens.map((p) => this.#item(p, noAr, hoje, String(this.naTela() ?? ""), this.emConsulta())));
+    }
+    if (!blocos.length) blocos.push(el("p", "hist-vazio", "Nenhum pleito passa no filtro."));
+    this.corpo.replaceChildren(...blocos);
+  }
+  #item(p, noAr, hoje, naTela2, emConsulta) {
+    const cod = String(p.codigo);
+    const vivo = cod === String(noAr ?? ""), tela = cod === naTela2;
+    const marcas = [];
+    if (vivo) marcas.push(el("span", "pl-chip no-ar", "no ar"));
+    if (tela) marcas.push(el("span", "pl-chip tela", "na tela"));
+    if (p.situacao === "em_curso") marcas.push(el("span", "pl-chip vivo", "em curso"));
+    const falta = faltaTxt(p, hoje);
+    if (falta) marcas.push(el("span", "pl-chip", falta));
+    const linhas2 = [
+      el("div", "pl-l1", [el("b", "pl-nome", p.titulo || p.nome), ...marcas]),
+      el("div", "pl-l2", [dataTxt(p), " · ", ondeTxt(p)])
+    ];
+    const cargos = cargosTxt(p);
+    if (cargos) linhas2.push(el("div", "pl-l3", cargos));
+    const acao = (cls, txt, href, dica) => {
+      const a = el("a", `pl-acao ${cls}`, txt);
+      a.href = href;
+      if (dica) a.title = dica;
+      return a;
+    };
+    const acoes = [];
+    let principal = null;
+    const comSerie = this.consultas().has(cod);
+    if (vivo && emConsulta) {
+      principal = acao(
+        `primaria${p.situacao === "em_curso" ? " vivo" : ""}`,
+        p.situacao === "em_curso" ? "● Ver ao vivo" : "▶ Ver o replay no ar",
+        "/#/",
+        "A apuração que está no ar agora"
+      );
+      acoes.push(principal);
+    }
+    if (comSerie && (p.situacao === "encerrado" || p.situacao === "em_curso")) {
+      const em = p.situacao === "em_curso";
+      const c = acao(
+        `${principal ? "" : "primaria "}pl-consulta`,
+        em ? "⧗ Linha do tempo até agora" : "Ver esta eleição ›",
+        `/#/p/${cod}`,
+        em ? "A noite em curso até o último minuto, com a linha do tempo" : "O resultado e a noite da apuração inteira, minuto a minuto, com a linha do tempo"
+      );
+      acoes.push(c);
+      principal ||= c;
+    }
+    if (p.situacao === "encerrado" && p.replay && this.comPlaylist()) acoes.push(acao("", "▶ Pedir na playlist", "/playlist", "Votar para esta eleição passar no replay do site, para todos"));
+    if (acoes.length) linhas2.push(el("div", "pl-acoes", acoes));
+    if (p.situacao === "encerrado" && !p.replay && !comSerie) linhas2.push(el("div", "pl-l3 pl-fraco", "replay em preparo (os boletins de urna ainda estão sendo reunidos)"));
+    else if (p.situacao === "encerrado" && !p.replay) linhas2.push(el("div", "pl-l3 pl-fraco", "replay na playlist em preparo"));
+    if (p.situacao === "agendado") linhas2.push(el("div", "pl-l3 pl-fraco", "No dia da eleição, a apuração aparece aqui ao vivo."));
+    const it = el("div", `pl-item s-${p.situacao}${principal ? " clicavel" : ""}${tela ? " na-tela" : ""}`, linhas2);
+    it.setAttribute("role", "listitem");
+    it.dataset.pleito = cod;
+    if (principal) {
+      it.addEventListener("click", (e) => {
+        if (e.target.closest("a, button")) return;
+        principal.click();
+      });
+      for (const a of acoes) a.addEventListener("click", () => this.fechar());
+    }
+    return it;
+  }
+};
+
+// src/normas.js
+var NORMAS = {
+  CE: {
+    nome: "Código Eleitoral (Lei nº 4.737, de 15 de julho de 1965)",
+    url: "https://www.tse.jus.br/legislacao/codigo-eleitoral/codigo-eleitoral-1/codigo-eleitoral-lei-nb0-4.737-de-15-de-julho-de-1965"
+  }
+};
+var ARTIGOS = {
+  "art. 224": {
+    norma: "CE",
+    artigo: "224",
+    inicio: "Art. 224. Se a nulidade atingir a mais de metade",
+    resumo: "nova eleição quando a nulidade atinge mais da metade dos votos (caput) ou quando o eleito em pleito majoritário tem o registro indeferido ou é cassado (§ 3º)"
+  }
+};
+var fragmento = (s) => encodeURIComponent(s).replace(/-/g, "%2D");
+function urlArtigo(chave) {
+  const a = ARTIGOS[chave];
+  if (!a) return null;
+  return `${NORMAS[a.norma].url}#:~:text=${fragmento(a.inicio)}`;
+}
+function linkArtigo(chave, texto = chave) {
+  const a = ARTIGOS[chave];
+  const url = urlArtigo(chave);
+  if (!url) return texto;
+  const l = el("a", "norma", texto);
+  l.href = url;
+  l.target = "_blank";
+  l.rel = "noopener noreferrer";
+  l.title = `${NORMAS[a.norma].nome}, art. ${a.artigo}: ${a.resumo}. Abre o texto no site do TSE, numa aba nova.`;
+  return l;
+}
+var RE = new RegExp(`(${Object.keys(ARTIGOS).map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`, "g");
+function comLinks(texto) {
+  if (!texto) return [];
+  return texto.split(RE).filter((p) => p !== "").map((p) => ARTIGOS[p] ? linkArtigo(p) : p);
 }
 
 // src/app.js
@@ -3304,8 +4414,12 @@ var S = {
   // tópico → geração (s) do 1º arquivo do TSE com a ordem diferente
   // previsão (etapa 8, previsao.js): tópico → última mensagem `previsao` (com o histórico das faixas)
   prev: /* @__PURE__ */ new Map(),
-  prevConfirmadas: /* @__PURE__ */ new Map()
+  prevConfirmadas: /* @__PURE__ */ new Map(),
   // tópico → confirmação (marco "previsão confirmada", para os ensaios)
+  // sondas (sonda.js): o caminho dos BUs está andando? e com que atraso
+  tele: new Telemetria(),
+  ritmoAtual: null
+  // BUs/min mostrado no chip
 };
 window.__uv = S;
 try {
@@ -3413,7 +4527,15 @@ function receber(m) {
       break;
     }
     case "estado":
+      if (!S.consulta && m.pleito != null) {
+        if (S.pleitoVivo != null && String(m.pleito) !== String(S.pleitoVivo)) {
+          location.reload();
+          return;
+        }
+        S.pleitoVivo = m.pleito;
+      }
       S.estado = m;
+      desenharSeletor();
       verificarVersao(m.versao);
       if (m.ultimo_bu?.seq != null) S.seqMax = Math.max(S.seqMax || 0, m.ultimo_bu.seq);
       if (m.ultimo_bu?.seq != null && m.relogio_sistema?.agora) amostrarRitmo(m.ultimo_bu.seq, segundosF(m.relogio_sistema.agora), m.relogio_sistema.sistema0);
@@ -3432,6 +4554,9 @@ function receber(m) {
       S.player?.estadoWs(m.replay);
       pedirQuadro();
       break;
+    case "sonda":
+      if (S.tele.receber(m, performance.now())) desenharChipSonda();
+      break;
     case "erro":
       if (m.motivo === "comparacao_desligada") {
         S.tseDesligada = true;
@@ -3444,6 +4569,7 @@ function receber(m) {
   }
 }
 function estadoConexao(e, info) {
+  if (e === "vivo" && S.conexao !== "vivo") S.tele.conectou(performance.now());
   S.conexao = e;
   S.conexaoInfo = info;
   S.estadoSujo = true;
@@ -3452,10 +4578,29 @@ function estadoConexao(e, info) {
 var feed;
 var folha;
 var hist;
+var FEED_LOTE = 8;
+var FEED_INTERVALO = 250;
+var filaFeed = null;
+var feedEm = -Infinity;
 function porNoFeed(it) {
   hist.por(it);
-  const item = feed.por(it);
-  if (it.destaque) destacar(item.el);
+  if (!filaFeed) {
+    filaFeed = /* @__PURE__ */ new Map();
+    setTimeout(descarregarFeed, Math.max(0, FEED_INTERVALO - (performance.now() - feedEm)));
+  }
+  filaFeed.delete(it.id);
+  filaFeed.set(it.id, it);
+}
+function descarregarFeed() {
+  feedEm = performance.now();
+  const l = [...filaFeed.values()];
+  filaFeed = null;
+  const corte = l.length - FEED_LOTE;
+  l.forEach((it, i) => {
+    if (i < corte && !it.fixo && !feed.porId.has(it.id)) return;
+    const item = feed.por(it);
+    if (it.destaque) destacar(item.el);
+  });
 }
 var destaques = [];
 function destacar(e) {
@@ -3479,7 +4624,7 @@ function destacar(e) {
   }, 3e4);
 }
 function lerRota() {
-  const m = /^#\/([a-z]{2}(?:\d{5})?)\/c(\d{4})$/.exec(location.hash);
+  const m = /^#\/(?:p\/\d+\/)?([a-z]{2}(?:\d{5})?)\/c(\d{4})$/.exec(location.hash);
   let a = m?.[1], c = m ? +m[2] : null;
   if (!a || !S.topicos.has(`${a}-c${cargo4(c)}`)) {
     const pref = ["br-c0001", ...[...S.topicos].sort()];
@@ -3495,33 +4640,18 @@ function cargosDe(a) {
   return [...S.topicos].filter((t) => t.startsWith(`${a}-c`)).map((t) => +t.slice(-4)).sort((x, y) => x - y);
 }
 function montarRota(t) {
-  const nav = $2("#rota");
   const a = abr(t.abr);
-  const ufs = [...new Set([...S.topicos].map((x) => x.split("-")[0]).filter((x) => x.length === 2 && x !== "br"))].sort();
-  const munis = a.uf ? [...new Set([...S.topicos].map((x) => x.split("-")[0]).filter((x) => x.length === 7 && x.startsWith(a.uf)))] : [];
-  const br = el("button", "passo", "Brasil");
-  br.type = "button";
-  br.addEventListener("click", () => irPara("br"));
-  const filhos = [];
-  if (S.topicos.has("br-c0001") || [...S.topicos].some((x) => x.startsWith("br-"))) filhos.push(br);
-  const ufsTodas = [.../* @__PURE__ */ new Set([...ufs, ...[...S.topicos].map((x) => x.split("-")[0]).filter((x) => x.length === 7).map((x) => x.slice(0, 2))])].sort();
-  if (ufsTodas.length) {
-    const s = el("select", "passo");
-    s.setAttribute("aria-label", "Estado");
-    s.append(new Option("Estado…", ""));
-    for (const u of ufsTodas) s.append(new Option(S.N.uf(u), u, false, u === a.uf));
-    s.addEventListener("change", () => s.value && irPara(s.value));
-    filhos.push(s);
-  }
-  if (munis.length) {
-    const s = el("select", "passo");
-    s.setAttribute("aria-label", "Município");
-    s.append(new Option("Município…", ""));
-    munis.map((m) => [m, S.N.mun(m)]).sort((x, y) => x[1].localeCompare(y[1], "pt-BR")).forEach(([m, n]) => s.append(new Option(n, m, false, m === t.abr)));
-    s.addEventListener("change", () => s.value && irPara(s.value));
-    filhos.push(s);
-  }
-  nav.replaceChildren(...filhos);
+  const raizes = [...S.topicos].map((x) => x.split("-")[0]);
+  const ufs = [...new Set(raizes.filter((x) => x.length === 2 && x !== "br"))];
+  const munis = a.uf ? [...new Set(raizes.filter((x) => x.length === 7 && x.startsWith(a.uf)))] : [];
+  const ufsTodas = [.../* @__PURE__ */ new Set([...ufs, ...raizes.filter((x) => x.length === 7).map((x) => x.slice(0, 2))])].map((u) => [u, S.N.uf(u)]).sort((x, y) => x[1].localeCompare(y[1], "pt-BR"));
+  const grupos = [];
+  if (raizes.includes("br")) grupos.push([null, [["br", "Brasil"]]]);
+  grupos.push([ufsTodas.length > 1 || grupos.length ? "Estados" : null, ufsTodas]);
+  if (munis.length) grupos.push([`Municípios · ${a.uf.toUpperCase()}`, munis.map((m) => [m, S.N.local(m)]).sort((x, y) => x[1].localeCompare(y[1], "pt-BR"))]);
+  S.ident.locais(grupos, a.tipo === "mun" ? t.abr : a.tipo === "uf" ? a.uf : "br");
+  S.ident.definir({ turno: S.N.cargos.get(t.cargo)?.turno, cargo: S.N.cargo(t.cargo), local: t.abr === "br" ? "Brasil" : S.N.local(t.abr) });
+  S.ident.eleicao(eleicaoAtual(null));
 }
 function irPara(a, c) {
   const cs = cargosDe(a);
@@ -3532,18 +4662,20 @@ function irPara(a, c) {
     a = m;
     cargo = cargosDe(m)[0];
   }
-  location.hash = `#/${a}/c${cargo4(cargo)}`;
+  location.hash = `${S.consulta ? `#/p/${S.consulta.pleito}` : "#"}/${a}/c${cargo4(cargo)}`;
 }
 function montarCargos(t) {
   const nav = $2("#cargos");
   nav.replaceChildren(...cargosDe(t.abr).map((c) => {
     const b = el("button", null, S.N.cargo(c));
     b.type = "button";
+    b.dataset.cargo = String(c);
     b.setAttribute("role", "tab");
     b.setAttribute("aria-selected", String(c === t.cargo));
     b.addEventListener("click", () => irPara(t.abr, c));
     return b;
   }));
+  S.ident.ajustarCargos();
 }
 function cardTatil(c) {
   if (movimentoReduzido()) return c;
@@ -3595,7 +4727,7 @@ function montarPainel(t) {
   const digSec = digitos(Math.max(res.secoes?.total || 0, 1));
   const ordem = [...res.cand].sort((a, b) => a.n - b.n);
   const cores = coresDaDisputa(ordem.map((k) => ({ n: k.n, partido: S.N.candidato(circ, res.cargo, k.n).partido })));
-  const linhas = /* @__PURE__ */ new Map();
+  const linhas2 = /* @__PURE__ */ new Map();
   const lista = el("ol", "lista");
   lista.setAttribute("aria-label", "Candidatos em ordem de votos");
   const altura = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--linha-cand")) || 76;
@@ -3625,7 +4757,7 @@ function montarPainel(t) {
     );
     li.dataset.n = k.n;
     lista.append(li);
-    linhas.set(k.n, { li, pctH, votH, barra, pilula, pilTxt: "", tc, pos: -1, glow: false, diverge: false, nome: info2.nome, cor });
+    linhas2.set(k.n, { li, pctH, votH, barra, pilula, pilTxt: "", tc, pos: -1, glow: false, diverge: false, nome: info2.nome, cor });
   }
   lista.classList.add(`m-${S.comparar}`);
   const consulta = S.N.cargos.get(res.cargo)?.consulta;
@@ -3676,9 +4808,9 @@ function montarPainel(t) {
     el("div", "faltam", [camadaN, camadaD])
   ]));
   const curva = new Curva();
-  fetch(`/api/v1/curva/${t.topico}`).then((r) => r.ok ? r.json() : null).then((j) => {
+  (S.con?.curva ? S.con.pronto(t.topico).then(() => S.con.curva(t.topico)) : fetch(`/api/v1/curva/${t.topico}`).then((r) => r.ok ? r.json() : null)).then((j) => {
     if (!j || S.ui?.curva !== curva) return;
-    curva.semear(j.pontos.map(([tt, ap, tot, c]) => ({ t: tt, s: tot ? 100 * ap / tot : 0, c: new Map(c) })));
+    curva.semear(j.pontos.map(([tt, ap, tot, c]) => ({ t: tt, s: tot ? 100 * ap / tot : 0, c: new Map(c) })), S.consulta ? null : j.relogio === "sistema" ? "sistema" : "noite");
     pedirQuadro();
   }).catch(() => {
   });
@@ -3708,7 +4840,7 @@ function montarPainel(t) {
   S.ui = {
     topico: t.topico,
     circ,
-    linhas,
+    linhas: linhas2,
     selo,
     anel,
     pctSec,
@@ -3743,16 +4875,23 @@ function montarPainel(t) {
   S.faltamSujo = true;
   S.prevSujo = true;
   atualizarTopicos();
-  if (S.ident) {
-    const ano = [res.ultimo_bu, S.estado?.relogio_site].map((x) => /(20\d\d)/.exec(x || "")?.[1]).find(Boolean);
-    S.ident.definir({
-      ano,
-      geral: [...S.topicos].some((x) => x.startsWith("br-")),
-      turno: res.turno,
-      cargo: S.N.cargo(res.cargo),
-      local: t.abr === "br" ? "Brasil" : S.N.local(t.abr)
-    });
-  }
+  S.ident.definir({ turno: res.turno, cargo: S.N.cargo(res.cargo), local: t.abr === "br" ? "Brasil" : S.N.local(t.abr) });
+  S.ident.eleicao(eleicaoAtual(res));
+}
+function eleicaoAtual(res = S.tela && S.res.get(S.tela.topico)) {
+  const cod = String(S.consulta?.pleito ?? S.estado?.pleito ?? "");
+  const p = cod && S.pleitos?.pleitos?.find((x) => String(x.codigo) === cod);
+  if (p?.titulo) return { nome: p.titulo.replace(/\s*·\s*\dº turno$/, ""), dataIso: p.data_iso || "" };
+  const ano = [res?.ultimo_bu, S.serieInicio, S.estado?.relogio_site].map((x) => /(20\d\d)/.exec(x || "")?.[1]).find(Boolean) || "";
+  const tipo = tipoEleicao(res?.cargo);
+  const nome = tipo === "Suplementar" ? `Eleição suplementar ${ano}` : `Eleições ${tipo} ${ano}`;
+  return { nome: nome.trim(), dataIso: dataDaNoite(res) };
+}
+function dataDaNoite(res) {
+  const s = /^(\d\d)\/(\d\d)\/(\d{4})/.exec(S.serieInicio || "");
+  if (s) return `${s[3]}-${s[2]}-${s[1]}`;
+  const u = /^(\d{4}-\d\d-\d\d)T(\d\d)/.exec(res?.ultimo_bu || "");
+  return u && +u[2] >= 8 ? u[1] : "";
 }
 function montarTela() {
   const t = lerRota();
@@ -3916,8 +5055,9 @@ function desenharTopico(agora) {
       selo = `${encerrada ? "2º turno" : "Matematicamente 2º turno"}${dois.length ? ": " + dois.map(nomeL).join(" × ") : ""}${em ? " às " + horaMat(res, em) : ""}`;
     } else if (res.estado === "sem_eleito") selo = "Sem eleito (art. 224)";
   }
-  if (ui.selo.textContent !== selo) {
-    ui.selo.textContent = selo;
+  if (ui.selo.dataset.texto !== selo) {
+    ui.selo.dataset.texto = selo;
+    ui.selo.replaceChildren(...selo ? [el("span", "selo-txt", comLinks(selo))] : []);
     ui.selo.classList.toggle("ligado", !!selo);
     if (selo && !movimentoReduzido()) {
       ui.selo.classList.add("brilho");
@@ -3961,7 +5101,12 @@ function desenharTopico(agora) {
     ui.ultCurva = agora;
     const a = res.cand[0], b = res.cand[1];
     ui.curva.linhas([a, b].filter(Boolean).map((k) => ({ n: k.n, cor: ui.linhas.get(k.n)?.cor })));
-    ui.curva.ponto(res.totalizado_em ? segundosF(res.totalizado_em) : segundos(res.ultimo_bu), totUv ? 100 * apUv / totUv : 0, res.cand.map((k) => [k.n, k.pct]));
+    ui.curva.ponto(
+      res.totalizado_em ? segundosF(res.totalizado_em) : segundos(res.ultimo_bu),
+      totUv ? 100 * apUv / totUv : 0,
+      res.cand.map((k) => [k.n, k.pct]),
+      S.consulta ? null : res.totalizado_em ? "sistema" : "noite"
+    );
     const leg = `${a?.n}|${b?.n}`;
     if (ui.leg !== leg) {
       ui.leg = leg;
@@ -4174,8 +5319,21 @@ function desenharFaltam() {
 var faixa;
 function montarFaixa() {
   const ritmoH = new Hodometro({ inteiros: 6, centro: true });
-  const ritmo = el("span", "chip ritmo", ritmoH.arrastarEl = el("span", "ritmo-in", [ritmoH.el, el("span", null, " BUs/min")]));
+  const sondaL = el("span", "longo", ""), sondaC = el("span", "curto", "");
+  const ritmo = el("button", "chip ritmo", [
+    ritmoH.arrastarEl = el("span", "ritmo-in", [ritmoH.el, el("span", null, " BUs/min")]),
+    el("span", "ritmo-sonda", [sondaL, sondaC])
+  ]);
+  if (S.consulta) ritmo.classList.add("oculto");
+  ritmo.type = "button";
+  ritmo.setAttribute("aria-haspopup", "dialog");
+  ritmo.setAttribute("aria-controls", "telemetria");
+  ritmo.title = "Telemetria da apuração: ritmo e atraso de processamento";
   ritmo.style.width = "150px";
+  ritmo.addEventListener("click", () => {
+    S.painelTele.alternar(ritmo);
+    atualizarTelemetria();
+  });
   const pausa = el("span", "chip alerta oculto", "");
   pausa.style.width = "260px";
   const alerta = el("span", "chip alerta oculto", "");
@@ -4201,8 +5359,51 @@ function montarFaixa() {
   const paradoTxt = el("span", null, "");
   const parado = el("span", "chip parado oculto", [el("span", "ic", "!"), paradoTxt, el("span", "longo", " · retomamos automaticamente quando voltarem")]);
   parado.setAttribute("role", "status");
-  $2("#faixa").replaceChildren(parado, promo, http, ritmo, cedo, pausa, alerta);
-  faixa = { ritmoH, ritmo, pausa, alerta, promo, pNome, pQuando, pCont, pExt, pA, pB, pTrilho, pJanela, http, cedo, parado, paradoTxt };
+  $2("#faixa").replaceChildren(ritmo, http, parado, promo, cedo, pausa, alerta);
+  faixa = { ritmoH, ritmo, sondaL, sondaC, pausa, alerta, promo, pNome, pQuando, pCont, pExt, pA, pB, pTrilho, pJanela, http, cedo, parado, paradoTxt };
+}
+var CICLO_MS = 9e3;
+var SONDA_MS = 3500;
+function desenharChipSonda() {
+  if (!faixa) return;
+  const agora = performance.now();
+  const t = textoChip(S.tele, agora, S.conexao === "vivo");
+  const c = faixa.ritmo;
+  const sit = t?.situacao || "";
+  if (c.dataset.sonda !== sit) c.dataset.sonda = sit;
+  if (t) {
+    if (faixa.sondaL.textContent !== t.longo) faixa.sondaL.textContent = t.longo;
+    if (faixa.sondaC.textContent !== t.curto) faixa.sondaC.textContent = t.curto;
+  }
+  const ocioso = !S.ritmoAtual;
+  const mostrar = !!t && (sit === "atrasada" || ocioso && Date.now() % CICLO_MS < SONDA_MS);
+  if (c.classList.contains("mostra-sonda") !== mostrar) c.classList.toggle("mostra-sonda", mostrar);
+  const rot = `${S.ritmoAtual == null ? "" : `${mil(S.ritmoAtual)} BUs por minuto. `}${t ? `${t.longo.replace("✓", "Confirmado:").replace("⚠", "Atenção:")}. ` : ""}Toque para ver a telemetria.`;
+  if (c.getAttribute("aria-label") !== rot) c.setAttribute("aria-label", rot);
+}
+function atualizarTelemetria() {
+  const p = S.painelTele;
+  if (!p?.aberta()) return;
+  const t = S.tele, agora = performance.now(), lb = S.estado?.latencia_bu_ms;
+  p.atualizar({
+    situacao: t.situacao(agora, S.conexao === "vivo"),
+    conectado: S.conexao === "vivo",
+    suportada: t.suportada,
+    ritmo: S.ritmoAtual,
+    atrasoMs: t.atrasoMs(),
+    atrasoMedMs: t.atrasoMedianoMs(),
+    envioMs: t.envioMs(),
+    idadeMs: t.idadeMs(agora),
+    limiteMs: t.limiteMs(),
+    intervaloMs: t.intervaloMs(),
+    recebidas: t.recebidas,
+    pulos: t.pulos,
+    ultima: t.ultima,
+    seq: S.seqMax ?? null,
+    remotas: t.remotas,
+    buMs: lb?.n ? lb.p50 : null,
+    buP99: lb?.n ? lb.p99 : null
+  });
 }
 var agoraPl = () => Date.now() + (S.pl?.desvio || 0);
 function promoAtual() {
@@ -4293,7 +5494,13 @@ function desenharParado() {
   if (f2.parado.classList.contains("oculto") === (tb != null)) f2.parado.classList.toggle("oculto", tb == null);
   if (tb == null) return;
   const d = new Date(tb * 1e3), hh = String(d.getUTCHours()).padStart(2, "0"), mm = String(d.getUTCMinutes()).padStart(2, "0");
-  const txt = `TSE sem novos BUs desde ${hh}h${mm}`;
+  const agora = agoraSite();
+  const deltaS = agora != null && agora > tb ? agora - tb : 0;
+  const min = Math.floor(deltaS / 60);
+  const tempoTxt = min >= 60 ? `${Math.floor(min / 60)}h${min % 60 ? `${min % 60}m` : ""}` : `${min} min`;
+  const txtCurto = `TSE sem novos BUs há ${tempoTxt}`;
+  const txtLongo = `TSE sem novos BUs há ${tempoTxt} (desde ${hh}h${mm})`;
+  const txt = window.innerWidth <= 640 ? txtCurto : txtLongo;
   if (f2.paradoTxt.textContent !== txt) f2.paradoTxt.textContent = txt;
 }
 function desenharPromo() {
@@ -4344,40 +5551,58 @@ function desenharPromo() {
 function detalheAviso() {
   const e = S.estado;
   const modo = modoDe(e);
-  const linhas = [];
+  const linhas2 = [];
   let titulo2 = "Urna Velox";
-  if (modo === "replay") {
+  if (S.consulta) {
+    titulo2 = "CONSULTA: a noite de uma eleição encerrada";
+    const vivo = el("a", null, "● Voltar ao que está no ar");
+    vivo.href = "/";
+    linhas2.push(
+      ["Consulta", "A noite inteira desta eleição, guardada minuto a minuto: a linha do tempo embaixo leva a qualquer instante, toca e acelera. Cada visitante tem a sua."],
+      ["Dados", "Os boletins de urna reais, publicados pelo TSE, totalizados pelo Urna Velox; no fim, idênticos ao resultado oficial. O lado do TSE são os arquivos oficiais da noite ou, quando eles não foram guardados, a reconstrução pela hora em que o TSE recebeu cada boletim (marcada assim)."],
+      ["Ao vivo", vivo]
+    );
+  } else if (modo === "replay") {
     titulo2 = "REPLAY: dados reais, totalizados de novo";
-    linhas.push(
+    linhas2.push(
       ["Replay", "A apuração de uma eleição que já aconteceu, passando de novo — como a reprise de um jogo."],
       ["Dados", "Os boletins de urna reais, publicados pelo TSE: nenhum voto é inventado. A totalização recomeça do zero, na ordem em que os boletins chegaram à Justiça Eleitoral, e no fim é conferida com o resultado oficial."],
       ["No ar", e.simulacao.rotulo]
     );
   } else if (modo === "espera") {
     titulo2 = "A apuração ainda não começou";
-    linhas.push(["No ar", S.pl?.no_ar?.modo === "espera" && S.pl.no_ar.modo_descricao ? S.pl.no_ar.modo_descricao : "Os candidatos já carregados, à espera dos primeiros boletins de urna."]);
+    linhas2.push(["No ar", S.pl?.no_ar?.modo === "espera" && S.pl.no_ar.modo_descricao ? S.pl.no_ar.modo_descricao : "Os candidatos já carregados, à espera dos primeiros boletins de urna."]);
   } else if (modo === "ao_vivo") {
     titulo2 = e?.encerrada ? "Apuração encerrada" : "AO VIVO: totalização em tempo real";
-    linhas.push(["No ar", "A totalização da eleição com os boletins de urna publicados pelo TSE, à medida que chegam."]);
+    linhas2.push(["No ar", "A totalização da eleição com os boletins de urna publicados pelo TSE, à medida que chegam."]);
   }
   const p = promoAtual();
   if (p) {
     const t = textoPromo(p);
     if (modo === "espera" || modo === "") titulo2 = p.aoVivo ? `AO VIVO agora: ${p.nome}` : "Próxima eleição AO VIVO";
-    linhas.unshift([
+    linhas2.unshift([
       el("span", "aviso-selo", "AO VIVO"),
       el("strong", "aviso-vivo", p.aoVivo ? [`Agora: ${p.nome}`] : [p.nome, el("br"), `${t.q.dia} (${t.q.ddmm}), a partir das ${t.q.hora} · ${t.falta}`])
     ]);
     if (textoExterior(p)) {
-      linhas.splice(1, 0, ["Exterior", `A partir da 01h do dia da eleição (${t.q.ddmm}), o TSE já pode publicar os boletins de urna (BUs) do exterior, e o Urna Velox totaliza cada um assim que sai. A totalização oficial no Brasil começa às 17h.`]);
+      linhas2.splice(1, 0, ["Exterior", `A partir da 01h do dia da eleição (${t.q.ddmm}), o TSE já pode publicar os boletins de urna (BUs) do exterior, e o Urna Velox totaliza cada um assim que sai. A totalização oficial no Brasil começa às 17h.`]);
     }
   }
   if (S.pl && !$2("#conexao")?.hidden) {
     const link = el("a", null, "▶ Playlist: a agenda dos replays e a votação do próximo");
     link.href = "/playlist";
-    linhas.push(["Playlist", link]);
+    linhas2.push(["Playlist", link]);
   }
-  return { titulo: titulo2, linhas };
+  if (S.pleitos) {
+    const b = el("button", "pl-abrir", [el("span", null, "Ver todos os pleitos"), el("small", null, resumoTxt(S.pleitos))]);
+    b.type = "button";
+    b.addEventListener("click", () => {
+      folha.fechar();
+      S.painelPleitos.abrir();
+    });
+    linhas2.push(["Pleitos", b]);
+  }
+  return { titulo: titulo2, linhas: linhas2 };
 }
 var AVISO = { get titulo() {
   return detalheAviso().titulo;
@@ -4410,6 +5635,47 @@ function talvezAvisar() {
   }
   abrirAviso();
 }
+function tipoEleicao(cargo) {
+  const cod = String(S.consulta?.pleito ?? S.estado?.pleito ?? "");
+  const p = cod && S.pleitos?.pleitos?.find((x) => String(x.codigo) === cod);
+  const tipos = (p?.eleicoes || []).map((e) => e.tipo);
+  if (tipos.length && tipos.every((t) => t === "suplementar")) return "Suplementar";
+  if (p?.titulo) {
+    if (/Gerais/.test(p.titulo)) return "Gerais";
+    if (/Municipais/.test(p.titulo)) return "Municipais";
+  }
+  const c = cargo ?? S.tela?.cargo;
+  return [...S.topicos].some((x) => x.startsWith("br-")) || [1, 3, 5, 6, 7, 8].includes(c) ? "Gerais" : "Municipais";
+}
+function desenharSeletor() {
+  if (S.tela && S.ident) S.ident.eleicao(eleicaoAtual());
+}
+async function acompanharPleitos() {
+  S.consultas = /* @__PURE__ */ new Set();
+  S.painelPleitos = new PainelPleitos({
+    noAr: () => S.pl?.no_ar?.pleito ?? (S.consulta ? null : S.estado?.pleito),
+    comPlaylist: () => !!S.pl,
+    consultas: () => S.consultas,
+    naTela: () => S.consulta?.pleito ?? S.estado?.pleito,
+    emConsulta: () => !!S.consulta
+  });
+  $2("#eleicao .el-pleito").addEventListener("click", () => S.painelPleitos.abrir());
+  buscarConsultas().then((c) => {
+    S.consultas = c;
+    if (S.pleitos) S.painelPleitos.definir(S.pleitos);
+  });
+  const buscar = async () => {
+    const l = await buscarPleitos();
+    if (l) {
+      S.pleitos = l;
+      S.painelPleitos.definir(l);
+      desenharSeletor();
+      document.documentElement.classList.add("com-pleitos");
+    }
+    setTimeout(buscar, l ? 10 * 6e4 + Math.random() * 6e4 : 6e4 + Math.random() * 3e4);
+  };
+  await buscar();
+}
 async function acompanharPlaylist() {
   const prazo = new Promise((ok) => setTimeout(ok, 3e3));
   const primeira = buscarPlaylist();
@@ -4439,7 +5705,7 @@ function desenharEstado() {
   const modo = S.conexao === "vivo" || e ? modoDe(e) : "";
   const http = S.conexao === "http";
   const ligada = S.conexao === "vivo" || http;
-  const nomeModo = { replay: "REPLAY", ao_vivo: "AO VIVO", espera: "EM BREVE" }[modo] || "";
+  const nomeModo = S.consulta ? "CONSULTA" : { replay: "REPLAY", ao_vivo: "AO VIVO", espera: "EM BREVE" }[modo] || "";
   let est = S.conexao, txt = nomeModo || "conectando…";
   if (S.conexao === "conectando" && !e) txt = "conectando…";
   if (S.conexao === "caiu") {
@@ -4458,8 +5724,12 @@ function desenharEstado() {
   }
   if (ligada && e?.encerrada) {
     est = "encerrada";
-    txt = modo === "replay" ? "REPLAY · fim" : "apuração encerrada";
+    txt = S.consulta ? "CONSULTA" : (
+      /* B-084: o fim já está no slider; "CONSULTA · fim" não cabia no celular */
+      modo === "replay" ? "REPLAY · fim" : "apuração encerrada"
+    );
   }
+  if (faixa?.ritmo && faixa.ritmo.classList.contains("oculto") !== !!S.consulta) faixa.ritmo.classList.toggle("oculto", !!S.consulta);
   if (faixa?.http && faixa.http.classList.contains("oculto") === http) {
     faixa.http.classList.toggle("oculto", !http);
     faixa.ritmo.classList.toggle("com-http", http);
@@ -4469,10 +5739,10 @@ function desenharEstado() {
   const t = c.querySelector(".txt");
   if (t.textContent !== txt) t.textContent = txt;
   const pl = c.querySelector(".pl");
-  const comPl = !!S.pl && modo !== "ao_vivo";
+  const comPl = !!S.pl && modo !== "ao_vivo" && !S.consulta;
   if (pl.classList.contains("oculto") === comPl) pl.classList.toggle("oculto", !comPl);
   const rot = e?.simulacao?.rotulo || "";
-  const dica = modo === "replay" ? `REPLAY com dados reais: os boletins de urna são os publicados pelo TSE, totalizados de novo, do zero, na ordem em que chegaram à Justiça Eleitoral (${rot}); no fim, o resultado é conferido com o oficial. O relógio mostra o horário da noite da eleição.` : modo === "espera" ? "A apuração ainda não começou." : modo === "ao_vivo" ? "Totalização ao vivo." : "";
+  const dica = S.consulta ? "CONSULTA de uma eleição encerrada: a noite inteira guardada minuto a minuto, com os boletins de urna reais publicados pelo TSE. Use a linha do tempo para ir a qualquer instante, tocar e acelerar; o lado do TSE mostra os arquivos oficiais da noite, ou a reconstrução pela hora de recebimento quando eles não foram guardados." : modo === "replay" ? `REPLAY com dados reais: os boletins de urna são os publicados pelo TSE, totalizados de novo, do zero, na ordem em que chegaram à Justiça Eleitoral (${rot}); no fim, o resultado é conferido com o oficial. O relógio mostra o horário da noite da eleição.` : modo === "espera" ? "A apuração ainda não começou." : modo === "ao_vivo" ? "Totalização ao vivo." : "";
   const dicaHttp = http ? ` ${TEXTO_HTTP}` : "";
   if (c.title !== dica + dicaHttp) {
     c.title = dica + dicaHttp;
@@ -4481,6 +5751,10 @@ function desenharEstado() {
   talvezAvisar();
   desenharPromo();
   if (!e) return;
+  if (S.pleitoNaBarra !== e.pleito) {
+    S.pleitoNaBarra = e.pleito;
+    desenharSeletor();
+  }
   const pz = e.pausa_429?.ativa ? `Pausa de rede (HTTP 429)${e.pausa_429.retomada_em ? " até " + hora(e.pausa_429.retomada_em) : ""}` : "";
   if (faixa.pausa.textContent !== pz) {
     faixa.pausa.textContent = pz;
@@ -4516,8 +5790,9 @@ function curiosidades() {
   const r = S.ritmoSessao !== void 0 ? S.ritmoSrv : S.ritmo;
   if (r.length >= 2) {
     const [t0, s0] = r[0], [t1, s1] = r[r.length - 1];
-    faixa.ritmoH.definir(t1 > t0 ? Math.round((s1 - s0) * 6e4 / Math.max(5e3, t1 - t0)) : 0);
-  } else faixa.ritmoH.definir(0);
+    S.ritmoAtual = t1 > t0 ? Math.round((s1 - s0) * 6e4 / Math.max(5e3, t1 - t0)) : 0;
+  } else S.ritmoAtual = 0;
+  faixa.ritmoH.definir(S.ritmoAtual);
   if (S.primeirosSujo) {
     S.primeirosSujo = false;
     for (const it of primeiros(S.N, S.eventos.values())) porNoFeed(it);
@@ -4542,8 +5817,8 @@ function feedFaltam() {
       x = { hod };
       itensFaltam.set(t, x);
       const ab = f2.abrangencia;
-      const curto = ab === "br" ? S.N.cargo(f2.cargo) : ab.length === 2 && ab !== "zz" ? `${S.N.cargo(f2.cargo)} ${ab.toUpperCase()}` : d;
-      feed.por({ id: `f:${t}`, fixo: true, ic: "↓", hod, texto: `${curto}: faltam`, t: "eleitores para o matematicamente", detalhe: null });
+      const curto2 = ab === "br" ? S.N.cargo(f2.cargo) : ab.length === 2 && ab !== "zz" ? `${S.N.cargo(f2.cargo)} ${ab.toUpperCase()}` : d;
+      feed.por({ id: `f:${t}`, fixo: true, ic: "↓", hod, texto: `${curto2}: faltam`, t: "eleitores para o matematicamente", detalhe: null });
     }
     x.hod.definir(f2.faltam);
     const it = feed.porId.get(`f:${t}`);
@@ -4562,6 +5837,17 @@ function feedFaltam() {
     if (it) it.sair = true;
     else itensFaltam.delete(t);
   }
+}
+function reiniciarConsulta() {
+  S.res = new Resultados();
+  for (const k of ["eventos", "marcos", "faltam", "tse", "prev", "matSis", "confirmados", "ordemDesde", "prevConfirmadas"]) S[k]?.clear?.();
+  S.seqMax = 0;
+  S.ritmo = [];
+  S.ritmoSrv = [];
+  S.primeiraUf100 = null;
+  feed?.limpar();
+  hist?.limpar();
+  montarTela();
 }
 async function iniciar() {
   const tema = (() => {
@@ -4582,32 +5868,63 @@ async function iniciar() {
   });
   folha = new Folha($2("#folha"));
   feed = new Feed($2("#feed"), (d) => folha.abrir(d));
+  folha.aoFechar = () => feed.retomar();
   hist = new Historico($2("#hist"), $2("#feed-hist"));
   const fonte = document.fonts.load('700 20px "Archivo UV"').catch(() => null);
+  const rc = rotaConsulta(location.hash);
+  const serie = rc ? await carregarSerie(rc.pleito) : null;
+  if (rc && !serie) history.replaceState(null, "", location.pathname + location.search);
+  if (serie) document.documentElement.classList.add("com-replay");
   const [nomes, topicos, player] = await Promise.all([
-    fetch("/api/v1/nomes").then((r) => r.ok ? r.json() : null).catch(() => null),
-    fetch("/api/v1/topicos").then((r) => r.ok ? r.json() : []).catch(() => []),
-    // barra do replay só no site simulado; montada (e o espaço dela reservado) antes do primeiro desenho
-    iniciarPlayer(),
+    serie ? serie.nomes : fetch("/api/v1/nomes").then((r) => r.ok ? r.json() : null).catch(() => null),
+    serie ? serie.topicos : fetch("/api/v1/topicos").then((r) => r.ok ? r.json() : []).catch(() => []),
+    // barra do replay só no site simulado (na consulta, o slider local); montada (e o espaço dela reservado) antes do primeiro desenho
+    serie ? new PlayerLocal(serie.indice, (t) => S.con?.reposicionar(t)) : iniciarPlayer(),
     fonte
   ]);
   S.player = player;
+  if (serie) {
+    S.consulta = { pleito: serie.pleito };
+    S.serieInicio = serie.indice?.inicio_texto || "";
+  }
+  S.ident = new Identificacao({ aoLocal: (a) => irPara(a), aoCargo: (c) => S.tela && irPara(S.tela.abr, c) });
   await document.fonts.ready;
   montarFaixa();
+  S.painelTele = new PainelTelemetria();
+  setInterval(() => {
+    desenharChipSonda();
+    atualizarTelemetria();
+  }, 1e3);
   $2("#conexao").addEventListener("click", () => abrirAviso());
   acompanharPlaylist();
+  acompanharPleitos();
   setInterval(() => desenharPromo(), 1e3);
-  S.ident = new Identificacao();
   S.N = new Nomes(nomes);
   S.topicos = new Set(topicos.map((t) => t.topico));
-  S.con = new Conexao(receber, estadoConexao);
+  if (serie) {
+    S.avisado = true;
+    S.con = new ConexaoSerie(receber, estadoConexao, serie, `Consulta · pleito ${serie.pleito}`);
+    S.con.aoReiniciar = reiniciarConsulta;
+    S.con.aoIndice = (ind) => S.player?.estender(ind.fim);
+    S.player.aoVivo = () => {
+      location.hash = `#/${S.tela?.abr || "br"}/c${cargo4(S.tela?.cargo ?? 1)}`;
+    };
+    setInterval(() => S.con.avancar(S.player.agora()), 250);
+  } else S.con = new Conexao(receber, estadoConexao);
   const versao = new URL(import.meta.url).searchParams.get("v") || "";
   S.mapa = new CartaoMapa({ obter: (c) => S.con.obter(c), pedirMapa: (f2) => S.con.pedirMapa(f2), nomes: () => S.N, versao });
   S.con.aoConsultar = () => S.mapa?.consultar();
   S.cartoes = new Cartoes({ aoMaximizar: (c, sim) => {
     if (c === S.mapa?.el) S.mapa.maximizado(sim);
   } });
-  window.addEventListener("hashchange", montarTela);
+  window.addEventListener("hashchange", () => {
+    const p = rotaConsulta(location.hash)?.pleito ?? null;
+    if (p !== (S.consulta?.pleito ?? null)) {
+      location.reload();
+      return;
+    }
+    montarTela();
+  });
   document.addEventListener("visibilitychange", () => {
     if (S.comparar !== "uv") atualizarTopicos();
   });

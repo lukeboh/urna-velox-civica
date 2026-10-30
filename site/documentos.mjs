@@ -1,5 +1,5 @@
 // Páginas de texto do site (/termos e /privacidade), geradas no build a partir dos arquivos do repositório — a fonte
-// única: `docs/LICENCIAMENTO.md`, `LICENSE`, `LICENCA.pt-BR.md` e `docs/PRIVACIDADE.md`. Assim o visitante lê as regras
+// única: `docs/legal/LICENCIAMENTO.md`, `LICENSE`, `LICENCA.pt-BR.md` e `docs/legal/PRIVACIDADE.md`. Assim o visitante lê as regras
 // no próprio site, sem depender do GitHub, e o texto do site nunca se afasta do repositório.
 // Conversor de Markdown mínimo, só para o que esses arquivos usam: títulos, parágrafos, listas, citações, tabelas,
 // **negrito**, *itálico*, `código` e links. Endereços externos viram texto (a página não leva a lugar nenhum fora do
@@ -9,10 +9,12 @@ import path from 'node:path';
 
 // destino no site de cada arquivo citado por link relativo (sem destino: fica só o texto)
 const MAPA = {
-  'LICENSE': '/termos#licenca-en', '../LICENSE': '/termos#licenca-en',
-  'LICENCA.pt-BR.md': '/termos#licenca-pt', '../LICENCA.pt-BR.md': '/termos#licenca-pt',
-  'LICENCIAMENTO.md': '/termos', 'docs/LICENCIAMENTO.md': '/termos',
-  'PRIVACIDADE.md': '/privacidade', 'docs/PRIVACIDADE.md': '/privacidade',
+  'LICENSE': '/termos#licenca-en', '../LICENSE': '/termos#licenca-en', '../../LICENSE': '/termos#licenca-en',
+  'LICENCA.pt-BR.md': '/termos#licenca-pt', '../LICENCA.pt-BR.md': '/termos#licenca-pt', '../../LICENCA.pt-BR.md': '/termos#licenca-pt',
+  // docs/legal/ (27/10/2026): os documentos irmãos se citam pela pasta
+  'legal/LICENCIAMENTO.md': '/termos', 'legal/PRIVACIDADE.md': '/privacidade',
+  'LICENCIAMENTO.md': '/termos', 'docs/legal/LICENCIAMENTO.md': '/termos',
+  'PRIVACIDADE.md': '/privacidade', 'docs/legal/PRIVACIDADE.md': '/privacidade',
 };
 
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -87,7 +89,7 @@ export function paginas(raizRepo, molde) {
   const avisos = (t) => t.split('\n').filter((l) => l.startsWith('Required Notice:')).map((l) => `<p class="aviso-req">${esc(l)}</p>`).join('\n');
   const semAvisos = (t) => t.split('\n').filter((l) => !l.startsWith('Required Notice:')).join('\n');
   const termos = [
-    '<section id="termos">', markdown(corpo(ler(raizRepo, 'docs/LICENCIAMENTO.md')), 'termos'), '</section>',
+    '<section id="termos">', markdown(corpo(ler(raizRepo, 'docs/legal/LICENCIAMENTO.md')), 'termos'), '</section>',
     '<section id="licenca-pt"><h2>Licença: tradução para o português do Brasil</h2>', avisos(licPt),
     markdown(semAvisos(licPt).replace(/^\s*#\s[^\n]*\n/m, ''), 'licenca-pt'), '</section>',
     '<section id="licenca-en" lang="en"><h2>License: official text (PolyForm Noncommercial 1.0.0)</h2>', avisos(lic),
@@ -102,7 +104,7 @@ export function paginas(raizRepo, molde) {
     'privacidade.html': montar({
       titulo: 'Privacidade e uso de dados · Urna Velox', h1: 'Privacidade, acesso e retenção de dados', caminho: 'privacidade',
       descricao: 'Privacidade, acesso e retenção de dados no Urna Velox: coletamos o mínimo, não vendemos nem compartilhamos informações pessoais dos visitantes.',
-      conteudo: `<section id="privacidade">${markdown(corpo(ler(raizRepo, 'docs/PRIVACIDADE.md')), 'privacidade')}</section>`,
+      conteudo: `<section id="privacidade">${markdown(corpo(ler(raizRepo, 'docs/legal/PRIVACIDADE.md')), 'privacidade')}</section>`,
     }),
   };
 }

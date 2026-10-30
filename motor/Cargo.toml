@@ -1,6 +1,6 @@
 [package]
 name = "urna-velox"
-version = "1.0.12"
+version = "1.1.1"
 edition = "2021"
 description = "Urna Velox — motor de totalização eleitoral: leitor de BU, catálogo, estado denso, situação dos candidatos"
 license = "PolyForm-Noncommercial-1.0.0"

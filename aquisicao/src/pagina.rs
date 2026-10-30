@@ -32,7 +32,7 @@ pub const ESTATICOS: &[Recurso] = &[
 ];
 
 const INDEX: &str = include_str!("../../site/dist/index.html");
-// gerados por site/documentos.mjs a partir de docs/LICENCIAMENTO.md, LICENSE, LICENCA.pt-BR.md e docs/PRIVACIDADE.md
+// gerados por site/documentos.mjs a partir de docs/legal/LICENCIAMENTO.md, LICENSE, LICENCA.pt-BR.md e docs/legal/PRIVACIDADE.md
 const TERMOS: &str = include_str!("../../site/dist/termos.html");
 const PRIVACIDADE: &str = include_str!("../../site/dist/privacidade.html");
 const ROBOTS: &str = include_str!("../../site/dist/robots.txt");
@@ -111,6 +111,9 @@ mod testes {
         for r in ESTATICOS.iter().filter(|r| r.tipo.starts_with("text/")) {
             // o espaço de nomes do SVG não é um recurso
             let t = std::str::from_utf8(r.corpo).unwrap().replace("http://www.w3.org/", "");
+            // B-071: os links para as normas no site do TSE (artigo de lei citado na página: CLAUDE.md, "Convenções";
+            // `site/src/normas.js`) são navegação numa aba nova, não recurso carregado pela página; só eles, só no app.js
+            let t = if r.caminho == "/static/app.js" { t.replace("https://www.tse.jus.br/legislacao/", "") } else { t };
             assert!(!t.contains("http://") && !t.contains("https://") && !t.contains("//fonts."), "{} cita recurso externo", r.caminho);
         }
         // M-005: o endereço oficial no <link rel="canonical"> (o antigo, no DuckDNS, responde 301 para ele no Caddy)
@@ -154,9 +157,9 @@ mod testes {
         assert!(p.contains("Não vendemos") && p.contains("não compartilhamos"), "compromissos na página");
         for k in ["uv-tema", "uv-comparar", "uv-ident", "uv-aviso-dia"] { assert!(p.contains(k), "preferência {k} descrita"); }
         // o mesmo texto dos arquivos do repositório (gerado deles no build: dist/ regenerado depois de mudar um deles)
-        let doc = include_str!("../../docs/PRIVACIDADE.md");
+        let doc = include_str!("../../docs/legal/PRIVACIDADE.md");
         for k in ["Não vendemos", "hash com sal", "Em vigor desde 24/10/2026", "luciano.bohnert@gmail.com"] { assert!(doc.contains(k) && p.contains(k), "privacidade: {k}"); }
-        assert!(include_str!("../../LICENSE").contains("## Acceptance") && include_str!("../../docs/LICENCIAMENTO.md").contains("PRIVACIDADE.md"));
+        assert!(include_str!("../../LICENSE").contains("## Acceptance") && include_str!("../../docs/legal/LICENCIAMENTO.md").contains("PRIVACIDADE.md"));
         assert!(sitemap().contains("https://urnavelox.com.br/privacidade") && sitemap().contains("https://urnavelox.com.br/termos"));
         assert!(robots().contains("Allow: /privacidade$") && robots().contains("Allow: /termos$"));
     }

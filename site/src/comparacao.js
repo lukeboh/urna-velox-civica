@@ -1,4 +1,4 @@
-// Comparação Urna Velox × TSE (etapa 7, docs/HANDOFF_0.7.0.md; protocolo: docs/PROTOCOLO_WS.md §4.6).
+// Comparação Urna Velox × TSE (etapa 7, docs/handoffs/HANDOFF_0.7.0.md; protocolo: docs/arquitetura/PROTOCOLO_WS.md §4.6).
 //
 // Controle de três posições "Urna Velox · Ambos · TSE" no topo da corrida. Com "Ambos" ou "TSE", a página se inscreve
 // em `tse:<tópico da tela>` — é essa inscrição que faz o servidor buscar o arquivo de resultado do TSE (no máximo uma

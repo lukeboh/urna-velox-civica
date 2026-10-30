@@ -2,13 +2,13 @@
 """uv-ciclo-vigia — monitor de conclusão da totalização e orquestrador da rotação horária.
 
 Acompanha a execução atual em /srv/urna-velox/ciclo/atual:
-1. Para eleições simuladas (452, 453, 3220):
-   Monitora dita/saida/saude.json até apuracao.encerrada == True.
-   Quando concluir, calcula a próxima hora fechada (HH:00:00).
-   Se faltar menos de 3 minutos para a hora fechada, agenda para a hora seguinte (+1h).
+1. Para os replays (452, 453, 3220 e, desde 26/10/2026, 3221):
+   Monitora atual/saida/saude.json até apuracao.encerrada == True.
+   Quando concluir, calcula a próxima virada: a meia hora redonda seguinte (HH:00 ou HH:30, desde a 1.0.35; antes, a
+   hora fechada). Se faltar menos de 3 minutos para ela, agenda para a virada seguinte (+30 min).
    Mantém o resultado exibido na tela até o momento do disparo.
-2. Para o pleito 3221 (espera / sem coleta):
-   Permanece em exibição até a próxima hora fechada (exibindo a tela do 2º turno de 2026).
+2. Para o modo espera (vitrine sem coleta, que era o 3221 até 25/10/2026; fora da rotação):
+   Permanece em exibição até a próxima hora fechada.
 3. Na hora fechada (até INTERVALO segundos depois):
    Dispara `/opt/urna-velox/bin/uv-ciclo.sh avancar <proximo_pleito> <proximo_modo>` numa unidade transitória
    própria (systemd-run), com CICLO_CARIMBO = hora do disparo, e sai.
@@ -19,6 +19,11 @@ Playlist de simulados (uv-playlist.py, no nó A): na hora do disparo, o vigia pe
 recebem a mesma resposta. Sem resposta da playlist em ~2 min, vale a rotação de sempre calculada aqui.
 Suspensão: de um dia antes até três dias depois de cada eleição oficial (ELEICOES_OFICIAIS, padrão 2026-10-25), o
 vigia não dispara nenhum simulado: o resultado no ar fica até a suspensão acabar (ou até o operador intervir).
+
+Multipleito (1.1, desde a 1.0.35): a rotação local e os pleitos aceitos da playlist vêm do pleitos.json (módulo
+uv_pleitos: todo pleito encerrado com o acervo pronto, do mais antigo para o mais novo); as datas dos pleitos agendados
+e em curso entram na suspensão (ordinária: de um dia antes a três dias depois; suplementar e consulta: do dia às 8 h do
+dia seguinte). Sem o pleitos.json, a lista fixa de antes.
 """
 import glob
 import json
@@ -35,6 +40,9 @@ INTERVALO = float(sys.argv[3]) if len(sys.argv) > 3 else 10.0
 BR = timezone(timedelta(hours=-3))
 BIN = os.environ.get('UV_BIN', '/opt/urna-velox/bin')
 SYSTEMD_RUN = os.environ.get('UV_SYSTEMD_RUN', 'systemd-run')   # sobrescrito só nos testes locais
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import uv_pleitos  # noqa: E402  (ao lado deste arquivo, em /opt/urna-velox/bin)
+CATALOGO = uv_pleitos.Catalogo()
 
 def log(msg):
     t = datetime.now(BR).isoformat()
@@ -67,8 +75,7 @@ def ler_params():
     return r
 
 def proximo_pleito(p):
-    seq = {'452': '453', '453': '3220', '3220': '3221', '3221': '452'}
-    return seq.get(str(p), '452')
+    return CATALOGO.seguinte(p) or "452"
 
 def carregar_rotacao():
     for p in [os.path.join(C, 'rotacao.json'), os.path.join(C, 'atual', 'rotacao.json')]:
@@ -90,8 +97,6 @@ def salvar_rotacao(dados):
 
 def determinar_proximo_modo(prox_p, hist_modos):
     prox_p = str(prox_p)
-    if prox_p == '3221':
-        return 'espera'
     # 1. Verifica no historico em memoria / rotacao.json
     ult = hist_modos.get(prox_p)
     if ult == 'rapido':
@@ -109,10 +114,20 @@ def determinar_proximo_modo(prox_p, hist_modos):
     # Sem histórico: rápido (o mesmo padrão de modo_do_pleito no uv-ciclo.sh)
     return 'rapido'
 
+def passo_min():
+    """Minutos entre duas viradas (desde a 1.0.35, 30: hh:00 e hh:30, pedido do Luciano em 29/10/2026; antes, a hora
+    fechada). PASSO_MIN no ciclo.env ou UV_PASSO_MIN troca (60 = como antes)."""
+    try:
+        return max(1, int(os.environ.get('UV_PASSO_MIN') or ENV.get('PASSO_MIN') or 30))
+    except ValueError:
+        return 30
+
 def proxima_hora_fechada(agora, margem_s=180):
-    base = agora.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+    """A próxima virada (meia hora redonda) depois de `agora`, com pelo menos `margem_s` de folga."""
+    p = passo_min()
+    base = agora.replace(minute=(agora.minute // p) * p, second=0, microsecond=0) + timedelta(minutes=p)
     if (base - agora).total_seconds() < margem_s:
-        base += timedelta(hours=1)
+        base += timedelta(minutes=p)
     return base
 
 def executar_avancar(prox_pleito, prox_modo, disparo):
@@ -163,11 +178,18 @@ def eleicoes_oficiais():
     return r
 
 def suspensao_em(t):
-    """Fim da suspensão (00:00 do 4º dia depois da eleição) se `t` cai de um dia antes a três dias depois; senão None."""
-    for d in eleicoes_oficiais():
+    """(fim, dia) da suspensão em que `t` cai, ou None. Ordinária (ELEICOES_OFICIAIS e pleitos.json): de um dia antes
+    até 00:00 do 4º dia depois; suplementar e consulta (pleitos.json): do dia até as 8 h do dia seguinte."""
+    longas = set(eleicoes_oficiais()) | {d for d, ordi, _ in CATALOGO.ao_vivo() if ordi}
+    curtas = {d for d, ordi, _ in CATALOGO.ao_vivo() if not ordi} - longas
+    for d in sorted(longas):
         dia = datetime(d.year, d.month, d.day, tzinfo=BR)
         if dia - timedelta(days=1) <= t < dia + timedelta(days=4):
             return dia + timedelta(days=4), d
+    for d in sorted(curtas):
+        dia = datetime(d.year, d.month, d.day, tzinfo=BR)
+        if dia <= t < dia + timedelta(hours=32):
+            return dia + timedelta(hours=32), d
     return None
 
 def pedir_decisao(exec_id, pleito, modo, inicio, concluido_em,
@@ -193,7 +215,7 @@ def pedir_decisao(exec_id, pleito, modo, inicio, concluido_em,
                 d = json.loads(r.read())
             if d.get('suspensa'):
                 return 'suspensa'
-            if str(d.get('pleito')) in ('452', '453', '3220', '3221') and d.get('modo') in ('rapido', 'cadencia', 'espera'):
+            if CATALOGO.info(d.get('pleito')) and d.get('modo') in ('rapido', 'cadencia', 'espera'):
                 return str(d['pleito']), str(d['modo']), d.get('origem', '?') + (f" ({d.get('votos')} votos)" if d.get('origem') == 'votos' else '')
             log(f"playlist respondeu algo inesperado: {d}")
             return None
@@ -202,6 +224,52 @@ def pedir_decisao(exec_id, pleito, modo, inicio, concluido_em,
             if i + 1 < tentativas:
                 time.sleep(espera)
     return None
+
+def no_ar_da_playlist():
+    """B-080: a execução que a playlist (no nó A) tem no ar — `no_ar` de GET <PLAYLIST_URL> (id, pleito, modo) — ou None."""
+    url = os.environ.get('UV_PLAYLIST_URL', ENV.get('PLAYLIST_URL', ''))
+    if not url:
+        return None
+    try:
+        with urllib.request.urlopen(url.rstrip('/'), timeout=8) as r:
+            na = json.loads(r.read()).get('no_ar') or None
+    except Exception:
+        return None
+    if not na or not na.get('id') or not na.get('pleito') or not na.get('modo'):
+        return None
+    return na
+
+# B-080: divergência (minutos) entre a execução deste nó e a da playlist antes de realinhar; e o intervalo das consultas
+DIVERGENCIA_MIN = float(os.environ.get('UV_DIVERGENCIA_MIN', ENV.get('DIVERGENCIA_MIN', '10')))
+PAR_INTERVALO = float(os.environ.get('UV_PAR_INTERVALO', '60'))
+
+# Multipleito (1.1): na noite ao vivo (aovivo), a série de consulta do pleito em curso é refeita a cada SERIE_INTERVALO
+# segundos (o slider da página vai até o último minuto consolidado; o botão "ao vivo" volta ao tempo real)
+SERIE_INTERVALO = float(os.environ.get('UV_SERIE_INTERVALO', ENV.get('SERIE_INTERVALO', '120')))
+CONSULTA = os.environ.get('UV_CONSULTA_DIR', ENV.get('CONSULTA_DIR', '/srv/urna-velox/consulta'))
+
+def serie_ao_vivo(pleito):
+    """uv-serie --em-curso sobre a saída da noite e o índice geral (gerar_consultas.sh --indice). True se refez."""
+    saida = os.path.join(C, 'atual', 'saida')
+    cand = os.path.join(C, 'atual', 'preparo', 'candidatos.json')
+    serie = os.path.join(BIN, 'uv-serie')
+    if not (os.path.isdir(os.path.join(saida, 'serie')) and os.path.exists(cand) and os.path.exists(serie)):
+        return False
+    dest = os.path.join(CONSULTA, str(pleito), 'serie')
+    try:
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        r = subprocess.run(['nice', '-n', '10', serie, '--em-curso', '--saida', saida, '--candidatos', cand, '--destino', dest],
+                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=900)
+        if r.returncode != 0:
+            log(f"série da noite em curso: uv-serie saiu com {r.returncode}: {r.stderr.strip()[-300:]}")
+            return False
+        g = os.path.join(BIN, 'gerar_consultas.sh')
+        if os.path.exists(g):
+            subprocess.run([g, '--destino', CONSULTA, '--indice'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=300)
+        return True
+    except Exception as e:
+        log(f"série da noite em curso: {e}")
+        return False
 
 def disparar(rot, exec_id, pleito, modo, inicio_iso, concluido_em, prox_pleito, prox_modo, disparo_alvo):
     """Na hora fechada: suspensão? playlist? então o avancar. Devolve True quando a transição foi disparada."""
@@ -263,6 +331,10 @@ def main():
         rot['proximo'] = {}
         salvar_rotacao(rot)
 
+    prox_par = datetime.now(BR)
+    diverge_desde = None
+    prox_serie = datetime.now(BR) + timedelta(seconds=SERIE_INTERVALO)
+
     while True:
         agora = datetime.now(BR)
 
@@ -275,8 +347,57 @@ def main():
             log(f"execução mudou de {exec_id} para {id_atual}; vigia saindo")
             break
 
-        # Caso 1: Pleito 3221 (espera / sem coleta)
-        if str(pleito) == '3221':
+        # B-080: os dois nós rodam a mesma execução (mesmo id). Se este ficou noutra — começou fora de hora, ou a dele não
+        # encerra porque o par (de quem recebe os BUs) já trocou — e a divergência dura DIVERGENCIA_MIN minutos (mais que
+        # uma virada normal, em que os nós trocam com segundos de diferença), realinha com a execução que a playlist (nó A)
+        # tem no ar, com o mesmo carimbo. No nó A a playlist mostra a execução dele mesmo: nada acontece.
+        if agora >= prox_par:
+            prox_par = agora + timedelta(seconds=PAR_INTERVALO)
+            na = no_ar_da_playlist()
+            if na and na['id'] != exec_id:
+                if diverge_desde is None:
+                    diverge_desde = agora
+                    log(f"a playlist tem no ar {na['id']}; este nó está em {exec_id} (realinha se durar {DIVERGENCIA_MIN:g} min)")
+                elif (agora - diverge_desde).total_seconds() >= DIVERGENCIA_MIN * 60:
+                    try:
+                        disp = datetime.strptime(na['id'][:13], '%Y%m%d-%H%M').replace(tzinfo=BR)
+                    except ValueError:
+                        disp = agora
+                    log(f"fora da rotação há {round((agora - diverge_desde).total_seconds() / 60, 1)} min: realinhando com {na['id']} "
+                        f"({na['pleito']} {na['modo']})")
+                    rot['proximo'] = {'pleito': str(na['pleito']), 'modo': str(na['modo']), 'disparo': agora.isoformat(),
+                                      'origem': f"realinhamento com a playlist ({na['id']})"}
+                    salvar_rotacao(rot)
+                    if executar_avancar(str(na['pleito']), str(na['modo']), disp):
+                        break
+            else:
+                diverge_desde = None
+
+        # Multipleito (1.1): a série de consulta da noite ao vivo, a cada SERIE_INTERVALO
+        if modo == 'aovivo' and agora >= prox_serie:
+            prox_serie = agora + timedelta(seconds=SERIE_INTERVALO)
+            serie_ao_vivo(pleito)
+
+        # Multipleito (1.1): um pleito em curso no ele-c.json é totalizado ao vivo já, no lugar do replay (autorizado
+        # pelo Luciano em 29/10/2026). Uma tentativa a cada 10 min se o avancar não pegar (ex.: candidatos ainda sem
+        # fontes); o resultado ao vivo fica no ar durante a suspensão da playlist e depois a rotação volta sozinha.
+        vivo = CATALOGO.ao_vivo_agora(agora)
+        if vivo and not (str(pleito) == vivo and modo == 'aovivo'):
+            ult = rot.get('aovivo_tentativa') or {}
+            try:
+                recente = ult.get('pleito') == vivo and agora - datetime.fromisoformat(ult.get('em')) < timedelta(minutes=10)
+            except (TypeError, ValueError):
+                recente = False
+            if not recente:
+                rot['aovivo_tentativa'] = {'pleito': vivo, 'em': agora.isoformat()}
+                rot['proximo'] = {'pleito': vivo, 'modo': 'aovivo', 'disparo': agora.isoformat(), 'origem': 'pleito em curso (ao vivo)'}
+                salvar_rotacao(rot)
+                log(f"pleito {vivo} em curso no ele-c.json: totalização AO VIVO agora, no lugar de {pleito} ({modo})")
+                if executar_avancar(vivo, 'aovivo', agora):
+                    break
+
+        # Caso 1: modo espera (vitrine sem coleta; até 25/10/2026, o 3221)
+        if modo == 'espera':
             if not concluido:
                 concluido = True
                 disparo_alvo = proxima_hora_fechada(agora, margem_s=120)
@@ -308,7 +429,7 @@ def main():
             time.sleep(INTERVALO)
             continue
 
-        # Caso 2: Pleitos simulados (452, 453, 3220)
+        # Caso 2: replays (452, 453, 3220, 3221)
         saude_path = os.path.join(C, 'atual', 'saida', 'saude.json')
         saude = ler_json(saude_path)
         encerrada = bool(saude and (saude.get('apuracao') or {}).get('encerrada'))

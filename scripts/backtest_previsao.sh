@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Backtest da previsão do "matematicamente" e do fim da apuração (etapa 8, docs/HANDOFF_0.8.0.md) nas três noites
+# Backtest da previsão do "matematicamente" e do fim da apuração (etapa 8, docs/handoffs/HANDOFF_0.8.0.md) nas três noites
 # que temos: 2026 1º turno (Presidente, Governador, Senador), 2024 1º e 2º turnos (Prefeito).
 #
 #   scripts/backtest_previsao.sh gabaritos   # 1ª passada: grava os gabaritos de cada noite (curvas de avanço)

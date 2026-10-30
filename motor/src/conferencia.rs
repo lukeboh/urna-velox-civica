@@ -151,7 +151,7 @@ pub fn conferir(cat: &Catalogo, est: &Estado, mem: &EmMemoria, oficiais: &[Ofici
     r
 }
 
-/// Compara uma publicação do Urna Velox (JSON de `docs/FORMATO_RESULTADO.md`) com o arquivo oficial: votos de
+/// Compara uma publicação do Urna Velox (JSON de `docs/arquitetura/FORMATO_RESULTADO.md`) com o arquivo oficial: votos de
 /// cada candidato, `vb`, `vn`, `vnt`, comparecimento, seções totalizadas e, se a totalização oficial foi
 /// finalizada, a situação (`st`) de cada candidato. Devolve (situações idênticas, divergências).
 pub fn conferir_publicacao(p: &serde_json::Value, of: &Oficial) -> (usize, Vec<String>) {

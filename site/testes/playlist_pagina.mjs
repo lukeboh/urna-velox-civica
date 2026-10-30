@@ -14,6 +14,11 @@ mkdirSync(saida, { recursive: true });
 const falhas = [];
 const conferir = (ok, o) => { console.log(`${ok ? 'ok   ' : 'FALHA'} ${o}`); if (!ok) falhas.push(o); };
 
+// o que a playlist oferece agora (1.0.13: oito opções votáveis, o 3221 nos dois modos; a contagem da próxima eleição ao
+// vivo só existe quando há uma eleição oficial pela frente)
+const api = await (await fetch(new URL('/api/v1/playlist', url))).json();
+const N_OPCOES = (api.opcoes || []).length;
+const TEM_PROXIMA = !!api.proxima_ao_vivo;
 const nav = await chromium.launch();
 for (const largura of [1366, 390, 360]) {
   const movel = largura < 640;
@@ -37,7 +42,7 @@ for (const largura of [1366, 390, 360]) {
   await p.click('#folha-fechar');
   // B-018: selo, contagem da próxima eleição ao vivo e ritmo (BUs/min) inteiros, sem corte nem sumiço
   const larg = p.viewportSize().width;
-  for (const [sel, nome] of [['#conexao', 'selo REPLAY'], ['.faixa .chip.promo', 'próxima eleição ao vivo'], ['.faixa .chip.ritmo', 'BUs/min']]) {
+  for (const [sel, nome] of [['#conexao', 'selo REPLAY'], ...(TEM_PROXIMA ? [['.faixa .chip.promo', 'próxima eleição ao vivo']] : []), ['.faixa .chip.ritmo', 'BUs/min']]) {
     const c = await p.locator(sel).boundingBox();
     const cortado = await p.locator(sel).evaluate((e) => e.scrollWidth > e.clientWidth + 1);
     conferir(!!c && c.width > 0 && c.x >= 16 && c.x + c.width <= larg - 16 && !cortado,   // com a margem lateral
@@ -53,17 +58,24 @@ for (const largura of [1366, 390, 360]) {
   await p.click('#folha a[href="/playlist"]');
   await p.waitForSelector('#opcoes .op');
   conferir(new URL(p.url()).pathname === '/playlist', `${tag}: link leva a /playlist`);
-  conferir((await p.locator('#opcoes .op').count()) === 6, `${tag}: seis opções votáveis`);
+  conferir(N_OPCOES >= 6 && (await p.locator('#opcoes .op').count()) === N_OPCOES, `${tag}: ${N_OPCOES} opções votáveis (as da /api/v1/playlist)`);
   conferir((await p.locator('#fila li').count()) >= 3, `${tag}: agenda com horários`);
   await p.screenshot({ path: `${saida}/playlist-${tag}.png`, fullPage: !movel });
   if (movel) { await p.locator('#opcoes').scrollIntoViewIfNeeded(); await p.screenshot({ path: `${saida}/playlist-opcoes-${tag}.png` }); }
   if (!movel) {
-    const b = p.locator('#opcoes .op').filter({ hasText: '2º turno · 2024' }).filter({ hasText: 'acelerado' }).locator('button');
+    // o replay no ar (o que a /api/v1/playlist diz) não pode ser votado; o voto vai para outro (2º turno de 2024 no modo
+    // que não estiver no ar)
+    const modoTxt = (m) => (m === 'rapido' ? 'acelerado' : 'Tempo real');
+    const na = api.no_ar || {};
+    const alvoModo = na.titulo === '2º turno · 2024' && na.modo === 'rapido' ? 'Tempo real' : 'acelerado';
+    const b = p.locator('#opcoes .op').filter({ hasText: '2º turno · 2024' }).filter({ hasText: alvoModo }).locator('button');
     await b.click();
     await p.waitForSelector('#opcoes .op.meu');
-    conferir((await p.locator('#opcoes .op.meu').textContent()).includes('2º turno · 2024'), 'voto registrado no 2º turno de 2024, acelerado');
-    const noAr = p.locator('#opcoes .op').filter({ hasText: '2º turno · 2024' }).filter({ hasText: 'Tempo real' }).locator('button');
-    conferir(await noAr.isDisabled(), 'o replay no ar não pode ser votado');
+    conferir((await p.locator('#opcoes .op.meu').textContent()).includes('2º turno · 2024'), `voto registrado no 2º turno de 2024 (${alvoModo})`);
+    if (na.titulo) {
+      const noAr = p.locator('#opcoes .op').filter({ hasText: na.titulo }).filter({ hasText: modoTxt(na.modo) }).locator('button');
+      conferir(await noAr.isDisabled(), `o replay no ar (${na.titulo}, ${modoTxt(na.modo)}) não pode ser votado`);
+    }
     await p.screenshot({ path: `${saida}/playlist-votado-${tag}.png`, fullPage: true });
     await p.locator('#opcoes .op.meu button').click();
     await p.waitForFunction(() => !document.querySelector('#opcoes .op.meu'));

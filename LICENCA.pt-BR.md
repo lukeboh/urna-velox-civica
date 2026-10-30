@@ -1,6 +1,6 @@
 Required Notice: Copyright (c) 2026 Luciano Soares Bohnert (https://github.com/lukeboh/urna-velox-civica)
 
-Required Notice: Uso comercial exige licença comercial separada, firmada com o titular (luciano.bohnert@gmail.com). Ver README.md, seção "Licença e Termos de Uso", e docs/LICENCIAMENTO.md.
+Required Notice: Uso comercial exige licença comercial separada, firmada com o titular (luciano.bohnert@gmail.com). Ver README.md, seção "Licença e Termos de Uso", e docs/legal/LICENCIAMENTO.md.
 
 > **Tradução para o português do Brasil** do arquivo [`LICENSE`](LICENSE), que traz o texto oficial em inglês da
 > PolyForm Noncommercial License 1.0.0. O conteúdo das duas versões é idêntico; esta tradução não é publicada pelo

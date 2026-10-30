@@ -1,6 +1,6 @@
 # Aquisição de BUs — `uv-coletor`
 
-Fase de **aquisição** do Urna Velox: recebe ou recupera os Boletins de Urna (BUs) **brutos** publicados pelo TSE e os entrega ao núcleo de totalização. Arquitetura, decisões e medições: [docs/AQUISICAO.md](../docs/AQUISICAO.md) (ADR-013 a ADR-018 em [docs/ARCHITECTURE_DECISIONS.md](../docs/ARCHITECTURE_DECISIONS.md)). Termos técnicos: [docs/GLOSSARIO.md](../docs/GLOSSARIO.md).
+Fase de **aquisição** do Urna Velox: recebe ou recupera os Boletins de Urna (BUs) **brutos** publicados pelo TSE e os entrega ao núcleo de totalização. Arquitetura, decisões e medições: [docs/arquitetura/AQUISICAO.md](../docs/arquitetura/AQUISICAO.md) (ADR-013 a ADR-018 em [docs/arquitetura/ARCHITECTURE_DECISIONS.md](../docs/arquitetura/ARCHITECTURE_DECISIONS.md)). Termos técnicos: [docs/arquitetura/GLOSSARIO.md](../docs/arquitetura/GLOSSARIO.md).
 
 ```text
 resultados.tse.jus.br ──▶ uv-coletor ──▶ pacotes .uvpk (um por UF)  ──▶ núcleo (lote)
@@ -74,7 +74,7 @@ Resultados em **`aquisicao/results/RELATORIO.md`**, com gráficos em `aquisicao/
 
 Scripts para coletar todos os BUs do pleito, totalizar e comparar com os arquivos oficiais de divulgação do TSE (Presidente, Governador e Senador). `uv-coletor totalizar --cargos 5` totaliza só os cargos pedidos (os demais cargos do BU são pulados sem alarme); `uv-coletor replay --cargos 1,3,5` escolhe os cargos publicados a cada ciclo.
 
-Desde a v0.0.27 a totalização, a situação dos candidatos e a conferência também estão no motor (`motor/`, crate `urna-velox`, binário `uv-motor`): `uv-motor conferir --dados … --oficial … --metricas …` faz as conferências sem Python, e `uv-motor noite` mede quando cada circunscrição fica matematicamente decidida. O replay publica no formato do motor ([docs/FORMATO_RESULTADO.md](../docs/FORMATO_RESULTADO.md)); com `--oficial <pasta dos -u.json>` a publicação traz o "matematicamente eleito / 2º turno" a cada ciclo (eventos em `replay_eventos.csv`) e, no fim, a situação final, que `uv-motor conferir-publicacao --publicacao <saída>/publicacao --oficial …` confere com o oficial. `uv-coletor filtrar` recorta pacotes por município ou seção (fixtures dos testes).
+Desde a v0.0.27 a totalização, a situação dos candidatos e a conferência também estão no motor (`motor/`, crate `urna-velox`, binário `uv-motor`): `uv-motor conferir --dados … --oficial … --metricas …` faz as conferências sem Python, e `uv-motor noite` mede quando cada circunscrição fica matematicamente decidida. O replay publica no formato do motor ([docs/arquitetura/FORMATO_RESULTADO.md](../docs/arquitetura/FORMATO_RESULTADO.md)); com `--oficial <pasta dos -u.json>` a publicação traz o "matematicamente eleito / 2º turno" a cada ciclo (eventos em `replay_eventos.csv`) e, no fim, a situação final, que `uv-motor conferir-publicacao --publicacao <saída>/publicacao --oficial …` confere com o oficial. `uv-coletor filtrar` recorta pacotes por município ou seção (fixtures dos testes).
 
 | Script | O que faz |
 |---|---|

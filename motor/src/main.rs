@@ -87,7 +87,7 @@ enum Cmd {
     /// Imprime o conteúdo de um BU (-bu.dat ou -busa.dat)
     Inspecionar { arquivo: PathBuf },
     /// Totaliza em lote os BUs dos pacotes e grava o resultado de cada cargo e abrangência (JSON,
-    /// docs/FORMATO_RESULTADO.md)
+    /// docs/arquitetura/FORMATO_RESULTADO.md)
     Totalizar {
         #[command(flatten)]
         entrada: Entrada,

@@ -67,7 +67,11 @@ for (const largura of [1366, 360]) {
     const { ctx, p, tag } = await abrir(largura, '2026-10-25T17:40:00', '2026-10-25T17:11:45');
     conferir(await visivel(p), `${tag} · parado: aviso à vista`);
     const t = await texto(p);
-    conferir(/TSE sem novos BUs desde 17h11/.test(t), `${tag} · parado: "desde 17h11" ("${t}")`);
+    if (largura > 640) {
+      conferir(/TSE sem novos BUs há \d+ min \(desde 17h11\)/.test(t), `${tag} · parado: "há X min (desde 17h11)" ("${t}")`);
+    } else {
+      conferir(/TSE sem novos BUs há \d+ min/.test(t), `${tag} · parado: "há X min" ("${t}")`);
+    }
     if (largura > 640) conferir(/retomamos automaticamente quando voltarem/.test(t), `${tag} · parado: "retomamos automaticamente quando voltarem"`);
     const c = await p.locator('.faixa .chip.parado').first().boundingBox().catch(() => null);
     conferir(!!c && c.x >= 0 && c.x + c.width <= largura, `${tag} · parado: chip dentro da tela${c ? ` (${Math.round(c.x)}–${Math.round(c.x + c.width)})` : ''}`);

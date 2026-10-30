@@ -7,9 +7,13 @@
 //! * `uv-simulador` (`src/bin/uv-simulador.rs`, módulo [`simulador`]): site de resultados simulado, local, com relógio
 //!   acelerado e injeção de falhas, para provar o serviço sem baixar BUs do TSE;
 //! * `uv-carga` (`src/bin/uv-carga.rs`): cliente de carga e de conferência da difusão em tempo real do serviço
-//!   (`--http`, módulo [`difusao`], `docs/PROTOCOLO_WS.md`);
+//!   (`--http`, módulo [`difusao`], `docs/arquitetura/PROTOCOLO_WS.md`);
 //! * `uv-painel` (`src/bin/uv-painel.rs`, módulo [`painel`]): painel dos nós — desempenho, federação e configuração,
-//!   com login do Google (`docs/PAINEL.md`).
+//!   com login do Google (`docs/operacao/PAINEL.md`).
+//! * `uv-sonda` (`src/bin/uv-sonda.rs`, módulo [`sonda`]): verificador das sondas (padrão *Test Message*) — o caminho
+//!   dos BUs está andando? (`docs/arquitetura/SONDA.md`).
+//! * `uv-serie` (`src/bin/uv-serie.rs`, módulo [`serie`]): a série de consulta de um pleito (base do slider, etapa
+//!   1.1), a partir do acervo de versões que o `uv-servico` grava.
 
 pub mod coletor;
 pub mod difusao;
@@ -19,12 +23,15 @@ pub mod mapa;
 pub mod marcos;
 pub mod pagina;
 pub mod painel;
+pub mod pleitos;
 pub mod preparo;
 pub mod previsao;
 pub mod relogio;
 pub mod replay;
+pub mod serie;
 pub mod servico;
 pub mod simulador;
+pub mod sonda;
 pub mod trava;
 pub mod tse;
 pub mod tse_resultados;

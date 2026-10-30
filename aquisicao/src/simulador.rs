@@ -88,6 +88,11 @@ pub struct Config {
     /// Limite por IP de origem, em req/s da noite (multiplicado pela aceleração), como a CDN do TSE faz por órgão
     /// (2.0, ADR-028): acima dele, 429 e "caixa de penalidade" do IP por 600 s simulados. 0 = sem limite.
     pub limite_ip_rps: f64,
+    /// Regra do limite por IP (B-067): segundos fechados (padrão), blocos de W s ou janela deslizante
+    pub regra_limite_ip: RegraLimite,
+    /// Peso de uma resposta 404 no limite por IP (1 = como qualquer requisição; B-067, hipótese de que a borda conta
+    /// os 404 a mais)
+    pub peso_404_ip: f64,
     /// TSE simulado (etapa 7, [`crate::tse_simulado`]): `-u.json` progressivos durante a noite
     pub tse: Option<crate::tse_simulado::Opcoes>,
     /// Acompanhar o serviço (B-011, modo rápido do ciclo): o relógio não passa do instante em que as seções
@@ -216,10 +221,73 @@ struct Estatistica {
 
 /// Contagem de um IP de origem: segundo real corrente e quantas requisições nele, penalidade (hora simulada), totais.
 #[derive(Default, Clone)]
-struct PorIp { seg: usize, n: u32, max_seg: u32, total: u64, n429: u64, penalidade_ate: f64, penalidades: u64 }
+struct PorIp { seg: usize, n: u32, max_seg: u32, total: u64, n429: u64, penalidade_ate: f64, penalidades: u64, jan: JanelaIp }
 
 /// Pausa da "caixa de penalidade" por IP, em segundos simulados (como os 10 min da borda do TSE).
 pub const PENALIDADE_IP_S: f64 = 600.0;
+
+/// Regra do limite por IP (B-067: a regra exata da borda do TSE não é conhecida; cada regra é uma hipótese a testar
+/// contra a noite real). O IP passa do limite quando o peso das suas requisições na janela passa de
+/// `limite_ip_rps` × aceleração × janela (s reais).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum RegraLimite {
+    /// blocos fechados de `w` s reais (`Fixa(1.0)` = a regra de antes: segundos fechados)
+    Fixa(f64),
+    /// janela deslizante de `w` s reais (as últimas `w` s antes de cada requisição)
+    Deslizante(f64),
+}
+
+impl Default for RegraLimite { fn default() -> Self { RegraLimite::Fixa(1.0) } }
+
+impl RegraLimite {
+    /// `segundo` (= `fixa:1`, o padrão), `fixa:W`, `deslizante` (= `deslizante:1`) ou `deslizante:W`; W em s, de 0 a 3600.
+    pub fn de_texto(s: &str) -> anyhow::Result<Self> {
+        let (tipo, w) = match s.split_once(':') {
+            Some((a, b)) => (a.trim(), b.trim().parse::<f64>().map_err(|_| anyhow::anyhow!("janela inválida em {s:?}"))?),
+            None => (s.trim(), 1.0),
+        };
+        anyhow::ensure!(w > 0.0 && w <= 3600.0, "janela fora de (0, 3600] s em {s:?}");
+        match tipo {
+            "segundo" | "fixa" => Ok(RegraLimite::Fixa(w)),
+            "deslizante" => Ok(RegraLimite::Deslizante(w)),
+            _ => anyhow::bail!("regra do limite por IP: segundo | fixa:W | deslizante[:W] (recebido {s:?})"),
+        }
+    }
+    pub fn janela(self) -> f64 { match self { RegraLimite::Fixa(w) | RegraLimite::Deslizante(w) => w } }
+    pub fn texto(self) -> String {
+        match self { RegraLimite::Fixa(w) => format!("fixa:{w}"), RegraLimite::Deslizante(w) => format!("deslizante:{w}") }
+    }
+}
+
+/// Peso das requisições de um IP na janela da regra (cada requisição pesa 1; um 404 pesa `peso_404`).
+#[derive(Default, Clone)]
+struct JanelaIp { bloco: i64, soma: f64, fila: std::collections::VecDeque<(f64, f64)>, max: f64 }
+
+impl JanelaIp {
+    /// Soma `peso` no instante real `t` (s desde o início) e devolve o peso agora na janela.
+    fn somar(&mut self, regra: RegraLimite, t: f64, peso: f64) -> f64 {
+        match regra {
+            RegraLimite::Fixa(w) => {
+                let b = (t / w).floor() as i64;
+                if b != self.bloco { self.bloco = b; self.soma = 0.0; }
+                self.soma += peso;
+            }
+            RegraLimite::Deslizante(w) => {
+                while let Some(&(t0, p)) = self.fila.front() {
+                    if t0 <= t - w { self.soma -= p; self.fila.pop_front(); } else { break }
+                }
+                if self.fila.is_empty() { self.soma = 0.0; }
+                self.fila.push_back((t, peso));
+                self.soma += peso;
+            }
+        }
+        if self.soma > self.max { self.max = self.soma; }
+        self.soma
+    }
+}
+
+/// O peso na janela passou do limite (`rps` por segundo real × janela)?
+fn excede(regra: RegraLimite, soma: f64, rps: f64) -> bool { soma > rps * regra.janela() + 1e-9 }
 
 pub struct Sim {
     secs: Vec<Sec>,
@@ -248,6 +316,8 @@ pub struct Sim {
     caido: AtomicBool,
     pub resumo_carga: String,
     limite_ip_rps: f64,
+    regra_ip: RegraLimite,
+    peso_404: f64,
     /// TSE simulado: `-u.json` progressivos (sem ele, os oficiais só depois do último BU)
     tse: Option<crate::tse_simulado::TseSimulado>,
     /// acompanhar o serviço (B-011): folga em seções (0 = desligado), disponibilizações das seções com BU em ordem, BU
@@ -491,7 +561,8 @@ impl Sim {
             t0: Mutex::new(Instant::now()),
             pleito: cfg.pleito, ambiente: cfg.ambiente.clone(), ciclo: cfg.ciclo.clone(), rajadas, quedas, lat, p5xx: cfg.falhas.erros_5xx,
             semente: cfg.falhas.semente, n_req: AtomicU64::new(0), log: Mutex::new(log), est: Mutex::new(Estatistica::default()),
-            caido: AtomicBool::new(false), resumo_carga, limite_ip_rps: cfg.limite_ip_rps.max(0.0), tse,
+            caido: AtomicBool::new(false), resumo_carga, limite_ip_rps: cfg.limite_ip_rps.max(0.0),
+            regra_ip: cfg.regra_limite_ip, peso_404: if cfg.peso_404_ip > 0.0 { cfg.peso_404_ip } else { 1.0 }, tse,
         })
     }
 
@@ -707,7 +778,8 @@ impl Sim {
     /// Conta a requisição do IP no segundo real corrente; `true` = responder 429 (acima do limite por IP ou na caixa de
     /// penalidade). Sem limite configurado, só conta.
     fn contar_ip(&self, ip: std::net::IpAddr, tf: f64) -> bool {
-        let s = self.t0.lock().unwrap().elapsed().as_secs() as usize;
+        let el = self.t0.lock().unwrap().elapsed().as_secs_f64();
+        let s = el as usize;
         // aceleração atual (o controle de replay pode mudá-la), lida antes de travar o estado
         let x = self.aceleracao();
         let mut e = self.est.lock().unwrap();
@@ -718,13 +790,22 @@ impl Sim {
         p.max_seg = p.max_seg.max(p.n);
         if self.limite_ip_rps <= 0.0 { return false; }
         if tf < p.penalidade_ate { p.n429 += 1; return true; }
-        if p.n as f64 > self.limite_ip_rps * x {
+        let soma = p.jan.somar(self.regra_ip, el, 1.0);
+        if excede(self.regra_ip, soma, self.limite_ip_rps * x) {
             p.penalidade_ate = tf + PENALIDADE_IP_S;
             p.penalidades += 1;
             p.n429 += 1;
             return true;
         }
         false
+    }
+
+    /// Um 404 pesa `peso_404` no limite por IP: soma a diferença (o 1 já entrou em [`Self::contar_ip`]).
+    fn pesar_404(&self, ip: std::net::IpAddr) {
+        if self.limite_ip_rps <= 0.0 || self.peso_404 == 1.0 { return; }
+        let el = self.t0.lock().unwrap().elapsed().as_secs_f64();
+        let mut e = self.est.lock().unwrap();
+        if let Some(p) = e.por_ip.get_mut(&ip) { p.jan.somar(self.regra_ip, el, self.peso_404 - 1.0); }
     }
 
     async fn responder(&self, path: String, inm: Option<String>, ip: std::net::IpAddr) -> Response<Full<Bytes>> {
@@ -748,6 +829,7 @@ impl Sim {
         } else {
             self.rotear(&path, t, inm.as_deref())
         };
+        if status == 404 { self.pesar_404(ip); }
         let agora_ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs_f64() * 1e3).unwrap_or(0.0);
         {
             let mut l = self.log.lock().unwrap();
@@ -777,10 +859,10 @@ impl Sim {
             crate::texto_hora(self.agora() as i64), crate::texto_hora(self.inicio), crate::texto_hora(self.primeira), crate::texto_hora(self.ultima),
             crate::texto_hora(self.t_oficiais), self.aceleracao(), self.n_req.load(Relaxed), e.por_segundo.iter().max().copied().unwrap_or(0));
         for (i, ((tp, st), q)) in e.por_tipo.iter().enumerate() { let _ = write!(s, "{}\"{tp} {st}\":{q}", if i > 0 { "," } else { "" }); }
-        let _ = write!(s, "}},\"limite_ip_rps\":{},\"por_ip\":{{", self.limite_ip_rps);
+        let _ = write!(s, "}},\"limite_ip_rps\":{},\"regra_limite_ip\":\"{}\",\"peso_404_ip\":{},\"por_ip\":{{", self.limite_ip_rps, self.regra_ip.texto(), self.peso_404);
         for (i, (ip, p)) in e.por_ip.iter().enumerate() {
-            let _ = write!(s, "{}\"{ip}\":{{\"requisicoes\":{},\"max_por_segundo\":{},\"http429\":{},\"penalidades\":{}}}", if i > 0 { "," } else { "" },
-                p.total, p.max_seg, p.n429, p.penalidades);
+            let _ = write!(s, "{}\"{ip}\":{{\"requisicoes\":{},\"max_por_segundo\":{},\"max_peso_janela\":{:.1},\"http429\":{},\"penalidades\":{}}}", if i > 0 { "," } else { "" },
+                p.total, p.max_seg, p.jan.max, p.n429, p.penalidades);
         }
         s.push_str("}}\n");
         let _ = std::fs::write(p, s);
@@ -864,6 +946,57 @@ pub async fn servir(sim: Arc<Sim>, porta: u16, resumo: PathBuf, pronto: impl FnO
 #[cfg(test)]
 mod testes {
     use super::*;
+    /// Maior peso numa janela da regra para requisições nos instantes `ts` (s reais) com os pesos `pesos`.
+    fn pico(regra: RegraLimite, ts: &[f64], pesos: &[f64]) -> f64 {
+        let mut j = JanelaIp::default();
+        ts.iter().zip(pesos).map(|(&t, &p)| j.somar(regra, t, p)).fold(0.0, f64::max)
+    }
+    fn uniforme(rps: f64, de: f64, ate: f64) -> Vec<f64> { (0..((ate - de) * rps) as usize).map(|i| de + i as f64 / rps).collect() }
+    /// B-067: as regras do limite por IP. A saída espaçada a 95 req/s (o `Limitador` do coletor) nunca passa de 100
+    /// em nenhuma regra; a mesma média, chegando amontoada na virada de um segundo, passa na janela deslizante e não
+    /// nos segundos fechados; os 404 com peso maior passam o limite abaixo de 100 req/s; o bloco de 10 s absorve um
+    /// segundo de 110.
+    #[test]
+    fn regras_do_limite_por_ip() {
+        let um = |n: usize| vec![1.0; n];
+        let (seg, desl, dez) = (RegraLimite::Fixa(1.0), RegraLimite::Deslizante(1.0), RegraLimite::Fixa(10.0));
+        // 95 req/s espaçadas por 10 s
+        let t = uniforme(95.0, 0.0, 10.0);
+        for r in [seg, desl, dez, RegraLimite::Deslizante(10.0)] {
+            let pk = pico(r, &t, &um(t.len()));
+            assert!(!excede(r, pk, 100.0), "{r:?}: pico {pk} com 95 req/s espaçadas");
+        }
+        // 60 req em 0,90–0,99 s e 60 em 1,00–1,09 s: 60 por segundo fechado, 120 em 1 s deslizante
+        let mut t: Vec<f64> = (0..60).map(|i| 0.90 + i as f64 * 0.0015).collect();
+        t.extend((0..60).map(|i| 1.00 + i as f64 * 0.0015));
+        assert_eq!(pico(seg, &t, &um(120)), 60.0);
+        assert!(!excede(seg, 60.0, 100.0));
+        assert_eq!(pico(desl, &t, &um(120)), 120.0);
+        assert!(excede(desl, 120.0, 100.0), "amontoado na virada do segundo: 429 na deslizante");
+        // 80 req/s, 30 % delas 404 com peso 2: 56 + 24 × 2 = 104 por segundo
+        let t = uniforme(80.0, 0.0, 5.0);
+        let pesos: Vec<f64> = (0..t.len()).map(|i| if i % 10 < 3 { 2.0 } else { 1.0 }).collect();
+        let pk = pico(seg, &t, &pesos);
+        assert!(excede(seg, pk, 100.0) && !excede(seg, pico(seg, &t, &um(t.len())), 100.0), "404 com peso 2: {pk}");
+        // um segundo com 110 e depois nada: 429 em segundos fechados, não no bloco de 10 s (limite 1000)
+        let t = uniforme(110.0, 0.0, 1.0);
+        assert!(excede(seg, pico(seg, &t, &um(110)), 100.0));
+        assert!(!excede(dez, pico(dez, &t, &um(110)), 100.0));
+        // a janela deslizante esquece o que saiu dela
+        let mut j = JanelaIp::default();
+        for &x in &uniforme(100.0, 0.0, 1.0) { j.somar(desl, x, 1.0); }
+        assert_eq!(j.somar(desl, 5.0, 1.0), 1.0);
+    }
+    #[test]
+    fn regra_do_limite_de_texto() {
+        assert_eq!(RegraLimite::de_texto("segundo").unwrap(), RegraLimite::Fixa(1.0));
+        assert_eq!(RegraLimite::de_texto("fixa:10").unwrap(), RegraLimite::Fixa(10.0));
+        assert_eq!(RegraLimite::de_texto("deslizante").unwrap(), RegraLimite::Deslizante(1.0));
+        assert_eq!(RegraLimite::de_texto("deslizante:0.5").unwrap(), RegraLimite::Deslizante(0.5));
+        assert!(RegraLimite::de_texto("deslizante:0").is_err());
+        assert!(RegraLimite::de_texto("balde").is_err());
+        assert_eq!(RegraLimite::default().texto(), "fixa:1");
+    }
     #[test]
     fn textos() {
         let d = segundos("27/10/2024 00:00:00").unwrap();

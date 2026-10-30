@@ -83,7 +83,7 @@ impl Relogio {
     /// Agora, na escala da noite (s), pelo relógio do sistema; None antes do primeiro horário do site.
     pub fn noite_agora(&self) -> Option<i64> { self.ancora().map(|a| a.noite(agora_ms()).floor() as i64) }
 
-    /// Bloco `relogio_sistema` da mensagem `estado` (`docs/PROTOCOLO_WS.md` §4.3).
+    /// Bloco `relogio_sistema` da mensagem `estado` (`docs/arquitetura/PROTOCOLO_WS.md` §4.3).
     pub fn json(&self) -> Value {
         let a = self.ancora();
         json!({"agora": iso_ms(agora_ms()), "noite0": a.map(|a| urna_velox::metricas::iso_brasilia(a.noite0.floor() as i64)),

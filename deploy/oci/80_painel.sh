@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 80 — Instala (ou atualiza) o painel dos nós (uv-painel, docs/PAINEL.md) nos nós A e B. Idempotente.
+# 80 — Instala (ou atualiza) o painel dos nós (uv-painel, docs/operacao/PAINEL.md) nos nós A e B. Idempotente.
 #
 # Pré-requisitos:
 #   * ./compilar_local_arm64.sh já rodado (o pacote traz o uv-painel);

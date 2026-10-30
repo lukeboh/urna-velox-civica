@@ -1,6 +1,6 @@
 // Teste do B-026 (acima do `--max-clientes`, a página não mostra a apuração): com Playwright/Chromium e um servidor
 // falso **de verdade** (node:http, para o navegador usar o cache HTTP e ver a recusa do WebSocket como em produção):
-// o `/ws` responde 503 "limite de clientes" e as rotas REST do protocolo (docs/PROTOCOLO_WS.md §6) respondem.
+// o `/ws` responde 503 "limite de clientes" e as rotas REST do protocolo (docs/arquitetura/PROTOCOLO_WS.md §6) respondem.
 //   cd site && node testes/ws_recusado.mjs [--saida /tmp/uv-ws-recusado]
 // Intervalos curtos no teste (`window.__uvConexao`): consulta a cada 1,5 s (o real é 60 s) e nova tentativa do
 // WebSocket a cada 5 s (o real, ~2 min). Confere, a 1366 e a 390 px:

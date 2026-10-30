@@ -1,5 +1,5 @@
 // Barra de controle do replay, como a de um vídeo (só com o serviço em --controle-replay contra o site simulado; ver
-// docs/PROTOCOLO_WS.md §11): tocar/pausar, linha do tempo da noite e velocidade. Ir a um instante já visto (para trás
+// docs/arquitetura/PROTOCOLO_WS.md §11): tocar/pausar, linha do tempo da noite e velocidade. Ir a um instante já visto (para trás
 // ou para a frente) = o serviço retotaliza do disco até lá em segundos; além do que já foi visto, avança baixando, mais
 // rápido. Vale para todas as abas: cada uma acompanha GET /api/v1/replay e se recarrega quando a sessão do serviço muda.
 //
@@ -11,6 +11,7 @@ export const VELOCIDADES = [1, 2, 5, 10, 20, 30, 60, 120, 180, 240, 300];
 // t: segundos na hora de Brasília (escala de Date.UTC sobre o horário civil de Brasília, como o servidor)
 const hms = (t) => new Date(t * 1000).toISOString().slice(11, 19);
 const hm = (t) => new Date(t * 1000).toISOString().slice(11, 16);
+const MARCA_MIN = 26;   // px entre duas marcas de hora (B-083)
 const vezes = (x) => `${String(x).replace('.', ',')}×`;
 
 async function postar(caminho, corpo) {
@@ -51,13 +52,9 @@ export class Player {
     this.el.setAttribute('aria-label', 'Controle do replay');
     this.veu = el('div', 'pl-veu', [el('div', 'pl-veu-txt', '')]);
     this.veu.hidden = true;
-    // marcas de hora na linha do tempo
-    const span = info.fim - info.inicio;
-    for (let h = Math.ceil(info.inicio / 3600) * 3600; h < info.fim; h += 3600) {
-      const m = el('span', null, hm(h).slice(0, 2));
-      m.style.left = `${((h - info.inicio) / span) * 100}%`;
-      this.marcas.append(m);
-    }
+    // marcas de hora na linha do tempo (B-083: o passo cresce com a noite e encolhe com a largura)
+    this.desenharMarcas();
+    try { new ResizeObserver(() => this.desenharMarcas()).observe(this.marcas); } catch { /* sem ResizeObserver */ }
 
     this.play.addEventListener('click', () => this.velocidade(this.info.acelerar === 0 ? this.ultima : 0));
     this.vel.addEventListener('change', () => this.velocidade(+this.vel.value));
@@ -113,6 +110,28 @@ export class Player {
     else if (b) e = `avançando até ${hm(b.alvo)} · ${Math.round(100 * Math.min(1, Math.max(0, (t - b.de) / Math.max(1, b.alvo - b.de))))}%`;
     else if (this.info.acelerar === 0) e = 'pausado';
     if (this.estado.textContent !== e) this.estado.textContent = e;
+  }
+
+  /** B-083: marcas de hora sem encostar umas nas outras: o menor passo (1, 2, 3, 6, 12 ou 24 h) com pelo menos
+   *  MARCA_MIN px entre elas; numa noite de mais de um dia, a virada do dia aparece como "dd/mm". */
+  desenharMarcas() {
+    const { inicio, fim } = this.info;
+    const span = fim - inicio;
+    const larg = this.marcas.clientWidth || 300;
+    if (!(span > 0)) { this.marcas.replaceChildren(); return; }
+    const chave = `${inicio}|${fim}|${Math.round(larg)}`;
+    if (this.marcasChave === chave) return;
+    this.marcasChave = chave;
+    const passo = [1, 2, 3, 6, 12, 24].find((h) => (h * 3600 / span) * larg >= MARCA_MIN) ?? 24;
+    const dias = span > 20 * 3600;
+    const m = [];
+    for (let h = Math.ceil(inicio / (passo * 3600)) * passo * 3600; h < fim; h += passo * 3600) {
+      const txt = dias && hm(h) === '00:00' ? new Date(h * 1000).toISOString().slice(5, 10).split('-').reverse().join('/') : hm(h).slice(0, 2);
+      const s = el('span', null, txt);
+      s.style.left = `${((h - inicio) / span) * 100}%`;
+      m.push(s);
+    }
+    this.marcas.replaceChildren(...m);
   }
 
   async consultar() {

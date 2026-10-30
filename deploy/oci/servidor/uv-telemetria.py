@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""uv-telemetria — amostra a cada N segundos o estado do nó durante o ciclo diário (docs/CICLO_DIARIO.md).
+"""uv-telemetria — amostra a cada N segundos o estado do nó durante o ciclo diário (docs/operacao/CICLO_DIARIO.md).
 
 Uma linha JSON por amostra em <pasta>/telemetria.jsonl:
   t (ISO), no, saude (a saude.json inteira do uv-servico: fila, aplicadas, rede, latências, custos, federação,

@@ -1,7 +1,7 @@
 # Implantação de dois nós do Urna Velox na OCI (Arm / Ampere A1)
 
-Passo a passo completo, decisões e operação: **[docs/HANDOFF_IMPLANTACAO_OCI.md](../../docs/HANDOFF_IMPLANTACAO_OCI.md)** e
-**[docs/RELATORIO_DEPLOY_SEM_SSH.md](../../docs/RELATORIO_DEPLOY_SEM_SSH.md)** (operação sem porta 22 e sem portal).
+Passo a passo completo, decisões e operação: **[docs/handoffs/HANDOFF_IMPLANTACAO_OCI.md](../../docs/handoffs/HANDOFF_IMPLANTACAO_OCI.md)** e
+**[docs/relatorios/RELATORIO_DEPLOY_SEM_SSH.md](../../docs/relatorios/RELATORIO_DEPLOY_SEM_SSH.md)** (operação sem porta 22 e sem portal).
 
 Resumo (do WSL/Linux, nesta pasta):
 

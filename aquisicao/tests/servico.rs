@@ -2,7 +2,7 @@
 //! simulador e serviço como processos filhos, porta livre escolhida pelo simulador. Rodam com
 //! `UV_DADOS=/home/dev/uvreal cargo test --release -p uv-aquisicao -- --ignored --test-threads 1`.
 //!
-//! Desde a etapa 4, também a difusão (`--http`, `docs/PROTOCOLO_WS.md`): D4 reduzido com um cliente WebSocket no
+//! Desde a etapa 4, também a difusão (`--http`, `docs/arquitetura/PROTOCOLO_WS.md`): D4 reduzido com um cliente WebSocket no
 //! próprio teste, clientes lentos e `kill -9` com reconexão (os dois com o `uv-carga`).
 //!
 //! O critério A completo (20 UFs a 10×) e o B (2026 a 60×) ficam fora dos testes (25 e 15 min); aqui o 2º turno de
@@ -67,6 +67,20 @@ fn pasta(nome: &str) -> Pasta {
 
 struct Simulador { filho: Child, porta: u16 }
 impl Drop for Simulador { fn drop(&mut self) { let _ = self.filho.kill(); let _ = self.filho.wait(); } }
+impl Simulador {
+    /// O `simulador.log` inteiro (B-073): o simulador grava o registro com buffer e só o descarrega a cada segundo; lido
+    /// com ele no ar, o fim da noite (as últimas requisições) pode faltar. Encerra o simulador com SIGTERM (que descarrega
+    /// o registro e o resumo) e espera ele sair, antes de ler.
+    fn log_completo(&mut self, dir: &Path) -> String {
+        let _ = Command::new("kill").args(["-TERM", &self.filho.id().to_string()]).status();
+        let t = Instant::now();
+        while self.filho.try_wait().ok().flatten().is_none() {
+            assert!(t.elapsed() < Duration::from_secs(30), "uv-simulador não saiu 30 s depois do SIGTERM");
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        std::fs::read_to_string(dir.join("simulador.log")).unwrap()
+    }
+}
 
 fn simulador(dir: &Path, c: &Conj, ufs: &str, acel: f64, extra: &[&str]) -> Simulador {
     let pa = dir.join("porta");
@@ -177,6 +191,31 @@ fn criterio_a_reduzido() {
     assert_eq!(s["rede"]["aux"].as_u64(), Some(5102));
 }
 
+/// Sondas (padrão Test Message, `docs/arquitetura/SONDA.md`): a publicação final é a mesma com e sem sondas, e com elas a cada
+/// 50 ms (muito mais que os 30 s da noite) passando pelo motor no meio dos BUs; nenhuma perdida, nenhum atraso.
+#[test]
+#[ignore]
+fn sonda_nao_muda_a_publicacao() {
+    let c = conj("2024-2t");
+    let sem = pasta("sonda-sem");
+    let sim = simulador(&sem, &c, UFS, ACEL, &[]);
+    esperar(servico_com(&sem, &c, UFS, sim.porta, ACEL, &["--sonda-intervalo", "0"]), 300);
+    drop(sim);
+    let s0 = conferido(&sem, 2);
+    assert!(s0.get("sonda").is_none());
+    let com = pasta("sonda-com");
+    let sim = simulador(&com, &c, UFS, ACEL, &[]);
+    esperar(servico_com(&com, &c, UFS, sim.porta, ACEL, &["--sonda-intervalo", "0.05"]), 300);
+    let s1 = conferido(&com, 2);
+    assert_eq!(publicacao(&sem), publicacao(&com), "a sonda mudou a publicação");
+    assert_eq!(s0["motor"]["checksum"], s1["motor"]["checksum"]);
+    assert_eq!(s0["secoes"]["aplicadas"], s1["secoes"]["aplicadas"]);
+    let b = &s1["sonda"];
+    assert!(b["concluidas"].as_u64().unwrap() > 20, "{b}");
+    assert_eq!((b["perdidas"].as_u64(), b["episodios_atraso"].as_u64()), (Some(0), Some(0)), "{b}");
+    assert!(b["ultima"]["seq"].as_u64().unwrap() > 0, "sondas passaram com BUs aplicados: {b}");
+}
+
 /// B-051: com o `s.ts` pré-apuração do `candidatos.json` desatualizado para baixo (3221 em 23/10: SP 33.403 contra
 /// 103.904 seções no `cs.json`), a apuração não pode encerrar antes da hora. O 2º turno de 2024 (AM e RO) roda com o
 /// `s.ts` de todas as abrangências cortado para 30 %: tem de encerrar uma vez só, com os 5.102 BUs aplicados, sem
@@ -258,13 +297,13 @@ fn kill9_tres_vezes() {
 fn rajada_de_429() {
     let c = conj("2024-2t");
     let d = pasta("429");
-    let sim = simulador(&d, &c, UFS, ACEL, &["--rajada-429", "17:30:00+60"]);
+    let mut sim = simulador(&d, &c, UFS, ACEL, &["--rajada-429", "17:30:00+60"]);
     esperar(servico(&d, &c, UFS, sim.porta, ACEL), 300);
     let s = conferido(&d, 2);
     assert!(s["rede"]["http429"].as_u64().unwrap() >= 1 && s["rede"]["pausas_429"].as_u64().unwrap() >= 1, "{}", s["rede"]);
     // no registro do simulador: depois do primeiro 429, nenhuma requisição até o fim da pausa (5 s reais), fora as
     // que já estavam a caminho (até 100 ms)
-    let log = std::fs::read_to_string(d.join("simulador.log")).unwrap();
+    let log = sim.log_completo(&d);
     let reqs: Vec<(f64, u16)> = log.lines().filter(|l| !l.starts_with('#'))
         .filter_map(|l| { let f: Vec<&str> = l.split(',').collect(); Some((f.first()?.parse().ok()?, f.get(3)?.parse().ok()?)) }).collect();
     let t429 = reqs.iter().find(|x| x.1 == 429).expect("nenhum 429 no registro").0;
@@ -315,18 +354,18 @@ fn anulacao_depois_de_publicada() {
 /// o serviço retoma sozinho, sem pendentes. Com só AM e RO não há fila no limitador, então nenhuma seção está em coleta
 /// no instante da queda e o caminho "seção pendente pedida de novo" (v0.2.6) não é exercitado aqui — quem o prova é o
 /// ensaio completo C-queda (20 UFs a 60×, queda de 120 s: 160 seções pendentes na v0.2.5, resolvidas na v0.2.6;
-/// docs/RELATORIO_0.3.0.md §3.3).
+/// docs/relatorios/RELATORIO_0.3.0.md §3.3).
 #[test]
 #[ignore]
 fn queda_do_simulador() {
     let c = conj("2024-2t");
     let d = pasta("queda");
-    let sim = simulador(&d, &c, UFS, ACEL, &["--queda", "17:26:00+60"]);
+    let mut sim = simulador(&d, &c, UFS, ACEL, &["--queda", "17:26:00+60"]);
     esperar(servico(&d, &c, UFS, sim.porta, ACEL), 400);
     let s = conferido(&d, 2);
     assert_eq!(s["secoes"]["aplicadas"].as_u64(), Some(5102));
     assert_eq!(s["secoes"]["pendentes"].as_u64(), Some(0));
-    let log = std::fs::read_to_string(d.join("simulador.log")).unwrap();
+    let log = sim.log_completo(&d);
     assert!(log.contains("# queda") && log.contains("# de volta"));
 }
 
@@ -339,7 +378,7 @@ fn nao_instaladas_exterior() {
     let c = conj("2026-1t");
     let d = pasta("nao-inst");
     let acel = 300.0;
-    let sim = simulador(&d, &c, "zz", acel, &["--corte", "05/10/2026 02:00:00", "--horario", "recebido"]);
+    let mut sim = simulador(&d, &c, "zz", acel, &["--corte", "05/10/2026 02:00:00", "--horario", "recebido"]);
     esperar(servico(&d, &c, "zz", sim.porta, acel), 400);
     let cf = json(&d.join("saida/conferencia.json"));
     let n = cf["arquivos"].as_u64().unwrap();
@@ -365,18 +404,28 @@ fn nao_instaladas_exterior() {
         }
     }
     assert_eq!(agregadas.len(), 1364);
-    let log = std::fs::read_to_string(d.join("simulador.log")).unwrap();
+    let log = sim.log_completo(&d);
     let aux: Vec<&str> = log.lines().filter(|l| l.contains("-aux.json")).collect();
     let de_agregada = aux.iter().filter(|l| agregadas.iter().any(|a| l.contains(a.as_str()))).count();
     assert_eq!(de_agregada, 0, "aux.json pedido de seção agregada");
     let aux_404 = aux.iter().filter(|l| l.split(',').nth(3) == Some("404")).count() as u64;
     assert_eq!(s["rede"]["aux_404"].as_u64(), Some(aux_404));
-    assert!(aux_404 < 100, "{aux_404} aux.json 404");
+    // B-069: desde o reforço do exterior (B-056, B-057, B-060, B-065: as seções do ZZ sem BU são sondadas já, a cada
+    // 20 s do site, num domingo) há 404 de propósito, de seção cujo BU ainda não chegou. O que importa: todo 404 é de
+    // seção que depois respondeu 200 (BU ou "Nao instalada"), nunca de agregada (conferido acima: de_agregada = 0).
+    let mut por_secao: std::collections::HashMap<&str, (bool, bool)> = std::collections::HashMap::new();
+    for l in &aux {
+        let f: Vec<&str> = l.split(',').collect();
+        let e = por_secao.entry(f[5]).or_default();
+        if f[3] == "404" { e.0 = true; } else if f[3] == "200" { e.1 = true; }
+    }
+    let sem_resposta: Vec<&&str> = por_secao.iter().filter(|(_, (n404, ok))| *n404 && !*ok).map(|(k, _)| k).collect();
+    assert!(sem_resposta.is_empty(), "{} seções com 404 que nunca responderam 200: {:?}", sem_resposta.len(), &sem_resposta[..sem_resposta.len().min(5)]);
     eprintln!("nao_instaladas_exterior: {} aux.json, {aux_404} 404, {} sondagens", aux.len(), s["rede"]["sondadas"]);
     assert_eq!(s["rede"]["http429"].as_u64(), Some(0));
 }
 
-// ------------------------------------------------------------------ difusão (etapa 4, docs/PROTOCOLO_WS.md)
+// ------------------------------------------------------------------ difusão (etapa 4, docs/arquitetura/PROTOCOLO_WS.md)
 
 /// D4 reduzido: AM e RO a 120× com `--http`; um cliente WebSocket (aqui mesmo) inscrito em todos os tópicos e nos
 /// eventos: o `seq` de cada tópico só sobe, a última mensagem de cada tópico é o arquivo publicado byte a byte, os
@@ -519,7 +568,7 @@ fn comparacao_tse_rede() {
     use tokio_tungstenite::tungstenite::Message as M;
     let c = conj("2024-2t");
     let d = pasta("tse-rede");
-    let sim = simulador(&d, &c, UFS, ACEL, &[]);
+    let mut sim = simulador(&d, &c, UFS, ACEL, &[]);
     let http = porta_livre();
     // --continuar: o serviço fica no ar depois da conferência, até o teste ver o arquivo do TSE e pedir a parada
     let f = servico_com(&d, &c, UFS, sim.porta, ACEL, &["--http", &format!("127.0.0.1:{http}"), "--continuar"]);
@@ -593,7 +642,7 @@ fn comparacao_tse_rede() {
     assert!(vers.windows(2).all(|w| w[0] < w[1]), "ver não crescente: {vers:?}");
     // rede, pelo registro do simulador: buscas do -u.json do tópico inscrito com ≥ 28,5 s da noite entre elas (fora a
     // conferência do fim, que baixa todos uma vez); o outro tópico só na conferência
-    let log = std::fs::read_to_string(d.join("simulador.log")).unwrap();
+    let log = sim.log_completo(&d);
     let us: Vec<(i64, String)> = log.lines().filter(|l| !l.starts_with('#')).filter_map(|l| {
         let x: Vec<&str> = l.split(',').collect();
         (x.len() >= 6 && x[5].ends_with("-u.json")).then(|| (urna_velox::metricas::segundos(x[1]).unwrap(), x[5].to_string()))

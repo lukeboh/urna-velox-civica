@@ -1,0 +1,39 @@
+
+{ "ele" : "6259", "t" : "1", "f" : "o", "sup" : "n", "tpabr" : "uf", "cdabr" : "ma", "dg" : "05/10/2026", "hg" : "02:01:55", "idg" : "2769698", "dt" : "05/10/2026", "ht" : "02:00:33", "dv" : "s", "tf" : "s", "and" : "f", "esae" : "n", "mnae" : [  ], "carg" : [ 
+{ "cd" : "3", "nmn" : "Governador", "nmm" : "Governador", "nmf" : "Governadora", "nv" : "1", "fed" : [ 
+{ "n" : "101", "sg" : "PT/PC do B/PV", "nm" : "FEDERAÇÃO BRASIL DA ESPERANÇA - FE BRASIL", "com" : "PT/PC do B/PV", "npar" : [ "13", "43", "65" ] } ], "agr" : [ 
+{ "n" : "100001801202", "nm" : "PARTIDO RENOVADOR TRABALHISTA BRASILEIRO", "tp" : "i", "com" : "PRTB", "vag" : "0", "par" : [ 
+{ "n" : "28", "sg" : "PRTB", "nm" : "PARTIDO RENOVADOR TRABALHISTA BRASILEIRO", "nfed" : "", "tvtn" : "0", "tvan" : "48924", "cand" : [ 
+{ "n" : "28", "sqcand" : "100002551399", "nm" : "ROBERTO COELHO ROCHA", "nmu" : "ROBERTO ROCHA", "dt" : "04/08/1965", "dvt" : "Anulado sub judice", "seq" : "4", "e" : "n", "st" : "Não eleito", "vap" : "48924", "pvap" : "1,26", "pvapn" : "1,256046089", "vs" : [ 
+{ "tp" : "v", "sqcand" : "100002551398", "nm" : "JOSIAS CARDOSO SILVA", "nmu" : "PASTOR JOSIAS", "sgp" : "PRTB" } ] } ] } ] }, 
+{ "n" : "100001800907", "nm" : "PRA TRANSFORMAR O MARANHÃO", "tp" : "c", "com" : "NOVO / PSD", "tvtn" : "2104122", "tvan" : "2104122", "par" : [ 
+{ "n" : "55", "sg" : "PSD", "nm" : "PARTIDO SOCIAL DEMOCRÁTICO", "nfed" : "", "tvtn" : "2104122", "tvan" : "2104122", "cand" : [ 
+{ "n" : "55", "sqcand" : "100002545679", "nm" : "EDUARDO SALIM BRAIDE", "nmu" : "EDUARDO BRAIDE", "dt" : "12/01/1976", "dvt" : "Válido", "seq" : "1", "e" : "s", "st" : "Eleito", "vap" : "2104122", "pvap" : "54,02", "pvapn" : "54,019994455", "vs" : [ 
+{ "tp" : "v", "sqcand" : "100002545680", "nm" : "ELAINE CORTEZ CARNEIRO", "nmu" : "ELAINE CARNEIRO", "sgp" : "PSD" } ] } ] } ] }, 
+{ "n" : "100001800701", "nm" : "PARTIDO COMUNISTA BRASILEIRO", "tp" : "i", "com" : "PCB", "vag" : "0", "par" : [ 
+{ "n" : "21", "sg" : "PCB", "nm" : "PARTIDO COMUNISTA BRASILEIRO", "nfed" : "", "tvtn" : "1096", "tvan" : "1096", "cand" : [ 
+{ "n" : "21", "sqcand" : "100002544073", "nm" : "REGINALDO LIMA BRAUNO", "nmu" : "REGINALDO LIMA", "dt" : "16/02/1983", "dvt" : "Válido", "seq" : "7", "e" : "n", "st" : "Não eleito", "vap" : "1096", "pvap" : "0,03", "pvapn" : "0,028138061", "vs" : [ 
+{ "tp" : "v", "sqcand" : "100002554354", "nm" : "FELIX LIMA E SILVA", "nmu" : "GATO FELIX", "sgp" : "PCB" } ] } ] } ] }, 
+{ "n" : "100001800678", "nm" : "AVANÇO POR TODO MARANHÃO", "tp" : "c", "com" : "MDB / PDT / REPUBLICANOS / PODE / PRD / SOLIDARIEDADE", "tvtn" : "1354044", "tvan" : "1354044", "par" : [ 
+{ "n" : "15", "sg" : "MDB", "nm" : "MOVIMENTO DEMOCRÁTICO BRASILEIRO", "nfed" : "", "tvtn" : "1354044", "tvan" : "1354044", "cand" : [ 
+{ "n" : "15", "sqcand" : "100002543869", "nm" : "CARLOS ORLEANS BRAIDE BRANDÃO", "nmu" : "ORLEANS BRANDÃO", "dt" : "08/12/1994", "dvt" : "Válido", "seq" : "2", "e" : "n", "st" : "Não eleito", "vap" : "1354044", "pvap" : "34,76", "pvapn" : "34,762931698", "vs" : [ 
+{ "tp" : "v", "sqcand" : "100002543870", "nm" : "EDIVALDO DE HOLANDA BRAGA JUNIOR", "nmu" : "EDIVALDO HOLANDA JUNIOR", "sgp" : "REPUBLICANOS" } ] } ] } ] }, 
+{ "n" : "100001800182", "nm" : "PARTIDO SOCIALISTA  DOS TRABALHADORES UNIFICADO", "tp" : "i", "com" : "PSTU", "vag" : "0", "par" : [ 
+{ "n" : "16", "sg" : "PSTU", "nm" : "PARTIDO SOCIALISTA  DOS TRABALHADORES UNIFICADO", "nfed" : "", "tvtn" : "4693", "tvan" : "4693", "cand" : [ 
+{ "n" : "16", "sqcand" : "100002534190", "nm" : "SAULO COSTA ARCANGELI", "nmu" : "SAULO ARCANGELI", "dt" : "25/10/1971", "dvt" : "Válido", "seq" : "6", "e" : "n", "st" : "Não eleito", "vap" : "4693", "pvap" : "0,12", "pvapn" : "0,120485330", "vs" : [ 
+{ "tp" : "v", "sqcand" : "100002534191", "nm" : "LUCIANA COSTA CORREA", "nmu" : "PRETA LU", "sgp" : "PSTU" } ] } ] } ] }, 
+{ "n" : "100001801263", "nm" : "PARTIDO DA CAUSA OPERÁRIA", "tp" : "i", "com" : "PCO", "vag" : "0", "par" : [ 
+{ "n" : "29", "sg" : "PCO", "nm" : "PARTIDO DA CAUSA OPERÁRIA", "nfed" : "", "tvtn" : "257", "tvan" : "257", "cand" : [ 
+{ "n" : "29", "sqcand" : "100002552700", "nm" : "DIMAS CASSIMIRO DO NASCIMENTO", "nmu" : "DIMAS CASSIMIRO", "dt" : "29/11/1959", "dvt" : "Válido", "seq" : "8", "e" : "n", "st" : "Não eleito", "vap" : "257", "pvap" : "0,01", "pvapn" : "0,006598067", "vs" : [ 
+{ "tp" : "v", "sqcand" : "100002552699", "nm" : "CHARLIETH MACIEL VIANA BARROS", "nmu" : "CHARLIETH VIANA", "sgp" : "PCO" } ] } ] } ] }, 
+{ "n" : "100001800619", "nm" : "BRASIL JUSTO, MARANHÃO GRANDE", "tp" : "c", "com" : "PCDOB / PT / PV / PSB / PSOL / REDE", "tvtn" : "374039", "tvan" : "374039", "par" : [ 
+{ "n" : "13", "sg" : "PT", "nm" : "PARTIDO DOS TRABALHADORES", "nfed" : "101", "tvtn" : "374039", "tvan" : "374039", "cand" : [ 
+{ "n" : "13", "sqcand" : "100002542556", "nm" : "FELIPE COSTA CAMARAO", "nmu" : "FELIPE CAMARÃO", "dt" : "31/12/1981", "dvt" : "Válido", "seq" : "3", "e" : "n", "st" : "Não eleito", "vap" : "374039", "pvap" : "9,60", "pvapn" : "9,602857964", "vs" : [ 
+{ "tp" : "v", "sqcand" : "100002542555", "nm" : "RICARDO RODRIGUES DE MATOS", "nmu" : "RICARDO RODRIGUES", "sgp" : "PT" } ] } ] } ] }, 
+{ "n" : "100001800702", "nm" : "PARTIDO MISSÃO", "tp" : "i", "com" : "MISSÃO", "vag" : "0", "par" : [ 
+{ "n" : "14", "sg" : "MISSÃO", "nm" : "PARTIDO MISSÃO", "nfed" : "", "tvtn" : "7905", "tvan" : "7905", "cand" : [ 
+{ "n" : "14", "sqcand" : "100002544076", "nm" : "ANDRÉ LUÍS CAETANO DOS SANTOS", "nmu" : "ANDRÉ LUIS", "dt" : "24/09/1984", "dvt" : "Válido", "seq" : "5", "e" : "n", "st" : "Não eleito", "vap" : "7905", "pvap" : "0,20", "pvapn" : "0,202948335", "vs" : [ 
+{ "tp" : "v", "sqcand" : "100002544075", "nm" : "CARLOS EDUARDO SOUSA AGUIAR", "nmu" : "PROF. CADU", "sgp" : "MISSÃO" } ] } ] } ] } ] } ], "s" : 
+{ "ts" : "18093", "st" : "18093", "pst" : "100,00", "pstn" : "100", "snt" : "0", "psnt" : "0,00", "psntn" : "0", "si" : "18093", "psi" : "100,00", "psin" : "100", "sni" : "0", "psni" : "0,00", "psnin" : "0", "sa" : "18093", "psa" : "100,00", "psan" : "100", "sna" : "0", "psna" : "0,00", "psnan" : "0" }, "e" : 
+{ "te" : "5180851", "est" : "5180851", "pest" : "100,00", "pestn" : "100", "esnt" : "0", "pesnt" : "0,00", "pesntn" : "0", "esi" : "5180851", "pesi" : "100,00", "pesin" : "100", "esni" : "0", "pesni" : "0,00", "pesnin" : "0", "esa" : "5180851", "pesa" : "100,00", "pesan" : "100", "esna" : "0", "pesna" : "0,00", "pesnan" : "0", "c" : "4158395", "pc" : "80,26", "pcn" : "80,264709408", "a" : "1022456", "pa" : "19,74", "pan" : "19,735290592" }, "v" : 
+{ "tv" : "4158395", "vvc" : "3895080", "pvvc" : "93,67", "pvvcn" : "93,667869454", "vv" : "3846156", "pvv" : "98,74", "pvvn" : "98,743953911", "vnom" : "3846156", "pvnom" : "100,00", "pvnomn" : "100", "van" : "0", "pvan" : "0,00", "pvann" : "0", "vansj" : "48924", "pvansj" : "1,26", "pvansjn" : "1,256046089", "vb" : "93669", "pvb" : "2,25", "pvbn" : "2,252527718", "tvn" : "169646", "ptvn" : "4,08", "ptvnn" : "4,079602828", "vn" : "169646", "pvn" : "100,00", "pvnn" : "100", "vnt" : "0", "pvnt" : "0,00", "pvntn" : "0", "vsan" : "0", "vscv" : "0" } }

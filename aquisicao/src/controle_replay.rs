@@ -1,6 +1,6 @@
 //! Controle do replay (`uv-servico --controle-replay`, só contra o `uv-simulador` local): velocidade (pausa e 1× a
 //! [`REPLAY_MAX`]) e **posição na noite** — avançar e voltar no tempo, como a barra de um vídeo. Contrato:
-//! `docs/PROTOCOLO_WS.md` §11.
+//! `docs/arquitetura/PROTOCOLO_WS.md` §11.
 //!
 //! O relógio é o do simulador; este módulo só o comanda (`POST <base>/controle/...`) e o acompanha (`GET
 //! <base>/controle` a cada 250 ms).

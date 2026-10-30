@@ -74,7 +74,7 @@ pub struct Config {
     pub timeout_s: u64,
     /// painel no terminal: prefixo do arquivo de publicação a mostrar (ex.: `br-c0001`); `None` = sem painel
     pub painel: Option<String>,
-    /// camada HTTP/WebSocket (`--http`): `None` = desligada (`docs/PROTOCOLO_WS.md`)
+    /// camada HTTP/WebSocket (`--http`): `None` = desligada (`docs/arquitetura/PROTOCOLO_WS.md`)
     pub http: Option<crate::difusao::Opcoes>,
     /// modo federado (2.0, ADR-028): `None` = nó único, como até a 1.0
     pub federacao: Option<crate::federacao::no::Opcoes>,
@@ -95,6 +95,13 @@ pub struct Config {
     /// Rótulo de simulação (ciclo diário de 18 a 23/10/2026): vai na `saude.json` e na mensagem `estado` (`simulacao`),
     /// e a página mostra no selo do topo que é uma simulação com dados reais do TSE. `None` = noite real.
     pub simulacao: Option<String>,
+    /// sondas (padrão *Test Message*, `crate::sonda`, `docs/arquitetura/SONDA.md`): segundos reais entre duas; 0 = desligadas
+    pub sonda_intervalo_s: f64,
+    /// sonda pendente há mais que isto → alerta `sonda_atrasada` (segundos; 0 = o dobro do intervalo, no mínimo 5 s)
+    pub sonda_limite_s: f64,
+    /// acervo de versões da série de consulta (etapa 1.1, `crate::serie`): pasta onde toda versão de todo arquivo
+    /// publicado é guardada; None = desligado
+    pub serie: Option<PathBuf>,
 }
 
 /// Horário de recebimento no TSE de cada seção, das métricas em `cfg.ordem` (vazio sem arquivos).
@@ -223,6 +230,8 @@ pub struct Comum {
     log: Mutex<Option<std::fs::File>>,
     alertas_arq: Mutex<Option<std::fs::File>>,
     pub alertas: Mutex<BTreeMap<String, u64>>,
+    /// verificador das sondas dentro do serviço (`crate::sonda::Vigia`); `None` = sondas desligadas
+    pub sonda: Option<Mutex<crate::sonda::Vigia>>,
 }
 
 impl Comum {
@@ -305,6 +314,8 @@ pub enum Msg {
     /// sondada e sem `aux.json`: seção agregada (não tem BU nem conta em `s.st`)
     Agregada { k: ChaveUf },
     Oficiais { baixados: Vec<PathBuf>, faltando: Vec<String> },
+    /// mensagem de teste (`crate::sonda`): atravessa o motor sem tocar no estado e segue para a gravação
+    Sonda(Box<crate::sonda::Sonda>),
     Parar,
 }
 
@@ -832,14 +843,19 @@ pub async fn atender(com: Arc<Comum>, mut rx: tokio::sync::mpsc::UnboundedReceiv
 pub enum Gravar {
     /// arquivos (nome, JSON) de uma publicação e a chegada dos BUs que ela inclui; `superadas`: a difusão recebe também
     /// as versões que outra mais nova do mesmo arquivo superou no mesmo lote do gravador (só na retotalização do replay)
-    Lote { arquivos: Vec<(String, String)>, chegadas: Vec<Instant>, superadas: bool },
+    Lote { arquivos: Vec<(String, String)>, chegadas: Vec<Instant>, superadas: bool, t_noite: Option<i64> },
+    /// seções que acenderam num lote (chave, hora da noite do BU): só para o acervo da série (`crate::serie`)
+    Secoes(Vec<(u64, i64)>),
     /// responde depois que tudo o que foi pedido antes estiver gravado
     Sincronizar(std::sync::mpsc::Sender<()>),
+    /// sonda (`crate::sonda`): segue para a difusão depois dos arquivos que vieram antes dela
+    Sonda(Box<crate::sonda::Sonda>),
 }
 
 /// Thread de gravação: grava os arquivos da publicação (gravação atômica) fora do laço do motor, juntando as versões do
 /// mesmo arquivo que se acumularam (só a mais nova é gravada), e mede BU recebido → arquivo gravado.
-fn gravador(com: Arc<Comum>, dir: PathBuf, rx: crossbeam_channel::Receiver<Gravar>, mut painel: Option<Painel>) {
+/// Com `acervo` (etapa 1.1), toda versão de cada lote vai também para o acervo de versões da série, antes de juntar.
+fn gravador(com: Arc<Comum>, dir: PathBuf, rx: crossbeam_channel::Receiver<Gravar>, mut painel: Option<Painel>, mut acervo: Option<crate::serie::Acervo>) {
     while let Ok(primeiro) = rx.recv() {
         let mut msgs = vec![primeiro];
         while let Ok(x) = rx.try_recv() { msgs.push(x); }
@@ -853,13 +869,19 @@ fn gravador(com: Arc<Comum>, dir: PathBuf, rx: crossbeam_channel::Receiver<Grava
         let mut versoes: Vec<(String, Bytes, Option<u64>)> = vec![];
         // arquivos cuja versão mais nova veio de uma publicação comum (entram em `versoes` no fim)
         let mut comuns: HashSet<String> = HashSet::new();
-        let (mut chegadas, mut respostas) = (vec![], vec![]);
+        let (mut chegadas, mut respostas, mut sondas) = (vec![], vec![], vec![]);
         let (agora_i, agora_us) = (Instant::now(), crate::difusao::agora_us());
         for m in msgs {
             match m {
-                Gravar::Lote { arquivos: a, chegadas: c, superadas } => {
+                Gravar::Lote { arquivos: a, chegadas: c, superadas, t_noite } => {
                     let t_bu = c.iter().max().map(|&x| agora_us.saturating_sub((agora_i - x).as_micros() as u64));
                     for (n, j) in a {
+                        if let Some(ac) = acervo.as_mut() {
+                            if let Err(e) = ac.versao(t_noite, crate::relogio::agora_ms(), &n, &j) {
+                                com.alerta("erro_serie", &format!("acervo de versões {}: {e}; a série desta partida para aqui", ac.caminho.display()));
+                                acervo = None;
+                            }
+                        }
                         let b = Bytes::from(j);
                         if com.difusao.is_some() {
                             if superadas { comuns.remove(&n); versoes.push((n.clone(), b.clone(), t_bu)); } else { comuns.insert(n.clone()); }
@@ -868,7 +890,16 @@ fn gravador(com: Arc<Comum>, dir: PathBuf, rx: crossbeam_channel::Receiver<Grava
                     }
                     chegadas.extend(c);
                 }
+                Gravar::Secoes(v) => {
+                    if let Some(ac) = acervo.as_mut() {
+                        if let Err(e) = ac.secoes(crate::relogio::agora_ms(), &v) {
+                            com.alerta("erro_serie", &format!("acervo de versões {}: {e}; a série desta partida para aqui", ac.caminho.display()));
+                            acervo = None;
+                        }
+                    }
+                }
                 Gravar::Sincronizar(r) => respostas.push(r),
+                Gravar::Sonda(s) => sondas.push(s),
             }
         }
         if !arquivos.is_empty() {
@@ -891,8 +922,27 @@ fn gravador(com: Arc<Comum>, dir: PathBuf, rx: crossbeam_channel::Receiver<Grava
             let mut l = com.lat_pub.lock().unwrap();
             for c in chegadas { l.por((agora - c).as_secs_f64() * 1e3); }
         }
+        // a descarga antes das respostas: quem sincroniza (conferência, saída) encontra o acervo legível até aqui
+        if let Some(ac) = acervo.as_mut() {
+            if let Err(e) = ac.descarregar() { com.alerta("erro_serie", &format!("acervo de versões {}: {e}", ac.caminho.display())); acervo = None; }
+        }
         for r in respostas { let _ = r.send(()); }
+        if !sondas.is_empty() { entregar_sondas(&com, sondas); }
     }
+}
+
+/// As sondas que passaram pela gravação: carimbo, verificador do serviço e difusão (atrás dos arquivos já entregues).
+fn entregar_sondas(com: &Comum, sondas: Vec<Box<crate::sonda::Sonda>>) {
+    let t = crate::difusao::agora_us();
+    let mut v = com.sonda.as_ref().map(|x| x.lock().unwrap());
+    let mut corpos = Vec::with_capacity(sondas.len());
+    for mut s in sondas {
+        s.t_gravacao = Some(t);
+        if let Some(v) = v.as_mut() { v.concluir(&s, t); }
+        if com.difusao.is_some() { corpos.push(s.json()); }
+    }
+    drop(v);
+    if let Some(h) = &com.difusao { h.entregar(crate::difusao::Entrada::Sonda(corpos)); }
 }
 
 // ------------------------------------------------------------------ painel no terminal (--painel)
@@ -1206,8 +1256,34 @@ impl<'a> Motor<'a> {
         // mapa das seções (crate::mapa): as seções do lote acendem (as já acesas não mudam)
         if !self.lote_secoes.is_empty() {
             if let Some(h) = &self.com.difusao { h.entregar(crate::difusao::Entrada::Secoes(self.lote_secoes.iter().map(|x| (x.k.1, x.hora)).collect())); }
+            // série de consulta (etapa 1.1): as seções do lote, com a hora da noite, vão para o acervo de versões
+            if self.com.cfg.serie.is_some() { let _ = self.gravacao.send(Gravar::Secoes(self.lote_secoes.iter().map(|x| (x.k.1, x.hora)).collect())); }
         }
         Ok(())
+    }
+
+    /// Falha provocada para os ensaios (`docs/arquitetura/SONDA.md`): com o arquivo-sinal `<saida>/TRAVAR_MOTOR`, a thread do motor
+    /// dorme até ele sumir — BUs, publicação, saúde e sondas param, o resto do processo segue vivo (é o caso que a
+    /// sonda existe para pegar). Só contra o site simulado local: contra qualquer outro servidor o arquivo é ignorado.
+    fn travar_se_pedido(&self) {
+        // contra o site real nem olha o disco
+        if !coletor::base_local(&self.com.cfg.alvo.base) { return; }
+        let sinal = self.com.cfg.saida.join("TRAVAR_MOTOR");
+        if !sinal.exists() { return; }
+        self.com.registrar("aviso", "motor_travado", json!({"texto": "arquivo-sinal TRAVAR_MOTOR (falha provocada, só no simulado)"}));
+        while sinal.exists() && !self.com.parar.load(Relaxed) { std::thread::sleep(Duration::from_millis(50)); }
+        self.com.registrar("info", "motor_destravado", json!({}));
+    }
+
+    /// Sondas (`crate::sonda`) que chegaram ao motor: carimbo e seq, e seguem para a thread de gravação. Não tocam no
+    /// estado, no diário, nos pacotes nem na publicação.
+    fn passar_sondas(&mut self, sondas: Vec<Box<crate::sonda::Sonda>>) {
+        let (t, seq) = (crate::difusao::agora_us(), self.seq());
+        for mut s in sondas {
+            s.t_motor = Some(t);
+            s.seq = seq;
+            let _ = self.gravacao.send(Gravar::Sonda(s));
+        }
     }
 
     /// M-020: com a trava ligada, os BUs do lote entram na fila dos retidos (na ordem de chegada) e saem dela só até o
@@ -1420,7 +1496,7 @@ impl<'a> Motor<'a> {
                     if let Some(m) = self.agregada(k.0, k.1) { self.sujar(Some(m), k.0); }
                 }
             }
-            Msg::Oficiais { .. } | Msg::Parar | Msg::Bu(_) => {}
+            Msg::Oficiais { .. } | Msg::Parar | Msg::Bu(_) | Msg::Sonda(_) => {}
         }
     }
 
@@ -1449,7 +1525,7 @@ impl<'a> Motor<'a> {
         if !arquivos.is_empty() { self.custo_pub.por(t.elapsed().as_secs_f64() * 1e3); }
         let chegadas = std::mem::take(&mut self.aguardando);
         if !arquivos.is_empty() || !chegadas.is_empty() {
-            self.gravacao.send(Gravar::Lote { arquivos, chegadas, superadas: self.retotalizando }).map_err(|_| anyhow::anyhow!("a thread de gravação parou"))?;
+            self.gravacao.send(Gravar::Lote { arquivos, chegadas, superadas: self.retotalizando, t_noite: self.ultimo_bu_site }).map_err(|_| anyhow::anyhow!("a thread de gravação parou"))?;
         }
         self.ultima_pub = Instant::now();
         Ok(())
@@ -1659,6 +1735,7 @@ impl<'a> Motor<'a> {
             let _ = std::fs::remove_file(&sinal);
             self.pedir_oficiais("arquivo-sinal CONFERIR");
         }
+        self.travar_se_pedido();
         if let Some(t) = self.prox_conf_periodica {
             if Instant::now() >= t {
                 self.prox_conf_periodica = Some(t + Duration::from_secs_f64(self.com.cfg.conferir_a_cada_min * 60.0));
@@ -1896,20 +1973,24 @@ impl<'a> Motor<'a> {
         if let Some(t) = &c.tse { j["tse_resultados"] = t.saude_json(c.relogio_site.load(Relaxed)); }
         if self.prev_tx.is_some() { j["previsao"] = self.prev_saude.lock().unwrap().clone(); }
         if let Some(s) = &c.cfg.simulacao { j["simulacao"] = json!({"rotulo": s}); }
+        if let Some(v) = &c.sonda { j["sonda"] = v.lock().unwrap().json(crate::difusao::agora_us()); }
         // caminhos do site fora do padrão (--rotas): o painel dos nós mostra quais estão valendo
         if !c.cfg.alvo.rotas.padrao() { j["rotas"] = serde_json::to_value(&*c.cfg.alvo.rotas).unwrap_or_default(); }
         if let Some(h) = &c.difusao {
             // calculado pela thread de difusão (até 2 s atrás): os percentis não rodam aqui, na thread do motor
             j["difusao"] = h.saude_guardada();
-            // subconjunto estável para a mensagem `estado` e o GET /api/v1/estado (docs/PROTOCOLO_WS.md §4.3)
+            // subconjunto estável para a mensagem `estado` e o GET /api/v1/estado (docs/arquitetura/PROTOCOLO_WS.md §4.3)
             let mut e = json!({
                 "versao": urna_velox::VERSAO, "estado": estado, "encerrada": self.encerrada, "pleito": c.cfg.alvo.pleito, "relogio_site": j["relogio_site"],
                 "relogio_sistema": j["relogio_sistema"],
                 "secoes": {"catalogo": self.cat.secoes.len(), "publicadas_cs": j["secoes"]["publicadas_cs"], "aplicadas": self.seq(),
                     "nao_instaladas": j["secoes"]["nao_instaladas"], "pendentes": self.pendentes.len()},
                 "ultimo_bu": j["ultimo_bu"], "pausa_429": {"ativa": !pausa.is_zero(), "retomada_em": j["rede"]["retomada_em"], "pausas": pausas},
-                "conferencias": self.conferencias, "alertas": j["alertas"], "trava": j["trava"]});
-            // só com --controle-replay (docs/PROTOCOLO_WS.md §4.3)
+                "conferencias": self.conferencias, "alertas": j["alertas"], "trava": j["trava"],
+                // atraso BU recebido → publicado (a telemetria da página, ao lado do atraso da sonda; ms, janela recente)
+                "latencia_bu_ms": {"p50": j["latencias_ms"]["bu_publicacao"]["p50"], "p99": j["latencias_ms"]["bu_publicacao"]["p99"],
+                    "n": j["latencias_ms"]["bu_publicacao"]["n"]}});
+            // só com --controle-replay (docs/arquitetura/PROTOCOLO_WS.md §4.3)
             if let Some(r) = h.replay_json() { e["replay"] = r; }
             if let Some(s) = &c.cfg.simulacao { e["simulacao"] = json!({"rotulo": s}); }
             h.entregar(crate::difusao::Entrada::Estado(e));
@@ -2181,7 +2262,15 @@ fn rodar_motor(com: Arc<Comum>, rx: crossbeam_channel::Receiver<Msg>, pedidos: t
     let grav_h = {
         let (c, d) = (com.clone(), pub_dir.clone());
         let painel = cfg.painel.as_deref().map(|p| Painel::novo(p, &arq));
-        std::thread::Builder::new().name("uv-gravacao".into()).spawn(move || gravador(c, d, grav_rx, painel))?
+        // acervo de versões da série de consulta (etapa 1.1): um arquivo novo por partida
+        let acervo = match &cfg.serie {
+            Some(p) => match crate::serie::Acervo::abrir(p) {
+                Ok(a) => { com.registrar("info", "serie", json!({"acervo": a.caminho.display().to_string()})); Some(a) }
+                Err(e) => { com.alerta("erro_serie", &format!("acervo de versões em {}: {e}; sem série nesta partida", p.display())); None }
+            },
+            None => None,
+        };
+        std::thread::Builder::new().name("uv-gravacao".into()).spawn(move || gravador(c, d, grav_rx, painel, acervo))?
     };
     let (sinc_tx, sinc_rx) = crossbeam_channel::bounded(1);
     let sinc_h = {
@@ -2286,9 +2375,10 @@ fn rodar_motor(com: Arc<Comum>, rx: crossbeam_channel::Receiver<Msg>, pedidos: t
         }
         while msgs.len() < 50_000 { match rx.try_recv() { Ok(x) => msgs.push(x), Err(_) => break } }
         let mut oficiais = vec![];
+        let mut sondas = vec![];
         let mut normais = Vec::with_capacity(msgs.len());
         for x in msgs {
-            match x { Msg::Parar => parar = true, Msg::Oficiais { baixados, faltando } => oficiais.push((baixados, faltando)), o => normais.push(o) }
+            match x { Msg::Parar => parar = true, Msg::Oficiais { baixados, faltando } => oficiais.push((baixados, faltando)), Msg::Sonda(s) => sondas.push(s), o => normais.push(o) }
         }
         if !normais.is_empty() {
             let t = Instant::now();
@@ -2296,6 +2386,8 @@ fn rodar_motor(com: Arc<Comum>, rx: crossbeam_channel::Receiver<Msg>, pedidos: t
             m.custo_lote.por(t.elapsed().as_secs_f64() * 1e3);
         }
         if m.sujo && (cfg.cadencia_ms == 0 || m.ultima_pub.elapsed() >= Duration::from_millis(cfg.cadencia_ms)) { m.publicar(false)?; }
+        // sondas: depois do lote e da publicação que vieram com elas, para a gravação (FIFO, atrás dos arquivos)
+        if !sondas.is_empty() { m.passar_sondas(sondas); }
         for (b, f) in oficiais { m.conferir(b, f)?; }
         let agora = Instant::now();
         if agora >= prox_verif {
@@ -2337,6 +2429,37 @@ fn rodar_motor(com: Arc<Comum>, rx: crossbeam_channel::Receiver<Msg>, pedidos: t
     let _ = grav_h.join();
     let _ = sinc_h.join();
     Ok(())
+}
+
+/// Thread `uv-sonda`: injeta uma sonda a cada `sonda_intervalo_s` no canal do motor (e, federado, no lote do nó, para
+/// os pares) e confere o atraso das que não voltaram (alerta `sonda_atrasada`, uma vez por episódio). Roda fora da
+/// thread do motor: com o motor parado, é ela que avisa.
+fn injetar_sondas(com: Arc<Comum>) {
+    let Some(vigia) = com.sonda.as_ref() else { return };
+    let intervalo = Duration::from_secs_f64(com.cfg.sonda_intervalo_s);
+    let sessao = crate::difusao::agora_us();
+    let mut id = 0u64;
+    let mut prox = Instant::now();
+    while !com.parar.load(Relaxed) {
+        let agora = Instant::now();
+        if agora >= prox {
+            id += 1;
+            let s = crate::sonda::Sonda::nova(id, sessao, crate::difusao::agora_us());
+            vigia.lock().unwrap().injetar(s.id, s.t_injecao);
+            if let Some(f) = &com.federado { f.publicar_sonda(&s); }
+            let _ = com.tx_motor.send(Msg::Sonda(Box::new(s)));
+            prox += intervalo;
+            if prox < agora { prox = agora + intervalo; }
+        }
+        let t = vigia.lock().unwrap().verificar(crate::difusao::agora_us());
+        match t {
+            Some(crate::sonda::Transicao::Atrasou { atraso_ms, pendentes, id }) => com.alerta("sonda_atrasada", &format!(
+                "a sonda {id} não voltou em {:.1} s ({pendentes} pendentes): o caminho dos BUs (motor → gravação → difusão) parou ou está muito atrasado", atraso_ms / 1e3)),
+            Some(crate::sonda::Transicao::Normalizou { duracao_ms }) => com.registrar("info", "sonda_normalizada", json!({"atraso_s": arred(duracao_ms / 1e3)})),
+            None => {}
+        }
+        std::thread::sleep(intervalo.min(Duration::from_millis(100)));
+    }
 }
 
 /// Roda o serviço até a conferência final (ou até `Ctrl+C`/`SIGTERM`, ou para sempre com `continuar`).
@@ -2398,6 +2521,7 @@ pub fn executar(mut cfg: Config) -> anyhow::Result<()> {
         cfg: cfg.clone(), rede, parar: AtomicBool::new(false), cs_ocioso: AtomicBool::new(false), fila: AtomicI64::new(0), lat_aux: Mutex::default(), lat_bu: Mutex::default(),
         cont: Contadores::default(), publicadas_cs: Mutex::default(), agregadas_cs: Mutex::default(), agregadas_ger: Default::default(), aplicados: Mutex::default(), cache: Mutex::default(), relogio_site: AtomicI64::new(0), relogio,
         t0: Instant::now(), escala: AtomicU64::new(escala.to_bits()), tx_motor, lat_pub: Mutex::default(), custo_grav: Mutex::default(), custo_sync: Mutex::default(), difusao: difusao.clone(), federado: federado.clone(), tse: tse.clone(), log: Mutex::new(Some(log)), alertas_arq: Mutex::new(Some(alertas)), alertas: Mutex::default(),
+        sonda: (cfg.sonda_intervalo_s > 0.0).then(|| Mutex::new(crate::sonda::Vigia::novo(cfg.sonda_intervalo_s, cfg.sonda_limite_s))),
     });
     com.registrar("info", "inicio", json!({"versao": urna_velox::VERSAO, "base": base, "ambiente": cfg.alvo.ambiente, "ciclo": cfg.alvo.ciclo, "pleito": cfg.alvo.pleito,
         "servidor_local": local, "acesso": cfg.acesso.texto(), "teto_req_s": com.rede.teto(), "req_s": rps, "pausa_429_s": pausa, "intervalo_cs_s": cfg.intervalo_cs, "intervalo_cs_ocioso_s": cfg.intervalo_cs_ocioso, "concorrencia": cfg.concorrencia}));
@@ -2476,6 +2600,11 @@ pub fn executar(mut cfg: Config) -> anyhow::Result<()> {
         }
         None => None,
     };
+    // sondas (padrão Test Message): só depois da partida do motor (a retomada não conta como atraso)
+    if com.sonda.is_some() {
+        let c = com.clone();
+        std::thread::Builder::new().name("uv-sonda".into()).spawn(move || injetar_sondas(c))?;
+    }
     // a rede é limitada por E/S (≤ 100 req/s contra o TSE): 4 threads bastam e não espalham memória por 28 arenas
     let rt = tokio::runtime::Builder::new_multi_thread().worker_threads(4).enable_all().build()?;
     let r = rt.block_on(async {

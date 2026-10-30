@@ -1,6 +1,6 @@
 [Unit]
 Description=Urna Velox — atualizador pull por manifesto assinado (Ed25519)
-Documentation=https://github.com/lukeboh/urna-velox-civica/blob/main/docs/HANDOFF_DEPLOY_SEM_SSH.md
+Documentation=https://github.com/lukeboh/urna-velox-civica/blob/main/docs/handoffs/HANDOFF_DEPLOY_SEM_SSH.md
 After=network-online.target
 
 [Service]

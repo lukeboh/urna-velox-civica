@@ -1,6 +1,6 @@
 //! `uv-servico` — o serviço da noite da eleição (módulo `uv_aquisicao::servico`): acompanha o site, coleta dentro dos
 //! limites (≤ 100 req/s e pausa ≥ 10 min depois de um 429 contra o TSE), totaliza em fluxo, calcula o
-//! "matematicamente", publica, retoma depois de uma queda e confere com os oficiais no fim. Ver docs/OPERACAO.md.
+//! "matematicamente", publica, retoma depois de uma queda e confere com os oficiais no fim. Ver docs/operacao/OPERACAO.md.
 
 use clap::Parser;
 use std::path::PathBuf;
@@ -79,10 +79,17 @@ struct Cli {
     /// quadro. As mensagens do serviço continuam no stderr (use 2> arquivo para não misturar)
     #[arg(long, num_args = 0..=1, default_missing_value = "br-c0001", value_name = "PREFIXO")]
     painel: Option<String>,
-    /// Liga a difusão em tempo real (WebSocket /ws e REST /api/v1/, docs/PROTOCOLO_WS.md) neste endereço, ex.:
+    /// Liga a difusão em tempo real (WebSocket /ws e REST /api/v1/, docs/arquitetura/PROTOCOLO_WS.md) neste endereço, ex.:
     /// 127.0.0.1:8080 (porta 0 = qualquer livre, gravada em <saida>/http_porta). Sem TLS: para expor, use um proxy reverso
     #[arg(long, value_name = "END:PORTA")]
     http: Option<String>,
+    /// Multipleito (1.1, só com --http): pleitos.json do `uv-coletor pleitos` (os pleitos do ele-c.json e a situação de
+    /// cada um), servido em /api/v1/pleitos e relido quando o arquivo muda
+    #[arg(long, value_name = "ARQUIVO")]
+    pleitos: Option<PathBuf>,
+    /// Pasta das séries de consulta (multipleito 1.1, gerada pelo uv-serie / gerar_consultas.sh), servida em /consulta/*
+    #[arg(long, value_name = "PASTA")]
+    consulta: Option<PathBuf>,
     /// Conexões WebSocket simultâneas (acima disso, 503 no handshake)
     #[arg(long, default_value_t = 7500)]
     max_clientes: usize,
@@ -137,7 +144,7 @@ struct Cli {
     #[arg(long)]
     simulacao: Option<String>,
     /// Caminhos do site de resultados (rotas_tse.json: modelos com {base}, {uf}, {hash}... e, opcional,
-    /// base_arquivos para buscar os BUs de outro endereço). Sem ele, os caminhos de sempre. Ver docs/PAINEL.md
+    /// base_arquivos para buscar os BUs de outro endereço). Sem ele, os caminhos de sempre. Ver docs/operacao/PAINEL.md
     #[arg(long)]
     rotas: Option<PathBuf>,
     /// Como o nó chega ao servidor: borda (a borda pública do TSE: teto de 100 req/s por órgão, sempre) ou interno
@@ -147,10 +154,26 @@ struct Cli {
     /// Teto de req/s no modo espelho, `--acesso interno` (0 ou ausente = sem limite)
     #[arg(long)]
     teto_interno: Option<f64>,
+    /// Sondas (padrão Test Message, docs/arquitetura/SONDA.md): segundos reais entre duas mensagens de teste que atravessam o
+    /// caminho dos BUs (motor → gravação → difusão; federado, também os pares) sem tocar na totalização nem fazer
+    /// requisição ao TSE. 0 desliga
+    #[arg(long, default_value_t = 30.0)]
+    sonda_intervalo: f64,
+    /// Sonda pendente há mais que isto (segundos) → alerta sonda_atrasada; 0 = o dobro do intervalo (mínimo 5 s)
+    #[arg(long, default_value_t = 0.0)]
+    sonda_limite: f64,
+    /// Série de consulta (etapa 1.1): pasta do acervo de versões — toda versão de todo arquivo publicado, com a hora
+    /// da noite, para o uv-serie (padrão: <saida>/serie; no reinício do --controle-replay a saída é apagada)
+    #[arg(long)]
+    serie: Option<PathBuf>,
+    /// Sem o acervo de versões da série de consulta
+    #[arg(long)]
+    sem_serie: bool,
 }
 
 fn main() -> anyhow::Result<()> {
     let a = Cli::parse();
+    let serie = (!a.sem_serie).then(|| a.serie.clone().unwrap_or_else(|| a.saida.join(uv_aquisicao::serie::PASTA)));
     let mut cfg = Config {
         alvo: {
             let mut alvo = Alvo::novo(&a.base, &a.ambiente, &a.ciclo, a.pleito);
@@ -184,6 +207,8 @@ fn main() -> anyhow::Result<()> {
             let mut o = uv_aquisicao::difusao::Opcoes::padrao(&e);
             o.max_clientes = a.max_clientes;
             o.threads = a.http_threads;
+            o.pleitos = a.pleitos.clone();
+            o.consulta = a.consulta.clone();
             o
         }),
         federacao: a.federacao.map(|f| uv_aquisicao::federacao::no::Opcoes {
@@ -196,6 +221,9 @@ fn main() -> anyhow::Result<()> {
         sem_coleta: a.sem_coleta,
         previsao: uv_aquisicao::previsao::Opcoes { intervalo_s: a.previsao_intervalo.max(0), threads: a.previsao_threads.max(1) },
         simulacao: a.simulacao.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
+        sonda_intervalo_s: if a.sonda_intervalo.is_finite() { a.sonda_intervalo.max(0.0) } else { 0.0 },
+        sonda_limite_s: if a.sonda_limite.is_finite() { a.sonda_limite.max(0.0) } else { 0.0 },
+        serie,
     };
     if let Some(t) = &cfg.tse { t.validar()?; }
     // com --controle-replay, ir a um instante já visto para o serviço e pede um reinício: o diário da sessão vai para o

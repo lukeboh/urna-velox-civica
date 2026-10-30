@@ -1,6 +1,6 @@
 # Análise de uma noite de apuração
 
-Scripts da [análise do atraso de 25/10/2026](../../../docs/ANALISE_ATRASO_2026-10-25.md). Só leem dados: nenhuma
+Scripts da [análise do atraso de 25/10/2026](../../../docs/relatorios/ANALISE_ATRASO_2026-10-25.md). Só leem dados: nenhuma
 requisição ao TSE e nada de totalização.
 
 Entrada: a pasta do pleito no D: (`/mnt/d/dados/urna-velox/pleitos/<AAAA-MM-DD-código>`), com `nos/<nó>/saida/secoes.log`

@@ -2,7 +2,7 @@
 //! carga, disco, processos) e guarda uma série curta em memória (o painel não grava nada no disco do nó além da
 //! auditoria). As taxas (BUs/s, BUs trocados/s) saem da diferença entre duas amostras.
 //!
-//! Lê só arquivos: não abre conexão com o `uv-servico` nem tira nada dele (ver `docs/PAINEL.md`).
+//! Lê só arquivos: não abre conexão com o `uv-servico` nem tira nada dele (ver `docs/operacao/PAINEL.md`).
 
 use serde_json::{json, Map, Value};
 use std::collections::VecDeque;
@@ -13,7 +13,7 @@ pub const COLUNAS: &[&str] = &[
     "bus_s", "baixados_s", "req_s", "teto_req_s", "http429", "fila", "pendentes", "aplicadas",
     "rss_mb", "cpu_pct", "sis_cpu_pct", "sis_mem_usada_mb", "sis_mem_total_mb", "carga1", "disco_livre_gb",
     "fed_recebidos_s", "fed_publicados_s", "fed_lotes_s", "fed_servidas_s", "fed_buscas_erro", "ws_clientes", "ws_msgs_s", "ws_kb_s",
-    "idade_saude_s",
+    "idade_saude_s", "sonda_atraso_s", "sonda_ms",
 ];
 
 /// Contadores (crescem; a taxa é a diferença por segundo) → coluna da taxa.
@@ -33,11 +33,16 @@ pub struct Amostrador {
     /// a última `saude.json` lida inteira (para o detalhe na página)
     pub saude_atual: Option<Value>,
     pub sistema_atual: Value,
+    /// relatório do verificador externo das sondas (`uv-sonda --saida <saida>/sonda.json`), se houver
+    pub verificador_atual: Option<Value>,
 }
+
+/// Relatório do `uv-sonda` na pasta de saída do serviço (`docs/arquitetura/SONDA.md`).
+pub const ARQ_VERIFICADOR: &str = "sonda.json";
 
 fn num(v: &Value) -> Option<f64> { v.as_f64().or_else(|| v.as_str().and_then(|s| s.parse().ok())) }
 
-/// Saída do serviço do ciclo diário de simulações (`uv-ciclo-no.service`, docs/CICLO_DIARIO.md).
+/// Saída do serviço do ciclo diário de simulações (`uv-ciclo-no.service`, docs/operacao/CICLO_DIARIO.md).
 pub const SAIDA_CICLO: &str = "/srv/urna-velox/ciclo/atual/saida";
 
 pub fn agora_ms() -> u64 {
@@ -48,7 +53,7 @@ impl Amostrador {
     pub fn novo(saida: &Path, cap: usize) -> Amostrador {
         Amostrador { saudes: vec![saida.join("saude.json"), PathBuf::from(SAIDA_CICLO).join("saude.json")], disco: saida.to_path_buf(),
             serie: VecDeque::with_capacity(cap), cap,
-            ant_cont: None, ant_cpu: None, saude_atual: None, sistema_atual: json!({}) }
+            ant_cont: None, ant_cpu: None, saude_atual: None, sistema_atual: json!({}), verificador_atual: None }
     }
 
     /// Uma amostra agora (`t` em ms).
@@ -64,6 +69,7 @@ impl Amostrador {
         while self.serie.len() > self.cap { self.serie.pop_front(); }
         self.saude_atual = s;
         self.sistema_atual = sis;
+        self.verificador_atual = ler_verificador(&self.disco.join(ARQ_VERIFICADOR), std::time::SystemTime::now());
     }
 
     /// A `saude.json` gravada por último entre as candidatas (produção ou ciclo de simulações).
@@ -96,6 +102,9 @@ impl Amostrador {
             por("ws_clientes", num(&d["clientes"]));
             por("ws_msgs_s", num(&d["mensagens_s"]));
             por("ws_kb_s", num(&d["bytes_s"]).map(|b| (b / 102.4).round() / 10.0));
+            // sondas (padrão Test Message): idade da pendente mais antiga e a última injeção → gravação
+            por("sonda_atraso_s", num(&s["sonda"]["atraso_s"]));
+            por("sonda_ms", num(&s["sonda"]["ultima"]["ms"]["gravacao"]));
         }
         por("sis_cpu_pct", num(&sis["cpu_pct"]));
         por("sis_mem_usada_mb", num(&sis["memoria_mb"]["usada"]));
@@ -150,10 +159,20 @@ impl Amostrador {
                 "pausa_429_s": g(&["rede", "pausa_restante_s"]), "retomada_em": g(&["rede", "retomada_em"]),
                 "rede": g(&["rede"]), "latencias_ms": g(&["latencias_ms"])},
             "federacao": g(&["federacao"]),
+            "sonda": g(&["sonda"]),
+            "sonda_verificador": self.verificador_atual,
             "alertas": alertas,
             "sistema": self.sistema_atual,
         })
     }
+}
+
+/// O relatório do `uv-sonda`, com a idade do arquivo (`idade_arquivo_s`): o verificador parado também é notícia.
+pub fn ler_verificador(p: &Path, agora: std::time::SystemTime) -> Option<Value> {
+    let mut v: Value = serde_json::from_slice(&std::fs::read(p).ok()?).ok()?;
+    let idade = std::fs::metadata(p).ok()?.modified().ok().and_then(|m| agora.duration_since(m).ok()).map_or(0.0, |d| d.as_secs_f64());
+    v["idade_arquivo_s"] = json!((idade * 10.0).round() / 10.0);
+    Some(v)
 }
 
 // ------------------------------------------------------------------ sistema (/proc)
@@ -235,6 +254,7 @@ mod testes {
             "recursos": {"rss_mb": 410, "cpu_pct_atual": 55.5},
             "federacao": {"recebidos": recebidos, "publicados": 10, "sincronia": {"lotes_copiados": 2, "servidas": 4, "buscas_erro": 0}},
             "difusao": {"clientes": 12, "mensagens_s": 3.5, "bytes_s": 2048},
+            "sonda": {"atraso_s": 0.0, "atrasada": false, "ultima": {"id": 4, "ms": {"motor": 0.4, "gravacao": 1.25}}},
             "alertas": [{"tipo": "a"}, {"tipo": "b"}]})
     }
 
@@ -255,6 +275,8 @@ mod testes {
         assert_eq!(col(&a, "ws_kb_s")[0], json!(2.0));
         assert_eq!(col(&a, "sis_mem_total_mb")[0], json!(24000.0));
         assert_eq!(a.colunas(6000)["t"], json!([11000]), "só depois de `desde`");
+        assert_eq!(col(&a, "sonda_ms"), vec![json!(1.25); 3]);
+        assert_eq!(col(&a, "sonda_atraso_s")[0], json!(0.0));
     }
 
     #[test]
@@ -266,6 +288,30 @@ mod testes {
         let r = a.resumo();
         assert!(r["servico"]["versao"].is_null());
         assert!(r["sistema"]["memoria_mb"]["total"].as_u64().unwrap_or(0) > 0 || !Path::new("/proc/meminfo").exists());
+    }
+
+    #[test]
+    fn verificador_externo_no_resumo() {
+        let d = std::env::temp_dir().join(format!("uv-painel-sonda-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        let mut a = Amostrador::novo(&d, 3);
+        a.amostrar(0);
+        assert!(a.resumo()["sonda_verificador"].is_null(), "sem uv-sonda");
+        std::fs::write(d.join(ARQ_VERIFICADOR), r#"{"ok": true, "alvos": {"ws://x/ws": {"situacao": "ok"}}}"#).unwrap();
+        a.amostrar(1000);
+        let r = a.resumo();
+        assert_eq!(r["sonda_verificador"]["ok"], true);
+        assert!(r["sonda_verificador"]["idade_arquivo_s"].as_f64().unwrap() < 60.0);
+        let depois = std::time::SystemTime::now() + std::time::Duration::from_secs(90);
+        assert!(ler_verificador(&d.join(ARQ_VERIFICADOR), depois).unwrap()["idade_arquivo_s"].as_f64().unwrap() >= 89.0);
+        std::fs::write(d.join(ARQ_VERIFICADOR), "não é JSON").unwrap();
+        a.amostrar(2000);
+        assert!(a.resumo()["sonda_verificador"].is_null());
+        // o bloco `sonda` da saúde vai para o resumo
+        a.saude_atual = Some(saude(1, 1, 1));
+        assert_eq!(a.resumo()["sonda"]["ultima"]["id"], 4);
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]

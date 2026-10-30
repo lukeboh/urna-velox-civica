@@ -1,0 +1,11 @@
+[Unit]
+Description=Urna Velox — pleitos do ele-c.json e acervos de replay (multipleito, docs/operacao/CICLO_DIARIO.md)
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=urnavelox
+Group=urnavelox
+ExecStart=/opt/urna-velox/bin/uv-pleitos.sh
+TimeoutStartSec=6h
+Nice=10

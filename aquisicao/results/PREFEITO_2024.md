@@ -1,6 +1,6 @@
 # Prefeito e consultas populares — 1º turno de 2024: totalização, conferência e desempenho
 
-Execução de 12/10/2026 (`v0.0.18`), i7-14700 (28 threads), WSL2. Eleição municipal de 06/10/2024: pleito 452, eleição 619 (Prefeito, cargo 11; Vereador, cargo 13) e 5 consultas populares (eleições 633–637, cargos 51–55). Entrada: **478.026 BUs** de 26 UFs (sem DF e sem exterior), dos zips de dados abertos guardados no acervo local, com os horários de recebimento tirados dos `aux.json` ([AQUISICAO §1.1.1](../../docs/AQUISICAO.md)).
+Execução de 12/10/2026 (`v0.0.18`), i7-14700 (28 threads), WSL2. Eleição municipal de 06/10/2024: pleito 452, eleição 619 (Prefeito, cargo 11; Vereador, cargo 13) e 5 consultas populares (eleições 633–637, cargos 51–55). Entrada: **478.026 BUs** de 26 UFs (sem DF e sem exterior), dos zips de dados abertos guardados no acervo local, com os horários de recebimento tirados dos `aux.json` ([AQUISICAO §1.1.1](../../docs/arquitetura/AQUISICAO.md)).
 
 ## 1. Aquisição
 

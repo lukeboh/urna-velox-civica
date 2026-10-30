@@ -5,7 +5,7 @@
 "Mapa das seções" aparece na tela.
 
 O servidor não sabe de geografia: numera as seções do catálogo (`GET /api/v1/mapa/secoes`) e diz quais já acenderam
-(`docs/PROTOCOLO_WS.md` §4.8). Este arquivo diz onde desenhar cada uma.
+(`docs/arquitetura/PROTOCOLO_WS.md` §4.8). Este arquivo diz onde desenhar cada uma.
 
 ## O que tem no `mapa.json`
 

@@ -1,4 +1,4 @@
-// Relógio do sistema (M-003, docs/PROTOCOLO_WS.md §4.3 `relogio_sistema`): os horários do Urna Velox são os da
+// Relógio do sistema (M-003, docs/arquitetura/PROTOCOLO_WS.md §4.3 `relogio_sistema`): os horários do Urna Velox são os da
 // máquina que totalizou (a data e a hora reais, também no simulado), separados dos horários do TSE (recebimento dos
 // BUs, geração dos arquivos de divulgação). Para medir a distância entre as duas apurações, a âncora do servidor diz
 // que o instante `noite0` do TSE corresponde a `sistema0` do sistema, com a aceleração `acelerar` do simulado (1 na

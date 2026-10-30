@@ -1,5 +1,5 @@
 //! **Marcos e curiosidades da noite** (etapa 5): o que só a thread do motor sabe com exatidão — **qual seção** entrou
-//! em cada lote e a conta do "matematicamente" — vira a mensagem `marco` da difusão (`docs/PROTOCOLO_WS.md` §4.5) e uma
+//! em cada lote e a conta do "matematicamente" — vira a mensagem `marco` da difusão (`docs/arquitetura/PROTOCOLO_WS.md` §4.5) e uma
 //! linha do `<saida>/marcos.csv` (para a conferência e para a retomada: depois de um reinício o histórico é relido daqui).
 //!
 //! Classes:

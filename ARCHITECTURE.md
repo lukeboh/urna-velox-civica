@@ -1,6 +1,6 @@
 # 🏗️ Arquitetura do Sistema: Urna Velox
 
-Este documento descreve o pipeline de processamento, o modelo de concorrência e as estruturas de dados em memória do **Urna Velox**. As decisões e suas alternativas estão registradas em [docs/ARCHITECTURE_DECISIONS.md](docs/ARCHITECTURE_DECISIONS.md) (referenciadas aqui como ADR-NNN); os números de memória e tempo vêm de [docs/ESTIMATIVAS_MEMORIA_E_TEMPO.md](docs/ESTIMATIVAS_MEMORIA_E_TEMPO.md). Termos técnicos: [docs/GLOSSARIO.md](docs/GLOSSARIO.md).
+Este documento descreve o pipeline de processamento, o modelo de concorrência e as estruturas de dados em memória do **Urna Velox**. As decisões e suas alternativas estão registradas em [docs/arquitetura/ARCHITECTURE_DECISIONS.md](docs/arquitetura/ARCHITECTURE_DECISIONS.md) (referenciadas aqui como ADR-NNN); os números de memória e tempo vêm de [docs/arquitetura/ESTIMATIVAS_MEMORIA_E_TEMPO.md](docs/arquitetura/ESTIMATIVAS_MEMORIA_E_TEMPO.md). Termos técnicos: [docs/arquitetura/GLOSSARIO.md](docs/arquitetura/GLOSSARIO.md).
 
 ---
 
@@ -18,7 +18,7 @@ Este documento descreve o pipeline de processamento, o modelo de concorrência e
 
 ### 2.0. Aquisição dos BUs (ADR-013 a ADR-018)
 
-Antes do núcleo vem a **aquisição** (`aquisicao/`, binário `uv-coletor`), que busca os BUs brutos publicados pelo TSE e os entrega ao núcleo. Detalhes e medições: [docs/AQUISICAO.md](docs/AQUISICAO.md).
+Antes do núcleo vem a **aquisição** (`aquisicao/`, binário `uv-coletor`), que busca os BUs brutos publicados pelo TSE e os entrega ao núcleo. Detalhes e medições: [docs/arquitetura/AQUISICAO.md](docs/arquitetura/AQUISICAO.md).
 
 ```mermaid
 flowchart LR
@@ -93,7 +93,7 @@ flowchart LR
     A --> AC["acompanhamento: por lote,<br/>só as regiões tocadas (diferenças)"]
     AC --> M["matematica: matematicamente<br/>eleito / 2º turno + eventos"]
     R --> S["situacao: eleito, 2º turno,<br/>não eleito (art. 224, 200 mil, idade)"]
-    R --> P["Publicador: JSON v1<br/>(docs/FORMATO_RESULTADO.md)"]
+    R --> P["Publicador: JSON v1<br/>(docs/arquitetura/FORMATO_RESULTADO.md)"]
     M --> P
     S --> P
     P --> C["conferencia: × arquivos<br/>oficiais (-u.json)"]
@@ -106,7 +106,7 @@ flowchart LR
 | `catalogo` | layout do estado: UFs, municípios, seções, cargos, candidatos por UF ou por município |
 | `estado` | vetor denso de `AtomicU32`, aptos e seções por região, agregador, totalização em lote |
 | `resultado` | totais por abrangência e o `Publicador` do formato JSON |
-| `candidatos` | o que a situação precisa e não está nos BUs, por circunscrição (Brasil, UF ou município), com o sistema (maioria absoluta sobre aptos ou nominal; simples com `k` vagas) e o art. 224 |
+| `candidatos` | o que a situação precisa e não está nos BUs, por circunscrição (Brasil, UF ou município), com o sistema (maioria absoluta sobre aptos ou nominal; simples com `k` vagas) e o art. 224 (todo cargo majoritário desde a `1.0.35`, B-070) |
 | `situacao` | situação final dos candidatos |
 | `matematica` | matematicamente eleito / 2º turno com o eleitorado restante (`R`), empate pela idade |
 | `acompanhamento` | reavaliação por lote só das circunscrições tocadas, somando a diferença dos contadores; eventos com sequência e horário |
@@ -124,7 +124,7 @@ ADR-019): é o que permite trocar o BU de uma seção reenviada e anular uma se�
 
 `uv-servico` (crate `uv-aquisicao`, `aquisicao/src/servico.rs`) roda a noite inteira sozinho. A rede roda em tarefas
 `tokio`; o motor roda numa **thread nativa**, única dona do estado, do diário e dos pacotes, que recebe as mensagens por
-canal (`crossbeam`) — o motor continua sem rede e sem `tokio` (ADR-012/014). Operação: [docs/OPERACAO.md](docs/OPERACAO.md).
+canal (`crossbeam`) — o motor continua sem rede e sem `tokio` (ADR-012/014). Operação: [docs/operacao/OPERACAO.md](docs/operacao/OPERACAO.md).
 
 ```mermaid
 flowchart LR
@@ -170,7 +170,7 @@ flowchart LR
   qualquer host que não seja `127.0.0.1`/`localhost`/`::1`, teto de 100 req/s e **pausa global** ≥ 600 s depois de
   qualquer 429 (nenhuma requisição, nem as que já esperavam a vez); só o site simulado aceita aceleração, e então a rede
   recusa qualquer outra URL. Seção sem disponibilização no `cs.json` não gera requisição, salvo a sondagem limitada do
-  fim da noite (não instaladas; [docs/OPERACAO.md](docs/OPERACAO.md) §3).
+  fim da noite (não instaladas; [docs/operacao/OPERACAO.md](docs/operacao/OPERACAO.md) §3).
 * **Fim da apuração**: todas as abrangências publicadas com as seções esperadas totalizadas (BUs + não instaladas),
   fila vazia e toda seção publicada resolvida — ou `CONFERIR`/`--conferir-a-cada`. Esperadas = o total do catálogo
   (listadas no `cs.json` menos as agregadas, as do `candidatos.json` e as descobertas na noite; o mesmo da página e,
@@ -180,7 +180,7 @@ flowchart LR
 * **Fora da thread do motor** (para que nada lento atrase o BU seguinte): a gravação dos arquivos da publicação
   (thread `uv-gravacao`, desde a v0.2.4; junta versões acumuladas do mesmo arquivo) e o `sync_data` dos pacotes e do
   diário a cada 2 s (thread `uv-sincronia`, desde a v0.2.6, com cópias dos descritores; antes ficava na thread do motor e
-  era a maior parte do p99 de BU → publicação — [RELATORIO_0.3.0.md](docs/RELATORIO_0.3.0.md) §4). O motor só entrega os
+  era a maior parte do p99 de BU → publicação — [RELATORIO_0.3.0.md](docs/relatorios/RELATORIO_0.3.0.md) §4). O motor só entrega os
   dados ao sistema operacional, o que já basta contra `kill -9`.
 
 `uv-simulador` (`aquisicao/src/simulador.rs`, ADR-020) serve em `127.0.0.1` os mesmos caminhos do site real a partir
@@ -191,7 +191,7 @@ registra cada requisição em `simulador.log`. É contra ele que os critérios d
 ### 2.7. Difusão em tempo real: WebSocket e REST no `uv-servico` (etapa 4, v0.3.2, ADR-026)
 
 Com `--http <end:porta>`, o resultado sai do serviço para os clientes sem passar pelo disco e sem que a totalização
-espere ninguém ([docs/PROTOCOLO_WS.md](docs/PROTOCOLO_WS.md)):
+espere ninguém ([docs/arquitetura/PROTOCOLO_WS.md](docs/arquitetura/PROTOCOLO_WS.md)):
 
 ```
 thread uv-motor ── JSON por abrangência×cargo ──▶ thread uv-gravacao ──┬─▶ arquivo publicado (gravação atômica)
@@ -211,7 +211,7 @@ eventos (eventos.csv) e estado (saude) ─────────────�
   30 s sem conseguir escrever, a conexão cai. A mensagem de resultado carrega os bytes do arquivo publicado
   intactos; REST com `ETag` = `seq` e 304, só leitura, pela tabela de tópicos.
 * Limites (clientes, tópicos, taxa e tamanho das mensagens recebidas, *handshake*) e medidas em `saude.json` →
-  `difusao`; operação em [docs/OPERACAO.md](docs/OPERACAO.md) §7; cliente de carga e conferência `uv-carga`.
+  `difusao`; operação em [docs/operacao/OPERACAO.md](docs/operacao/OPERACAO.md) §7; cliente de carga e conferência `uv-carga`.
 
 ### 2.8. Página de resultados e marcos da noite (etapa 5, v0.4.1, ADR-027)
 
@@ -326,7 +326,7 @@ Para comparação, o desenho da versão 1 (`DashMap` aninhado) usava 0,6 GB numa
 
 ## 6. Evolução Futura: Módulo de Escalabilidade Segura (federação na `0.6.0`; borda, quórum e Wasm na `1.x`; antes "v2.0.0")
 
-Documentado em detalhe em [docs/ESCALABILIDADE_SEGURA.md](docs/ESCALABILIDADE_SEGURA.md) e nos registros [ADR-021 a ADR-024](docs/ARCHITECTURE_DECISIONS.md#adr-021--distribuição-massiva-via-static-file-edge-broadcast-sem-push-central), o módulo de escalabilidade segura endereça a operação pós-`1.0.0`:
+Documentado em detalhe em [docs/arquitetura/ESCALABILIDADE_SEGURA.md](docs/arquitetura/ESCALABILIDADE_SEGURA.md) e nos registros [ADR-021 a ADR-024](docs/arquitetura/ARCHITECTURE_DECISIONS.md#adr-021--distribuição-massiva-via-static-file-edge-broadcast-sem-push-central), o módulo de escalabilidade segura endereça a operação pós-`1.0.0`:
 
 - **Transmissão estática via CDN (*Static-File Edge Broadcast*):** Elimina gargalo de conexões ativas no servidor único;
 - **Federação dinâmica de coletores via *Rendezvous Hashing*:** Balanceamento resiliente e independente de fusos horários/regiões;

@@ -76,7 +76,7 @@ pub fn conferir_pasta_com_candidatos(c: &Conjunto, oficial: &Path, cad: &Candida
     conferir(&c.cat, &c.est, &c.mem, &ofs, &c.met, Some(cad))
 }
 
-/// Gera a publicação encerrada (JSON de docs/FORMATO_RESULTADO.md) de cada arquivo oficial e confere com ele.
+/// Gera a publicação encerrada (JSON de docs/arquitetura/FORMATO_RESULTADO.md) de cada arquivo oficial e confere com ele.
 pub fn conferir_publicacoes_pasta(c: &Conjunto, oficial: &Path) -> Relatorio {
     let ofs = Oficial::ler_pasta(oficial).expect("arquivos oficiais");
     let cad = Candidatos::dos_oficiais(&ofs);

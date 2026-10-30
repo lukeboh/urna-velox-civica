@@ -1,6 +1,6 @@
 //! Replay da noite da eleição: injeta cada BU no horário em que o TSE o recebeu (campo dr/hr do
 //! aux.json, guardado nas métricas da coleta), com aceleração opcional, totaliza em fluxo e publica
-//! continuamente os resultados no formato do motor (`docs/FORMATO_RESULTADO.md`): Brasil (Presidente), UF
+//! continuamente os resultados no formato do motor (`docs/arquitetura/FORMATO_RESULTADO.md`): Brasil (Presidente), UF
 //! (cargos gerais) e, nos cargos municipais (Prefeito, consultas), município — só as abrangências que
 //! receberam BU desde a publicação anterior —, com o "matematicamente eleito / 2º turno" recalculado a cada
 //! ciclo quando há candidatos (`--oficial`). No fim, uma publicação encerrada de tudo, com a situação final.

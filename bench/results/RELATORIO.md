@@ -1,6 +1,6 @@
 # Relatório do benchmark — 2026-10-11T16:08:18-03:00
 
-Gerado por `bench/scripts/relatorio.py`. Significado dos termos: [docs/GLOSSARIO.md](../../docs/GLOSSARIO.md). Análise completa da execução de referência: [docs/ESTIMATIVAS_MEMORIA_E_TEMPO.md](../../docs/ESTIMATIVAS_MEMORIA_E_TEMPO.md).
+Gerado por `bench/scripts/relatorio.py`. Significado dos termos: [docs/arquitetura/GLOSSARIO.md](../../docs/arquitetura/GLOSSARIO.md). Análise completa da execução de referência: [docs/arquitetura/ESTIMATIVAS_MEMORIA_E_TEMPO.md](../../docs/arquitetura/ESTIMATIVAS_MEMORIA_E_TEMPO.md).
 
 ## Máquina e parâmetros
 

@@ -1,4 +1,4 @@
-"""Funções comuns da análise de uma noite de apuração (docs/ANALISE_ATRASO_2026-10-25.md).
+"""Funções comuns da análise de uma noite de apuração (docs/relatorios/ANALISE_ATRASO_2026-10-25.md).
 
 Pasta de um pleito (D:\\dados\\urna-velox\\pleitos\\<AAAA-MM-DD-código>):
   nos/<A|B|...>/saida/secoes.log   saída de cada nó de produção

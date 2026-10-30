@@ -28,7 +28,10 @@ export class Feed {
     const pausar = (k, on) => { if (on) this.pausas.add(k); else this.pausas.delete(k); raiz.dataset.pausado = this.pausas.size ? '1' : '0'; };
     raiz.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse') pausar('mouse', true); });
     raiz.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse') pausar('mouse', false); });
-    raiz.addEventListener('focusin', () => pausar('foco', true));
+    // B-089: só o foco do teclado pausa (no iPhone o item tocado guarda o foco, e um toque fora não o tira: o letreiro
+    // ficava em "pausado" para sempre depois de fechar o detalhe)
+    this.pausar = pausar;
+    raiz.addEventListener('focusin', (e) => { if (e.target.matches?.(':focus-visible')) pausar('foco', true); });
     raiz.addEventListener('focusout', () => pausar('foco', false));
     raiz.addEventListener('pointerdown', (e) => {
       if (e.pointerType === 'mouse') return;
@@ -42,10 +45,31 @@ export class Feed {
   // o trilho começa depois do botão do histórico
   get largura() { return this.trilho.clientWidth; }
 
+  /** B-089: o detalhe de uma notícia fechou — o letreiro volta a andar (sai o foco e a pausa do toque; no aparelho de
+   *  toque, também a do "mouse", que lá não existe). */
+  retomar() {
+    clearTimeout(this.tToque);
+    this.pausar('toque', false);
+    this.pausar('foco', false);
+    if (window.matchMedia?.('(hover: none)').matches) this.pausar('mouse', false);
+    const a = document.activeElement;
+    if (a && this.raiz.contains(a) && !a.matches?.(':focus-visible')) a.blur();
+  }
+
   /**
    * Acrescenta (ou atualiza, pelo id) um item. `it` = { id, ic, texto, t, detalhe, fixo, hod, anunciar, cls }.
    * `fixo`: item de largura fixa cujo conteúdo muda (ex.: eleitores que faltam), atualizado no lugar.
    */
+  /** Tira todos os itens (consulta de um pleito: o slider voltou no tempo). */
+  limpar() {
+    for (const i of this.itens) i.el.remove();
+    this.itens = [];
+    this.porId.clear();
+    this.atual = 0;
+    this.filaAnuncio = [];
+    this.vazio.style.opacity = '';
+  }
+
   por(it) {
     const ja = this.porId.get(it.id);
     if (ja) {
@@ -87,9 +111,12 @@ export class Feed {
    * fecham o espaço; à vista, só quando passar pela borda esquerda. */
   #limitar() {
     const W = this.largura;
+    // B-081: cada item é uma camada que anda a cada quadro; numa tela estreita, poucos cabem à vista e a fila fora da
+    // tela só custa (no celular, 16; a 1366 px, 55; a partir de 1750 px, MAX)
+    const max = Math.min(MAX, Math.max(16, Math.ceil(W / 25)));
     let vivos = this.itens.filter((x) => !x.sair).length;
     for (const v of this.itens) {
-      if (vivos <= MAX) break;
+      if (vivos <= max) break;
       if (v.fixo || v.sair) continue;
       vivos--;
       if (v.x > this.offset + W) {
@@ -188,7 +215,10 @@ export class Folha {
     this.raiz.setAttribute('aria-hidden', 'false');
   }
   fechar() {
+    const estava = this.raiz.classList.contains('aberta');
     this.raiz.classList.remove('aberta');
     this.raiz.setAttribute('aria-hidden', 'true');
+    // B-089: quem abriu o detalhe (o letreiro) é avisado de que ele fechou, por qualquer caminho (✕, Esc, toque fora)
+    if (estava) this.aoFechar?.();
   }
 }

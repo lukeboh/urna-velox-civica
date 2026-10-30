@@ -78,6 +78,39 @@ class TestVigiaPlaylist(unittest.TestCase):
         self.assertEqual((rot['proximo']['pleito'], rot['proximo']['modo']), ('3220', 'cadencia'))
         self.assertTrue(rot['proximo']['origem'].startswith('votos'))
 
+    def test_b080_realinha_com_o_que_a_playlist_tem_no_ar(self):
+        """B-080: este nó ficou numa execução que não encerra (o par já está em outra); o vigia realinha sozinho com a
+        execução que a playlist (nó A) tem no ar, com o mesmo carimbo, depois de a divergência durar."""
+        # este nó: 452 rápido, sem encerrar, ainda não concluído
+        json.dump({'apuracao': {'encerrada': False}}, open(os.path.join(self.c, 'atual', 'saida', 'saude.json'), 'w'))
+        json.dump({'historico_modos': {}, 'atual': {'id': self.id, 'pleito': '452', 'modo': 'rapido', 'concluido': False}},
+                  open(os.path.join(self.c, 'rotacao.json'), 'w'))
+        # o par (a playlist lê o ciclo dele): 3220 em cadência, desde 07:30
+        par = tempfile.mkdtemp(prefix='uv-vigia-par-')
+        self.addCleanup(shutil.rmtree, par, True)
+        os.makedirs(os.path.join(par, 'atual', 'saida'))
+        open(os.path.join(par, 'atual', 'id'), 'w').write('20261030-0730-3220-cadencia\n')
+        ini = datetime.now(BR).isoformat()
+        open(os.path.join(par, 'atual', 'params'), 'w').write(f'pleito=3220\nmodo=cadencia\ninicio={ini}\n')
+        pl = up.Playlist(par, caminho=os.path.join(par, 'pl.json'), eleicoes=[date(2030, 1, 1)])
+        self.srv = up.ThreadingHTTPServer(('127.0.0.1', 0), up.criar_tratador(pl, '/dev/null', 'seg'))
+        threading.Thread(target=self.srv.serve_forever, daemon=True).start()
+        url = f'http://127.0.0.1:{self.srv.server_address[1]}/api/v1/playlist'
+        saida = self.rodar({'UV_PLAYLIST_URL': url, 'UV_PLAYLIST_SEGREDO': 'seg', 'UV_DIVERGENCIA_MIN': '0.02',
+                            'UV_PAR_INTERVALO': '0.2'}, timeout=15)
+        self.assertIn('avancar 3220 cadencia', saida, 'o vigia não realinhou com a execução no ar')
+        self.assertIn('CICLO_CARIMBO=20261030-0730', saida, 'o carimbo tem de ser o do par (mesmo id da execução)')
+
+    def test_b080_mesma_execucao_nao_mexe(self):
+        """A playlist mostra a mesma execução deste nó: nada a fazer (o nó A, onde a playlist roda, é sempre esse caso)."""
+        json.dump({'apuracao': {'encerrada': False}}, open(os.path.join(self.c, 'atual', 'saida', 'saude.json'), 'w'))
+        json.dump({'historico_modos': {}, 'atual': {'id': self.id, 'pleito': '452', 'modo': 'rapido', 'concluido': False}},
+                  open(os.path.join(self.c, 'rotacao.json'), 'w'))
+        pl, url = self.playlist()
+        saida = self.rodar({'UV_PLAYLIST_URL': url, 'UV_PLAYLIST_SEGREDO': 'seg', 'UV_DIVERGENCIA_MIN': '0.02',
+                            'UV_PAR_INTERVALO': '0.2'}, timeout=4)
+        self.assertNotIn('avancar', saida)
+
     def test_sem_playlist_segue_a_rotacao(self):
         saida = self.rodar({'UV_PLAYLIST_URL': 'http://127.0.0.1:9/api/v1/playlist', 'UV_PLAYLIST_SEGREDO': 'seg'})
         self.assertIn('avancar 453 rapido', saida)
@@ -88,6 +121,19 @@ class TestVigiaPlaylist(unittest.TestCase):
         saida = self.rodar({'UV_PLAYLIST_URL': url, 'UV_PLAYLIST_SEGREDO': 'seg', 'UV_ELEICOES_OFICIAIS': hoje}, timeout=4)
         self.assertEqual(saida, '')
         self.assertIn('playlist suspensa', open(os.path.join(self.c, 'ciclo.log')).read())
+
+    def test_3221_e_replay_na_rotacao(self):
+        # desde 26/10/2026 o 3221 alterna rápido/cadência como os outros; "espera" não sai mais da rotação
+        spec = importlib.util.spec_from_file_location('uv_ciclo_vigia', VIGIA)
+        v = importlib.util.module_from_spec(spec)
+        argv, sys.argv = sys.argv, [VIGIA, self.c, 'no-a', '1']   # o vigia lê os argumentos ao ser carregado
+        try:
+            spec.loader.exec_module(v)
+        finally:
+            sys.argv = argv
+        self.assertEqual(v.determinar_proximo_modo('3221', {}), 'rapido')
+        self.assertEqual(v.determinar_proximo_modo('3221', {'3221': 'rapido'}), 'cadencia')
+        self.assertEqual(v.determinar_proximo_modo('3221', {'3221': 'cadencia'}), 'rapido')
 
 
 if __name__ == '__main__':

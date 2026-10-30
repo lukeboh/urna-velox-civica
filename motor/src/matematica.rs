@@ -18,7 +18,7 @@
 //!   dos aptos ou votação nominal). A circunscrição está matematicamente em 2º turno se nenhum apto alcança mais a
 //!   maioria: `2·v_c + R ≤ V` para todo `c`; cada candidato garantido entre os 2 primeiros (maioria simples,
 //!   `k = 2`) está matematicamente no 2º turno.
-//! * **Art. 224 (Prefeito):** só se declara "matematicamente" se o mais votado de todos é apto, se nenhum não apto
+//! * **Art. 224 (todo cargo majoritário desde a 1.0.35, B-070; antes só Prefeito):** só se declara "matematicamente" se o mais votado de todos é apto, se nenhum não apto
 //!   pode passar o candidato em questão (o 2º colocado, no 2º turno) e se os votos de não aptos não podem mais
 //!   passar de 50 % da votação nominal: `2·A + R ≤ N`.
 

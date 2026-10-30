@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 00 — Cria na OCI (pela CLI `oci`) a rede e as duas instâncias Arm (Ampere A1) dos nós do Urna Velox.
-# Opcional: o mesmo pode ser feito pelo console (docs/HANDOFF_IMPLANTACAO_OCI.md, §2). Idempotente: o que já existe
+# Opcional: o mesmo pode ser feito pelo console (docs/handoffs/HANDOFF_IMPLANTACAO_OCI.md, §2). Idempotente: o que já existe
 # (pelo nome) é reaproveitado. Ao fim, imprime os IPs para colar no nos.env.
 #
 # Pré-requisitos: `oci` instalado e configurado (`oci setup config`), e no nos.env:

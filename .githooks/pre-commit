@@ -27,6 +27,21 @@ for f in VERSION CHANGELOG.md Cargo.lock motor/Cargo.toml aquisicao/Cargo.toml b
 done
 sh "$RAIZ/scripts/versao.sh" verificar >&2 || { echo "pre-commit: versão incoerente entre VERSION, manifestos e CHANGELOG." >&2; exit 1; }
 
+# Bugs e melhorias × roadmap (CLAUDE.md, "Bugs"): todo item com destino, listas do ROADMAP em dia
+PY="$(command -v python3 || command -v python || true)"
+if [ -n "$PY" ] && "$PY" -c 'import sys; sys.exit(sys.version_info < (3, 8))' 2>/dev/null; then
+  "$PY" "$RAIZ/scripts/itens.py" verificar >&2 || { echo "pre-commit: docs/BUGS.md e ROADMAP.md fora de acordo (python3 scripts/itens.py gerar)." >&2; exit 1; }
+  # organização de docs/ (docs/README.md, "Regras"): pastas, nomes, índice e links relativos
+  "$PY" "$RAIZ/scripts/docs.py" verificar >&2 || { echo "pre-commit: docs/ fora das regras (docs/README.md, seção Regras)." >&2; exit 1; }
+  # roadmap conjunto (só existe no repositório original; na cópia pública o find não acha nada)
+  RR="$(find . -maxdepth 3 -name roadmap_restrito.py 2>/dev/null | head -n 1)"
+  if [ -n "$RR" ]; then
+    "$PY" "$RR" verificar >&2 || { echo "pre-commit: roadmap conjunto desatualizado (rode o gerar do $RR)." >&2; exit 1; }
+  fi
+else
+  echo "pre-commit: aviso: sem Python 3 para conferir docs/BUGS.md × ROADMAP.md (scripts/itens.py verificar)." >&2
+fi
+
 # Verificação de segurança e prevenção de vazamento de dados restritos/sensíveis
 # (Windows: a versão PowerShell; fora dele, a versão Python ao lado; sem nenhuma das duas rodável, o commit é recusado)
 VERIF_PS="$(find . -maxdepth 3 -name "verificar_pendencias.ps1" 2>/dev/null | head -n 1)"

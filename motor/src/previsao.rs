@@ -1,4 +1,4 @@
-//! **Previsão do matematicamente e do fim da apuração** (etapa 8, `docs/HANDOFF_0.8.0.md`): a que horas uma
+//! **Previsão do matematicamente e do fim da apuração** (etapa 8, `docs/handoffs/HANDOFF_0.8.0.md`): a que horas uma
 //! circunscrição deve ficar matematicamente decidida (eleito ou 2º turno) e a que horas a apuração de uma abrangência
 //! chega a 99 % e a 100 % das seções — **sempre uma estimativa com intervalo** (P10–P90), recalculada ao longo da noite.
 //!

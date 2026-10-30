@@ -1,5 +1,5 @@
 // Mapa das seções: cada seção totalizada acende um ponto. O servidor numera as seções do catálogo e diz quais já
-// acenderam (docs/PROTOCOLO_WS.md §4.8: GET /api/v1/mapa/secoes, GET /api/v1/mapa/estado e `op: mapa` no WebSocket);
+// acenderam (docs/arquitetura/PROTOCOLO_WS.md §4.8: GET /api/v1/mapa/secoes, GET /api/v1/mapa/estado e `op: mapa` no WebSocket);
 // a geografia vem de /static/mapa.json (site/geo/gerar_mapa.py): contorno das UFs, centro dos municípios, locais de
 // votação (se houver), malha dos continentes e cidades do exterior.
 //
@@ -10,6 +10,7 @@
 
 import { Hodometro } from './hodometro.js';
 import { el, mil, movimentoReduzido } from './util.js';
+const FX_GRANDES = 8;   // ondas grandes (marcos) ao mesmo tempo no mapa
 
 const PREF = 'uv-mapa';
 const ler = () => { try { return JSON.parse(localStorage.getItem(PREF)) || {}; } catch { return {}; } };
@@ -388,7 +389,9 @@ export class CartaoMapa {
     const txt = m.classe === 'bu_marco' ? `BU nº ${mil(m.valor)} da noite: ${lugar}`
       : m.classe === 'ultima_secao' ? `Última seção: ${lugar}`
         : m.abrangencia === 'br' ? `1ª seção do Brasil: ${lugar}` : `1ª seção ${nomes ? nomes.em(m.abrangencia) : ''}: ${lugar}`;
-    if (!this.reduzido && !this.ext[i]) this.fx.push({ i, t0: performance.now(), r: 3.2, grande: true });
+    // B-081: no máximo FX_GRANDES ondas grandes ao mesmo tempo (num geral municipal acelerado chegam centenas de
+    // "primeira seção" por segundo, e cada onda é um gradiente desenhado a cada quadro)
+    if (!this.reduzido && !this.ext[i] && this.fx.filter((f) => f.grande).length < FX_GRANDES) this.fx.push({ i, t0: performance.now(), r: 3.2, grande: true });
     this.marcos.push({ i, txt });
     if (this.marcos.length > 3) this.marcos.splice(0, this.marcos.length - 3);
     this.#pedirQuadro();
@@ -412,7 +415,13 @@ export class CartaoMapa {
   }
 
   #redesenhar() {
-    if (!this.carregado || !this.#dimensionar()) return;
+    if (!this.carregado) return;
+    if (!this.#dimensionar()) {
+      // B-086: sem layout (a consulta recomeçou e o cartão saiu e voltou ao documento na mesma tarefa: o
+      // ResizeObserver não vê mudança) — redesenha no quadro seguinte; antes ficavam as luzes do instante anterior
+      if (!this.redesenharDepois) { this.redesenharDepois = true; requestAnimationFrame(() => { this.redesenharDepois = false; if (this.palco.offsetWidth) this.#redesenhar(); }); }
+      return;
+    }
     const c = this.cv.base.getContext('2d'), d = this.dpr;
     c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, this.W, this.H);
     c.setTransform(this.esc, 0, 0, this.esc, this.ox, this.oy);

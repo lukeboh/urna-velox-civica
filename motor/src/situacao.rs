@@ -4,8 +4,10 @@
 //! `comparar_municipal.py`):
 //! 1. Ordem: votos decrescentes; empate → o mais idoso (sem data de nascimento vai por último); depois o número.
 //! 2. Só concorrem os **aptos** (destinação "Válido…"); os demais ficam "Não eleito".
-//! 3. Art. 224 (Prefeito): ninguém é eleito se o mais votado de **todos** não é apto, ou se os votos de não
-//!    aptos passam de 50 % da votação nominal.
+//! 3. Art. 224 do Código Eleitoral (todo cargo majoritário — Presidente, Governador, Senador, Prefeito —, nos dois
+//!    turnos; antes da 1.0.35 só Prefeito, B-070): ninguém é eleito se o mais votado de **todos** não é apto (§ 3º:
+//!    candidato eleito com o registro indeferido → novas eleições), ou se os votos de não aptos passam de 50 % da
+//!    votação nominal (caput). São os dois motivos que o TSE publica em `mnae` com `esae = s`.
 //! 4. Maioria absoluta: elege o 1º apto se ele tem mais da metade da base — votos dos aptos (Presidente,
 //!    Governador) ou votação nominal inteira (Prefeito acima de 200 mil eleitores); senão os 2 primeiros aptos
 //!    vão ao 2º turno. Maioria simples: os `vagas` primeiros aptos são eleitos.

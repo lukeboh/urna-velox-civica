@@ -1,4 +1,4 @@
-//! Ensaios da federação (2.0, etapa A; ADR-028; `docs/HANDOFF_0.6.0.md`): vários `uv-servico` (um por "órgão", cada
+//! Ensaios da federação (2.0, etapa A; ADR-028; `docs/handoffs/HANDOFF_0.6.0.md`): vários `uv-servico` (um por "órgão", cada
 //! um saindo por um `127.0.0.x` próprio) contra um `uv-simulador` que impõe o limite **por IP de origem**, com o
 //! storage comum num diretório. Rodam com
 //! `UV_DADOS=/home/dev/uvreal cargo test --release -p uv-aquisicao --test federacao -- --ignored --test-threads 1`.
@@ -98,7 +98,9 @@ fn no(dir: &Path, fed: &Path, id: &str, ip_local: &str, porta: u16) -> Child {
             "--dados", d.join("dados").to_str().unwrap(), "--saida", d.join("saida").to_str().unwrap(),
             "--base", &format!("http://127.0.0.1:{porta}"), "--aceleracao-local", &ACEL.to_string(), "--ufs", UFS,
             "--rps", &COLETA_RPS.to_string(),
-            "--federacao", fed.to_str().unwrap(), "--no", id, "--armazem", d.join("federacao").to_str().unwrap(), "--ip-local", ip_local])
+            "--federacao", fed.to_str().unwrap(), "--no", id, "--armazem", d.join("federacao").to_str().unwrap(), "--ip-local", ip_local,
+            // sondas a cada 0,5 s real (a noite a 120× dura pouco): o eco entre os nós aparece em `sonda.remotas`
+            "--sonda-intervalo", "0.5"])
         .stdout(Stdio::null()).stderr(std::fs::OpenOptions::new().create(true).append(true).open(d.join("servico.err")).unwrap()).spawn().unwrap()
 }
 
@@ -172,6 +174,12 @@ fn tres_orgaos() {
         assert!(fe["recebidos"].as_u64().unwrap() > 0, "{id} não recebeu nada pelo storage: {fe}");
         assert_eq!(fe["delegadas_agora"].as_u64(), Some(0), "{id}: seções delegadas sem resultado no fim: {fe}");
         assert_eq!(fe["rejeitados"].as_u64(), Some(0), "{id}: {fe}");
+        // sondas: as dos outros dois nós chegaram pelos lotes e atravessaram o motor deste (eco)
+        assert!(fe["sondas_publicadas"].as_u64().unwrap() > 0, "{id}: {fe}");
+        for par in ["a", "b", "c"].iter().filter(|p| **p != id) {
+            assert!(s["sonda"]["remotas"][*par]["recebidas"].as_u64().unwrap_or(0) > 0, "{id} sem sonda de {par}: {}", s["sonda"]);
+        }
+        assert_eq!(s["sonda"]["perdidas"].as_u64(), Some(0), "{id}: {}", s["sonda"]);
     }
     let p = por_ip(&d);
     assert_eq!(p.http429, 0, "HTTP 429 no simulador");

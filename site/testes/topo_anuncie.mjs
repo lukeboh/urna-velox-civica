@@ -1,7 +1,8 @@
 // Teste das mudanças de 24 e 25/10/2026 no topo da página (docs/BUGS.md, M-010, M-011, M-012 e M-018), com
 // Playwright/Chromium e **nenhum servidor** (rotas e WebSocket falsos):
 //   M-018 — sem o chip "Anuncie Aqui" do M-011 (retirado em 25/10); o topo continua inteiro, o tema no fim da linha;
-//   M-012 — o selo "EM BREVE" / Playlist (#conexao) escondido até o fim da totalização;
+//   M-012 — o selo "EM BREVE" / Playlist (#conexao) ficou escondido até o fim da totalização do 2º turno; M-022
+//           (26/10/2026) o traz de volta: o selo à vista e o aviso da próxima eleição com o link "▶ Playlist";
 //   M-010 — sem o aviso "destinação dos votos presumida" na faixa (os outros avisos continuam).
 //   cd site && node testes/topo_anuncie.mjs [--saida /tmp/uv-topo-anuncie]
 import { chromium } from 'playwright';
@@ -68,9 +69,9 @@ for (const largura of [1920, 1366, 390, 360, 320]) {
     // fim da linha = fim do conteúdo do header (o html tem scrollbar-gutter: stable: a faixa da rolagem fica reservada)
     const util = topo.x + topo.width;
     conferir(Math.abs(util - pad - (temaB.x + temaB.width)) <= 2, `${tag}: botão do tema no fim da linha (direita em ${Math.round(temaB.x + temaB.width)} de ${Math.round(util)} − ${pad})`);
-    const fimRota = await p.$eval('#rota', (r) => Math.max(r.getBoundingClientRect().left, ...[...r.children].map((c) => c.getBoundingClientRect().right)));
-    conferir(marca.x + marca.width <= temaB.x && (largura < 640 || fimRota <= temaB.x), `${tag}: marca, navegação e tema sem sobrepor`);
-    conferir(!(await p.locator('#conexao').isVisible()), `${tag}: selo EM BREVE / Playlist escondido (M-012)`);
+    // M-025: a navegação (local, cargos) e o selo saíram do topo para a barra da eleição
+    conferir(marca.x + marca.width <= temaB.x, `${tag}: marca e tema sem sobrepor`);
+    conferir(await p.locator('#eleicao #conexao').isVisible(), `${tag}: selo EM BREVE / Playlist à vista, na barra da eleição (M-022, M-025)`);
     const al = (await p.locator('.faixa .chip.alerta').allTextContents()).join(' | ');
     conferir(!/destina/i.test(al), `${tag}: sem o aviso da destinação presumida (M-010)${al.trim() ? ` — "${al}"` : ''}`);
     const larg = await p.evaluate(() => document.documentElement.scrollWidth);
@@ -79,20 +80,20 @@ for (const largura of [1920, 1366, 390, 360, 320]) {
     await ctx.close();
   }
 }
-// M-012: o aviso "Próxima eleição AO VIVO" (o que abre sozinho na primeira visita do dia e ao tocar na contagem) sem o
-// link da playlist enquanto o selo estiver escondido
+// M-022 (volta do M-012): o aviso "Próxima eleição AO VIVO" (o que abre sozinho na primeira visita do dia e ao tocar na
+// contagem) com o link da playlist, junto com o selo
 for (const largura of [1366, 390]) {
   const { ctx, p, tag } = await abrir(largura, { destinacao_presumida: 1 }, 'dark', { primeiraVisita: true });
   const sozinho = await p.locator('#folha.aberta').isVisible().catch(() => false);
   conferir(sozinho && /AO VIVO/.test((await p.locator('#folha').textContent()) || ''), `${tag}: na primeira visita do dia o aviso da próxima eleição abre sozinho`);
-  conferir((await p.locator('#folha a[href="/playlist"]').count()) === 0, `${tag}: o aviso que abre sozinho não leva à playlist`);
+  conferir((await p.locator('#folha a[href="/playlist"]').count()) > 0, `${tag}: o aviso que abre sozinho leva à playlist (M-022)`);
   if (sozinho) await p.click('#folha-fechar');
   await p.waitForTimeout(500);
   await p.click('.faixa .chip.promo').catch(() => null);
   await p.waitForTimeout(500);
   conferir(await p.locator('#folha.aberta').isVisible().catch(() => false), `${tag}: tocar na contagem abre o aviso`);
-  conferir((await p.locator('#folha a[href="/playlist"]').count()) === 0 && !/Playlist/.test((await p.locator('#folha').textContent()) || ''),
-    `${tag}: o aviso da contagem não leva à playlist`);
+  conferir((await p.locator('#folha a[href="/playlist"]').count()) > 0 && /Playlist/.test((await p.locator('#folha').textContent()) || ''),
+    `${tag}: o aviso da contagem leva à playlist (M-022)`);
   await ctx.close();
 }
 // os outros avisos da faixa continuam

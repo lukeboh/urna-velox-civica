@@ -53,7 +53,7 @@ chmod 0755 /opt/urna-velox/bin/uv-bucket
 # cada um suficiente para virar root. Não é uma "lista fechada". A barreira real é o IAM da OCI: só o grupo
 # Administrators cria comandos do Run Command (política uv-nos-policy). Os roteiros 10 a 61 rodam comandos de
 # administração arbitrários pelo `em`, por isso o desenho é este; fechar de verdade exige trocar cada `sudo <cmd>` dos
-# roteiros por ações nomeadas do uv-operar.sh (pendência registrada em docs/RELATORIO_DEPLOY_SEM_SSH.md, §7).
+# roteiros por ações nomeadas do uv-operar.sh (pendência registrada em docs/relatorios/RELATORIO_DEPLOY_SEM_SSH.md, §7).
 cat > /opt/urna-velox/bin/uv-operar.sh <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail

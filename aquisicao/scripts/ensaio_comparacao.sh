@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Ensaio da comparação Urna Velox × TSE (etapa 7, docs/HANDOFF_0.7.0.md, critérios 1, 2 e 4), sem nenhuma requisição ao
+# Ensaio da comparação Urna Velox × TSE (etapa 7, docs/handoffs/HANDOFF_0.7.0.md, critérios 1, 2 e 4), sem nenhuma requisição ao
 # TSE: uv-simulador com o "TSE simulado" (-u.json progressivos, atraso de divulgação sorteado) + uv-servico
 # --http + N abas da página em modos variados (site/testes/comparacao.mjs, Playwright).
 #

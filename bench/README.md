@@ -1,8 +1,8 @@
 # Benchmarks do Urna Velox
 
-Mede **memória** e **tempo de totalização** do Urna Velox nas três opções de linguagem do [ADR-001](../docs/ARCHITECTURE_DECISIONS.md#adr-001--linguagem-rust-plano-a) (Rust, Java e JavaScript), com os mesmos BUs sintéticos e a mesma organização dos contadores. A análise da execução de referência está em [docs/ESTIMATIVAS_MEMORIA_E_TEMPO.md](../docs/ESTIMATIVAS_MEMORIA_E_TEMPO.md). Termos técnicos: [docs/GLOSSARIO.md](../docs/GLOSSARIO.md).
+Mede **memória** e **tempo de totalização** do Urna Velox nas três opções de linguagem do [ADR-001](../docs/arquitetura/ARCHITECTURE_DECISIONS.md#adr-001--linguagem-rust-plano-a) (Rust, Java e JavaScript), com os mesmos BUs sintéticos e a mesma organização dos contadores. A análise da execução de referência está em [docs/arquitetura/ESTIMATIVAS_MEMORIA_E_TEMPO.md](../docs/arquitetura/ESTIMATIVAS_MEMORIA_E_TEMPO.md). Termos técnicos: [docs/arquitetura/GLOSSARIO.md](../docs/arquitetura/GLOSSARIO.md).
 
-> **Com BUs reais:** a alternativa a este benchmark que usa BUs de verdade, baixados do TSE pelo coletor da fase de aquisição, está em [`aquisicao/`](../aquisicao/) (`./aquisicao/teste-real.sh`). Ela mede a mesma coisa (totalização com os BUs já em memória, `real-dense`) e compara com o `manual-dense` sintético daqui; ver [docs/AQUISICAO.md](../docs/AQUISICAO.md).
+> **Com BUs reais:** a alternativa a este benchmark que usa BUs de verdade, baixados do TSE pelo coletor da fase de aquisição, está em [`aquisicao/`](../aquisicao/) (`./aquisicao/teste-real.sh`). Ela mede a mesma coisa (totalização com os BUs já em memória, `real-dense`) e compara com o `manual-dense` sintético daqui; ver [docs/arquitetura/AQUISICAO.md](../docs/arquitetura/AQUISICAO.md).
 
 ## Como repetir o teste
 
@@ -74,7 +74,7 @@ UV_THREADS="1 8 16" UV_OUT=/tmp/uv-teste ./bench/benchmark.sh
 
 ### Sobre os resultados versionados
 
-`bench/results/` guarda a **execução de referência** (11/10/2026, i7-14700, WSL2) usada em `docs/ESTIMATIVAS_MEMORIA_E_TEMPO.md`; os gráficos daquele documento são uma cópia em `docs/img/`. Uma nova execução **sobrescreve** `bench/results/`: o `git diff` mostra o que mudou, e você decide se faz commit (nova referência) ou descarta (`git checkout bench/results`). Para não mexer na referência, use `UV_OUT=/outra/pasta`.
+`bench/results/` guarda a **execução de referência** (11/10/2026, i7-14700, WSL2) usada em `docs/arquitetura/ESTIMATIVAS_MEMORIA_E_TEMPO.md`; os gráficos daquele documento são uma cópia em `docs/img/`. Uma nova execução **sobrescreve** `bench/results/`: o `git diff` mostra o que mudou, e você decide se faz commit (nova referência) ou descarta (`git checkout bench/results`). Para não mexer na referência, use `UV_OUT=/outra/pasta`.
 
 ## Estrutura
 

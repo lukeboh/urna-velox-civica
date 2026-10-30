@@ -109,23 +109,46 @@ class TestRegras(unittest.TestCase):
         json.dump({'historico_modos': {'453': 'rapido'}}, open(os.path.join(self.c, 'rotacao.json'), 'w'))
         d = self.pl.decidir('A2', '452', 'cadencia')
         self.assertEqual((d['pleito'], d['modo']), ('453', 'cadencia'))
+        # desde 26/10/2026 o 3221 é replay como os outros (não mais a vitrine "espera")
         d = self.pl.decidir('A3', '3220', 'rapido')
-        self.assertEqual((d['pleito'], d['modo']), ('3221', 'espera'))
+        self.assertEqual((d['pleito'], d['modo']), ('3221', 'rapido'))
+        json.dump({'historico_modos': {'453': 'rapido', '3221': 'rapido'}}, open(os.path.join(self.c, 'rotacao.json'), 'w'))
+        d = self.pl.decidir('A4', '3220', 'cadencia')
+        self.assertEqual((d['pleito'], d['modo']), ('3221', 'cadencia'))
+
+    def test_3221_e_votavel_nos_dois_modos(self):
+        self.assertIn('3221-rapido', up.VOTAVEIS)
+        self.assertIn('3221-cadencia', up.VOTAVEIS)
+        k = up.chave_ip('10.9.9.9', self.pl.e['sal'])
+        self.assertEqual(self.pl.votar(k, '3221-cadencia')[0], 200)
+        self.assertEqual(self.pl.fila()[0]['item'], '3221-cadencia')
+        self.assertIn('3221-cadencia', [o['item'] for o in self.pl.publico()['opcoes']])
+
+    def test_proxima_virada(self):
+        t = lambda h, m, s=0: datetime(2026, 10, 19, h, m, s, tzinfo=BR)
+        self.assertEqual(up.proxima_hora(t(14, 9), 180), t(14, 30))
+        self.assertEqual(up.proxima_hora(t(14, 27, 30), 180), t(15, 0), 'a menos de 3 min da virada: a seguinte')
+        self.assertEqual(up.proxima_hora(t(14, 30), 180), t(15, 0))
+        self.assertEqual(up.proxima_hora(t(14, 31), 180), t(15, 0))
+        self.assertEqual(up.proxima_hora(t(23, 50), 180), datetime(2026, 10, 20, 0, 0, tzinfo=BR))
+        self.assertEqual(up.proxima_hora(t(14, 9), 180, passo_min=60), t(15, 0), 'passo de 60 min: a hora fechada de antes')
 
     def test_duracao_medida_entra_na_previsao(self):
         self.pl.decidir('D1', '452', 'rapido', '2026-10-19T14:01:00-03:00', '2026-10-19T14:21:00-03:00')
         self.assertEqual(self.pl.duracao('452-rapido'), 1200)
 
-    def test_agenda_em_horas_fechadas(self):
+    def test_agenda_em_meias_horas_redondas(self):
+        # desde a 1.0.35 a virada é a cada 30 min (hh:00 e hh:30; pedido do Luciano em 29/10/2026; antes, a hora fechada)
         f = self.pl.fila()
-        # 452 rápido iniciou 14:01, ~8 min: termina 14:09; o próximo começa às 15:00
-        self.assertEqual(f[0]['inicio_previsto'], '2026-10-19T15:00:00-03:00')
+        # 452 rápido iniciou 14:01, ~8 min: termina 14:09; o próximo começa às 14:30
+        self.assertEqual(f[0]['inicio_previsto'], '2026-10-19T14:30:00-03:00')
         self.assertEqual(f[0]['item'], '453-rapido')
         for a, b in zip(f, f[1:]):
             ti = datetime.fromisoformat(b['inicio_previsto'])
-            self.assertEqual((ti.minute, ti.second), (0, 0))
+            self.assertIn((ti.minute, ti.second), ((0, 0), (30, 0)))
             self.assertGreaterEqual(ti, datetime.fromisoformat(a['fim_previsto']))   # a vitrine vai até a virada
-        self.assertIn('3221-espera', [x['item'] for x in f])
+        self.assertIn('3221-rapido', [x['item'] for x in f])
+        self.assertNotIn('espera', [x['modo'] for x in f])
 
     def test_suspensao_um_dia_antes_ate_tres_depois(self):
         el = [date(2026, 10, 25)]

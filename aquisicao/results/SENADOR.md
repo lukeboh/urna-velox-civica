@@ -1,6 +1,6 @@
 # Senador — 1º turno de 2026: totalização, conferência e desempenho
 
-Execução de 12/10/2026 (`v0.0.13`), i7-14700 (28 threads), WSL2. Entrada: os **499.207 BUs** coletados do site de resultados ([AQUISICAO §4.3.1](../../docs/AQUISICAO.md)). Em 2026 cada UF elegeu **2 senadores**: cada eleitor deu 2 votos, e o leitor confere em cada BU que a soma dos votos do cargo é `comparecimento × 2`.
+Execução de 12/10/2026 (`v0.0.13`), i7-14700 (28 threads), WSL2. Entrada: os **499.207 BUs** coletados do site de resultados ([AQUISICAO §4.3.1](../../docs/arquitetura/AQUISICAO.md)). Em 2026 cada UF elegeu **2 senadores**: cada eleitor deu 2 votos, e o leitor confere em cada BU que a soma dos votos do cargo é `comparecimento × 2`.
 
 ## 1. Conferência com a divulgação oficial
 

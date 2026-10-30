@@ -41,7 +41,7 @@
   --raio-p: 999px;
   --linha-cand: 76px;
   --feed-h: 64px;
-  --topo-h: 64px;
+  --topo-h: 52px;
   --mola: cubic-bezier(0.22, 0.9, 0.24, 1);
   color-scheme: dark;
 }
@@ -110,10 +110,11 @@ button, select { font: inherit; color: inherit; }
 :focus-visible { outline: 2px solid #9db7ff; outline-offset: 2px; }
 
 /* ---------------------------------------------------------------- topo */
+/* M-025: só o que é geral (a marca e o tema); a eleição fica na barra logo abaixo */
 .topo {
-  display: grid;
-  grid-template-columns: auto 1fr auto auto;
+  display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 14px;
   height: var(--topo-h);
   padding: 0 clamp(16px, 3vw, 36px);
@@ -148,23 +149,6 @@ button, select { font: inherit; color: inherit; }
   user-select: none;
 }
 
-.rota { display: flex; gap: 8px; align-items: center; min-width: 0; height: 40px; }
-.rota .passo {
-  height: 36px;
-  border-radius: var(--raio-p);
-  border: 1px solid var(--borda);
-  background: var(--vidro);
-  padding: 0 14px;
-  max-width: 220px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  overflow: hidden;
-  cursor: pointer;
-}
-.rota select.passo { appearance: none; padding-right: 30px; background-image: linear-gradient(45deg, transparent 50%, var(--texto-2) 50%), linear-gradient(135deg, var(--texto-2) 50%, transparent 50%); background-position: calc(100% - 17px) 15px, calc(100% - 12px) 15px; background-size: 5px 5px; background-repeat: no-repeat; }
-.rota select.passo option { background: var(--fundo-2); color: var(--texto); }
-.rota .sep { color: var(--texto-3); }
-
 .conexao {
   display: inline-flex;
   align-items: center;
@@ -182,9 +166,6 @@ button, select { font: inherit; color: inherit; }
   overflow: hidden;
 }
 .conexao[hidden] { display: none; }   /* M-012: selo escondido até o fim da totalização do 2º turno */
-/* M-018 (25/10): sem o chip "Anuncie Aqui" do M-011. Com o selo escondido (M-012) sobram marca, navegação e tema: a
-   grade perde a coluna do selo e o tema fica no fim da linha; com o selo de volta, vale a grade de sempre */
-.topo:has(> #conexao[hidden]) { grid-template-columns: auto 1fr auto; }
 .conexao .ponto { width: 9px; height: 9px; border-radius: 50%; background: var(--texto-3); flex: none; }
 .conexao[data-estado="vivo"] .ponto { background: var(--ok); animation: pulso 2.4s ease-in-out infinite; }
 .conexao[data-estado="caiu"] .ponto, .conexao[data-estado="pausa"] .ponto { background: var(--alerta); }
@@ -216,6 +197,9 @@ button.conexao:hover { border-color: var(--borda-luz); }
 /* a próxima eleição ao vivo, com contagem regressiva: a "propaganda" da noite oficial (chip da faixa) */
 .faixa button.chip { font: inherit; cursor: pointer; }
 .faixa .chip.oculto { pointer-events: none; }
+/* consulta de um pleito em curso: o botão que volta ao tempo real, na barra do slider */
+.player .pl-aovivo { flex: none; height: 28px; padding: 0 10px; border-radius: 999px; border: 1px solid #ff6b7e; background: #e0213a;
+  color: #fff; font: inherit; font-size: 12px; font-weight: 800; letter-spacing: 0.04em; cursor: pointer; white-space: nowrap; }
 .faixa .chip.promo {
   flex: none; gap: 8px; height: 26px; padding: 0 12px 0 4px; color: var(--texto); font-weight: 600;
   border-color: rgba(224, 33, 58, 0.6);
@@ -249,6 +233,7 @@ button.conexao:hover { border-color: var(--borda-luz); }
 }
 .faixa .chip.promo:hover { border-color: #ff6b7e; }
 .faixa .chip.promo.oculto { display: none; }
+.faixa .chip.ritmo.oculto { display: none; }   /* B-084: na consulta */
 /* totalização antes das 17h (BUs do exterior): botão discreto que abre a explicação */
 .faixa .chip.cedo { flex: none; gap: 6px; height: 26px; padding: 0 12px 0 4px; font: inherit; font-size: 13px; font-weight: 600; color: var(--texto); cursor: pointer;
   border-color: color-mix(in srgb, var(--alerta) 55%, transparent); background: color-mix(in srgb, var(--alerta) 12%, var(--vidro)); }
@@ -312,30 +297,47 @@ button.conexao:hover { border-color: var(--borda-luz); }
 .faixa .chip.ritmo { justify-content: center; }
 .faixa .chip.ritmo .ritmo-in { display: inline-flex; align-items: baseline; white-space: nowrap; transition: transform 0.35s var(--mola); }
 .faixa .chip.http.oculto, .faixa .chip.ritmo.com-http { display: none; }
+/* sonda (sonda.js): o chip do ritmo é um botão (abre a telemetria) e alterna, de leve, com a confirmação da sonda numa
+   camada por cima, na mesma caixa (nada se mexe: só opacity/transform) */
+.faixa button.chip.ritmo { position: relative; overflow: hidden; color: inherit; }
+.faixa .chip.ritmo .ritmo-in { transition: transform 0.35s var(--mola), opacity 0.45s; }
+.faixa .chip.ritmo .ritmo-sonda { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-variant-numeric: tabular-nums; font-weight: 600; opacity: 0; transform: translateY(7px); transition: opacity 0.45s, transform 0.45s var(--mola);
+  pointer-events: none; }
+.faixa .chip.ritmo .ritmo-sonda .curto { display: none; }
+.faixa .chip.ritmo.mostra-sonda .ritmo-in { opacity: 0; }
+.faixa .chip.ritmo.mostra-sonda .ritmo-sonda { opacity: 1; transform: none; }
+.faixa .chip.ritmo[data-sonda="estavel"] .ritmo-sonda { color: var(--ok); }
+.faixa .chip.ritmo[data-sonda="atrasada"] { border-color: rgba(255, 194, 75, 0.45); }
+.faixa .chip.ritmo[data-sonda="atrasada"] .ritmo-sonda { color: var(--alerta); }
+.faixa .chip.ritmo:hover { border-color: var(--borda-luz); }
 
-/* cargos */
+
+/* cargos: pílulas na 2ª linha da barra da eleição (M-025); as que não cabem vão para o "…" (identificacao.js) */
 .cargos {
   display: flex;
-  gap: 6px;
-  height: 46px;
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 2px;
   align-items: center;
-  padding: 0 clamp(16px, 3vw, 36px);
-  overflow-x: auto;
-  scrollbar-width: none;
+  overflow: hidden;
 }
-.cargos::-webkit-scrollbar { display: none; }
 .cargos button {
   flex: none;
-  height: 36px;
-  padding: 0 16px;
+  height: 34px;
+  padding: 0 14px;
   border-radius: var(--raio-p);
   border: 1px solid transparent;
   background: transparent;
   color: var(--texto-2);
   cursor: pointer;
   font-weight: 500;
+  font-size: 15px;
+  white-space: nowrap;
 }
-.cargos button[aria-selected="true"] { background: var(--vidro-forte); border-color: var(--borda); color: var(--texto); }
+.cargos button[hidden] { display: none; }
+.cargos button:hover { color: var(--texto); }
+.cargos button[aria-selected="true"] { background: var(--vidro-forte); border-color: var(--borda); color: var(--texto); font-weight: 650; }
 
 /* ---------------------------------------------------------------- painel */
 .painel {
@@ -350,7 +352,9 @@ button.conexao:hover { border-color: var(--borda-luz); }
    cartões passam da margem direita */
 .lado { display: grid; gap: 18px; min-width: 0; }
 
-.carregando { grid-column: 1 / -1; height: 520px; display: grid; place-items: center; color: var(--texto-2); }
+/* B-074/B-075: pelo menos a altura da tela, para os termos (no fluxo, logo depois do painel) começarem fora dela; com 520 px
+   eles apareciam no pé da tela do computador até o primeiro resultado e eram empurrados para baixo (CLS ~0,02) */
+.carregando { grid-column: 1 / -1; height: max(520px, 100vh); display: grid; place-items: center; color: var(--texto-2); }
 
 /* vidro "tátil": translúcido, borda clara, sombra; inclina de leve sob o ponteiro (só transform) */
 .vidro {
@@ -405,6 +409,9 @@ button.conexao:hover { border-color: var(--borda-luz); }
   background: var(--vidro-forte);
 }
 .selo.ligado { opacity: 1; transform: scale(1); }
+/* artigo de lei citado (normas.js): link para a norma no site do TSE, numa aba nova */
+a.norma { color: inherit; text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 3px; }
+a.norma:hover { text-decoration-style: solid; }
 
 .lista { list-style: none; margin: 0; padding: 0; position: relative; contain: layout; }
 .cand {
@@ -584,7 +591,10 @@ button.conexao:hover { border-color: var(--borda-luz); }
   overflow: hidden;
   z-index: 10;
 }
-.feed .trilho { position: absolute; inset: 0 0 0 60px; overflow: hidden; }
+.feed .trilho { position: absolute; inset: 0 0 0 60px; overflow: hidden;
+  /* M-027: o texto esmaece nas bordas (junto ao botão do menu e na ponta direita), em vez de ser cortado seco */
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 34px, #000 calc(100% - 22px), transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0, #000 34px, #000 calc(100% - 22px), transparent 100%); }
 /* botão do histórico, à esquerda do letreiro (os itens passam por trás dele e somem na borda do trilho) */
 .feed .hist-btn { position: absolute; left: 9px; top: calc((var(--feed-h) - 44px) / 2); width: 44px; height: 44px; z-index: 2; font-size: 17px; }
 /* B-033: ícone desenhado (o caractere ☰ dependia da fonte do sistema: pequeno e fora do centro no iPhone) */
@@ -624,7 +634,8 @@ button.conexao:hover { border-color: var(--borda-luz); }
 .feed[data-pausado="1"] .pausa { opacity: 1; }
 /* B-038: pausado, os itens param antes do rótulo (só o recorte do trilho muda; nada se desloca) */
 .feed[data-pausado="1"] .trilho { right: 76px; }
-.feed .vazio-feed { position: absolute; left: 72px; top: 22px; font-size: 14px; color: var(--texto-3); transition: opacity 0.4s; }
+/* B-089: invisível (opacidade 0) ele continuava por cima do trilho e engolia o toque nas notícias */
+.feed .vazio-feed { position: absolute; left: 72px; top: 22px; font-size: 14px; color: var(--texto-3); transition: opacity 0.4s; pointer-events: none; }
 
 /* detalhe de um marco (folha que sobe; só transform) */
 .folha {
@@ -647,6 +658,92 @@ button.conexao:hover { border-color: var(--borda-luz); }
 .folha dt { color: var(--texto-2); }
 .folha dd { margin: 0; }
 .folha .fechar { position: absolute; right: 14px; top: 14px; }
+
+/* telemetria (telemetria.js): janela pequena que desce da faixa; velocímetros em SVG, ponteiros por transform */
+.tele {
+  /* `top` e `max-height` medidos na abertura (logo abaixo do chip, telemetria.js); estes são o ponto de partida */
+  position: fixed; left: 50%; top: calc(var(--topo-h) + 42px); width: min(460px, calc(100vw - 24px)); padding: 18px 20px 16px; z-index: 21;
+  max-height: calc(100dvh - var(--topo-h) - var(--feed-h) - 60px); overflow-y: auto; overscroll-behavior: contain;
+  transform: translate(-50%, -14px) scale(0.98); opacity: 0; pointer-events: none; transition: transform 0.45s var(--mola), opacity 0.3s;
+}
+.tele.aberta { transform: translate(-50%, 0) scale(1); opacity: 1; pointer-events: auto; }
+.tele h2 { margin: 0 34px 4px 0; font-size: 18px; font-stretch: 110%; }
+.tele .fechar { position: absolute; right: 14px; top: 14px; }
+.tele-estado { margin: 0 0 10px; font-size: 13.5px; font-weight: 600; color: var(--texto-2); }
+.tele[data-situacao="estavel"] .tele-estado { color: var(--ok); }
+.tele[data-situacao="atrasada"] .tele-estado { color: var(--alerta); }
+.tele-vels { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; }
+.vel { margin: 0; display: grid; justify-items: center; }
+.vel svg { display: block; width: 100%; max-width: 190px; overflow: visible; }
+.vel .trilho, .vel .zona { fill: none; stroke-width: 7; stroke-linecap: round; }
+.vel .trilho { stroke: var(--trilho); }
+.vel .zona { stroke-linecap: butt; opacity: 0.55; }
+.vel .zona.ok { stroke: var(--ok); }
+.vel .zona.alerta { stroke: var(--alerta); }
+.vel .zona.erro { stroke: var(--erro); }
+.vel .marcas text { font-size: 6.5px; fill: var(--texto-3); font-variant-numeric: tabular-nums; }
+.vel .ponteiro { transform-box: view-box; transform-origin: 60px 62px; transition: transform 0.9s var(--mola); }
+.vel .ponteiro line { stroke: var(--texto); stroke-width: 2.4; stroke-linecap: round; }
+.vel .ponteiro circle { fill: var(--texto); }
+.vel-valor { margin-top: -4px; font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.vel[data-cor="ok"] .vel-valor { color: var(--ok); }
+.vel[data-cor="alerta"] .vel-valor { color: var(--alerta); }
+.vel[data-cor="erro"] .vel-valor { color: var(--erro); }
+.vel figcaption { font-size: 12px; color: var(--texto-2); text-align: center; }
+.tele-linhas { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 12px 0 0; font-size: 13px; }
+.tele-linhas dt { color: var(--texto-2); }
+.tele-linhas dd { margin: 0; font-variant-numeric: tabular-nums; }
+.tele-nota { margin: 10px 0 0; font-size: 12px; line-height: 1.45; color: var(--texto-3); }
+
+/* multipleito (1.1): os pleitos do TSE, painel fixo de altura fixa que desce do topo (só transform/opacity) */
+.pleitos {
+  position: fixed; left: 50%; top: calc(var(--topo-h) + 12px);
+  width: min(620px, calc(100vw - 24px)); height: min(calc(100dvh - var(--topo-h) - var(--feed-h) - 48px), 680px);
+  display: grid; grid-template-rows: auto auto auto minmax(0, 1fr); padding: 16px 18px 12px; z-index: 22;
+  transform: translate(-50%, -14px) scale(0.98); opacity: 0; pointer-events: none;
+  transition: transform 0.45s var(--mola), opacity 0.3s;
+}
+.pleitos.aberta { transform: translate(-50%, 0) scale(1); opacity: 1; pointer-events: auto; }
+@media (max-width: 640px) {
+  /* M-024: no celular o painel cobre o slider e o letreiro (antes ficava por baixo deles) */
+  .pleitos { top: calc(env(safe-area-inset-top, 0px) + 8px); width: calc(100vw - 16px); height: calc(100dvh - env(safe-area-inset-top, 0px) - 16px); z-index: 40; padding: 14px 14px 10px; }
+}
+.pl-intro { margin: 2px 0 2px; font-size: 13.5px; color: var(--texto-2); }
+.pleitos h2 { margin: 0; font-size: 18px; font-stretch: 110%; }
+.pl-sub { margin: 0 0 10px; font-size: 12.5px; color: var(--texto-3); }
+.pl-lista { overflow-y: auto; overscroll-behavior: contain; margin: 0 -8px; padding: 0 8px; scrollbar-width: thin; }
+.pl-grupo { margin: 12px 0 6px; font-size: 13px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--texto-2); }
+.pl-grupo:first-child { margin-top: 0; }
+.pl-grupo small { font-weight: 500; color: var(--texto-3); }
+.pl-item { padding: 8px 10px 8px 12px; margin: 0 0 4px; border-radius: 12px; box-shadow: inset 3px 0 0 var(--cc, var(--borda)); font-size: 13.5px; }
+/* M-024: o item que leva a algum lugar é clicável inteiro, com a ação principal em botão */
+.pl-item.clicavel { cursor: pointer; transition: background 0.2s; }
+.pl-item.clicavel:hover { background: rgba(157, 183, 255, 0.08); }
+.pl-item.na-tela { background: rgba(157, 183, 255, 0.10); box-shadow: inset 3px 0 0 #9db7ff, 0 0 0 1px rgba(157, 183, 255, 0.35); }
+.pl-acoes { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 8px; }
+.pl-acao { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 0 14px; border-radius: 999px; font-weight: 700; font-size: 13.5px;
+  text-decoration: none; border: 1px solid var(--borda); color: var(--texto); background: var(--vidro); white-space: nowrap; }
+.pl-acao.primaria { background: linear-gradient(90deg, #8c6bff, #4f8dff); border-color: transparent; color: #fff; box-shadow: 0 4px 14px rgba(108, 99, 255, 0.35); }
+.pl-acao.vivo { background: #e0213a; border-color: transparent; color: #fff; }
+.pl-acao:hover { filter: brightness(1.08); }
+.pl-acao:focus-visible { outline: 2px solid var(--borda-luz); outline-offset: 2px; }
+.pl-item.s-em_curso { --cc: #e0213a; }
+.pl-item.s-agendado { --cc: #4fc3ff; }
+.pl-item.s-encerrado { --cc: var(--texto-3); }
+.pl-l1 { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.pl-nome { font-weight: 650; min-width: 0; overflow-wrap: anywhere; }
+.pl-l2, .pl-l3 { color: var(--texto-2); margin-top: 2px; overflow-wrap: anywhere; }
+.pl-l3 { font-size: 12.5px; }
+.pl-fraco { color: var(--texto-3); }
+.pl-chip { display: inline-block; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--borda); font-size: 11.5px; font-weight: 650; color: var(--texto-2); white-space: nowrap; }
+.pl-chip.no-ar { background: #9db7ff; border-color: transparent; color: #0b1020; }
+.pl-chip.vivo { background: #e0213a; border-color: transparent; color: #fff; }
+.pl-chip.tela { background: transparent; border-color: #9db7ff; color: light-dark(#2a3a8c, #c9d6ff); }
+.pl-replay { color: inherit; font-weight: 650; }
+.folha .pl-abrir { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 6px 12px; border-radius: 12px;
+  border: 1px solid var(--borda); background: var(--vidro); cursor: pointer; text-align: left; font-weight: 650; }
+.folha .pl-abrir:hover { border-color: var(--borda-luz); }
+.folha .pl-abrir small { font-weight: 450; font-size: 12px; color: var(--texto-2); }
 
 /* histórico do feed: painel fixo de altura fixa, que sobe do canto do letreiro (só transform/opacity) */
 .hist {
@@ -858,21 +955,14 @@ button.conexao:hover { border-color: var(--borda-luz); }
 }
 
 @media (max-width: 640px) {
-  :root { --linha-cand: 74px; --topo-h: 104px; --feed-h: 58px; }
-  .topo { grid-template-columns: 1fr auto auto; grid-template-rows: 48px 48px; row-gap: 0; padding: 4px 16px; }
-  .rota { grid-column: 1 / -1; grid-row: 2; overflow: hidden; }
-  .rota .passo { max-width: 46vw; }
-  .conexao { width: 136px; font-size: 12px; }
-  /* celular: a navegação está na 2ª linha; na 1ª, a marca e o botão do tema no fim (M-018) */
-  .topo:has(> #conexao[hidden]) { grid-template-columns: 1fr auto; }
-  .faixa, .cargos { padding: 0 16px; }
+  :root { --linha-cand: 74px; --topo-h: 48px; --feed-h: 58px; }
+  .topo { padding: 0 16px; }
+  .faixa { padding: 0 16px; }
 }
 
-/* telas bem estreitas (iPhone SE 1ª geração, 320 px): a conexão encolhe para a primeira linha caber inteira */
+/* telas bem estreitas (iPhone SE 1ª geração, 320 px) */
 @media (max-width: 359px) {
-  .topo { column-gap: 10px; }
   .marca { font-size: 17px; }
-  .conexao { width: 112px; padding: 0 10px; gap: 6px; }
 }
 
 @media (max-width: 640px) {
@@ -899,6 +989,12 @@ button.conexao:hover { border-color: var(--borda-luz); }
   .faixa .chip.promo .vivo { padding: 0 6px; font-size: 10px; letter-spacing: 0.05em; }
   .faixa .chip.ritmo { flex: none; }
   .faixa .chip.ritmo { width: auto !important; }   /* os 150 px fixos do desktop não cabem com a margem a 360 px */
+  /* a confirmação da sonda curta no celular ("✓ 4 ms"), dentro da largura do BUs/min */
+  .faixa .chip.ritmo .ritmo-sonda .longo { display: none; }
+  .faixa .chip.ritmo .ritmo-sonda .curto { display: inline; }
+  .tele { padding: 16px 14px 14px; }
+  .tele-vels { gap: 2px 8px; }
+  .vel-valor { font-size: 15px; }
   .conexao .pl-longo { display: none; }
   button.conexao { font-size: 12px; }
   /* o selo do modo inteiro nos 136 px do celular ("EM BREVE ▶", "REPLAY ▶", "AO VIVO ▶") */
@@ -977,74 +1073,90 @@ button.conexao:hover { border-color: var(--borda-luz); }
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .faixa .chip.ritmo .ritmo-sonda { transform: none; }
+  .vel .ponteiro { transition: none; }
   .hod .col, .cand, .cand .barra i, .vidro, .selo, .folha, .hist { transition-duration: 0s !important; }
   .brilho::before, .brilho > .halo { animation: none; }
   .conexao[data-estado="vivo"] .ponto { animation: none; }
 }
 
-/* ---------------------------------------------------------------- M-001: identificação da eleição (cartão "C") */
-/* o lugar do cartão é reservado (altura fixa): preencher ou rolar não empurra o painel; ao rolar, a barra fixa entra
-   só por transform/opacidade (não conta no CLS) */
-:root { --ident-h: 88px; --ident-mx: clamp(16px, 3vw, 36px); }
-.ident-recolhida { --ident-h: 40px; }
-.ident { position: relative; height: var(--ident-h); margin: 4px var(--ident-mx) 6px; }
-.ident-cartao, .ident-barra {
+/* ---------------------------------------------------------------- M-025: a barra da eleição (proposta P2, 30/10/2026)
+   Logo abaixo do topo e presa no alto ao rolar (sticky: não conta como deslocamento). Altura fixa: preencher os textos
+   não empurra nada. 1ª linha: a eleição (nome, turno e data; abre a escolha da eleição) e o selo do modo; 2ª linha: o
+   local e os cargos ("…" com os que não cabem). Substitui o cartão da M-001. */
+:root { --el-mx: clamp(16px, 3vw, 36px); }
+.eleicao { position: sticky; top: 0; z-index: 16; padding: 2px var(--el-mx) 6px; }
+/* presa: uma faixa do fundo por trás (e na área do relógio do iPhone) cobre o que rola por baixo; só opacidade */
+.eleicao::before { content: ""; position: absolute; left: 0; right: 0; top: calc(-1 * env(safe-area-inset-top, 0px)); bottom: -10px; z-index: -1;
+  pointer-events: none; background: linear-gradient(var(--fundo) 70%, transparent); opacity: 0; transition: opacity 0.2s; }
+.eleicao.presa::before { opacity: 1; }
+.el-cartao {
   border: 1px solid var(--borda); border-radius: var(--raio-m); overflow: hidden; box-shadow: var(--sombra);
-  background: color-mix(in srgb, var(--fundo-2) 80%, transparent);
+  background: color-mix(in srgb, var(--fundo-2) 84%, transparent);
   backdrop-filter: blur(14px) saturate(140%); -webkit-backdrop-filter: blur(14px) saturate(140%);
 }
-.ident-cartao { position: absolute; inset: 0; display: flex; flex-direction: column; }
-.ident .id-l1 { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 52px 6px 16px; flex: 1; min-height: 0; }
-.ident .id-txt { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
-.ident .id-eleicao { font-size: 19px; font-weight: 700; font-stretch: 112%; white-space: nowrap; }
-.ident .id-tipo { font-size: 13px; color: var(--texto-2); }
-.ident .id-turnos { display: flex; align-items: center; gap: 8px; flex: none; }
-.ident .id-turnos small { color: var(--texto-3); font-size: 12px; }
-.ident .id-seg { display: inline-flex; flex: none; border: 1px solid rgba(157, 183, 255, 0.5); border-radius: 10px; overflow: hidden; }
-.ident .id-seg i { font-style: normal; font-weight: 700; padding: 2px 12px; color: var(--texto-3); }
-.ident .id-seg i.sel { background: rgba(157, 183, 255, 0.85); color: #0d1431; }
-.ident .id-l2 {
-  display: flex; align-items: center; gap: 6px; padding: 6px 16px 7px; font-size: 15px; white-space: nowrap; min-width: 0;
-  background: linear-gradient(90deg, rgba(140, 107, 255, 0.35), rgba(79, 195, 255, 0.25));
+.el-l1 { display: flex; align-items: center; gap: 10px; height: 54px; padding: 0 9px 0 5px; }
+.el-pleito {
+  flex: 1 1 auto; min-width: 0; height: 46px; display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: 24px 18px;
+  align-content: center; column-gap: 10px; padding: 0 10px; border: 0; border-radius: 12px; background: none; color: inherit;
+  font: inherit; text-align: left; cursor: pointer;
 }
-.ident .id-pino { width: 15px; height: 15px; fill: #9db7ff; flex: none; }
-.ident .id-onde { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.ident .id-local { font-weight: 650; color: var(--texto); }
-.ident .id-sep { color: var(--texto-3); margin: 0 6px; }
-.ident .id-cargo { color: var(--texto-2); }
-.ident .icone-btn.id-recolher { position: absolute; right: 8px; top: 8px; width: 30px; height: 30px; font-size: 14px; }
-/* barra de uma linha: sempre fixa no alto; escondida acima da tela até o cartão sair dela */
-.ident-barra {
-  position: fixed; top: 8px; left: var(--ident-mx); right: var(--ident-mx); height: 40px; z-index: 30;
-  display: flex; align-items: center; gap: 10px; padding-left: 14px;
-  transform: translateY(-64px); opacity: 0; visibility: hidden; transition: transform 0.2s, opacity 0.2s, visibility 0.2s;
-}
-.ident.preso .ident-barra { transform: none; opacity: 1; visibility: visible; }
-/* B-040: a faixa acima da barra presa (e a área do relógio do iPhone) cobre o que rola por baixo */
-.ident::before { content: ""; position: fixed; left: 0; right: 0; top: 0; height: calc(28px + env(safe-area-inset-top, 0px)); z-index: 29;
-  pointer-events: none; background: linear-gradient(var(--fundo) 60%, transparent); opacity: 0; transition: opacity 0.2s; }
-.ident.preso::before { opacity: 1; }
-.ident-barra { background: color-mix(in srgb, var(--fundo-2) 93%, transparent); }
-.ident-barra .id-eleicao { font-size: 14px; }
-.ident-barra .id-seg i { padding: 0 8px; font-size: 13px; }
-.ident-barra .id-l2 { flex: 1; align-self: stretch; padding: 0 48px 0 14px; font-size: 14px; }
-.ident-barra .icone-btn.id-recolher { top: 4px; right: 6px; }
-/* recolhido: cartão e barra viram só o botão, à direita */
-.ident-recolhida .ident-cartao { left: auto; width: 40px; }
-.ident-recolhida .ident-barra { left: auto; width: 40px; padding: 0; }
-.ident-recolhida .ident .id-l1, .ident-recolhida .ident .id-l2,
-.ident-recolhida .ident-barra .id-eleicao, .ident-recolhida .ident-barra .id-seg { display: none; }
-.ident-recolhida .ident .icone-btn.id-recolher { top: 4px; right: 4px; }
+.el-pleito:hover, .el-pleito:focus-visible { background: rgba(157, 183, 255, 0.12); outline: none; }
+.el-nome { grid-column: 1; grid-row: 1; min-width: 0; font-size: 18px; line-height: 24px; font-weight: 750; font-stretch: 108%;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--texto); }
+.el-sub { grid-column: 1; grid-row: 2; min-width: 0; font-size: 13px; line-height: 18px; color: var(--texto-2);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.el-turno { font-weight: 650; color: var(--texto); }
+.el-turno:not(:empty) + .el-data:not(:empty)::before { content: "·"; margin: 0 0.45em; color: var(--texto-3); }
+.el-dia-c { display: none; }
+/* o "▾" da eleição: no canto direito do botão (não anda quando o nome muda); só com a lista dos pleitos (visibility) */
+/* M-026: um selo de bom tamanho (o "▾" de 11–12 px passava despercebido no celular) */
+.el-pleito > .el-seta { grid-column: 2; grid-row: 1 / span 2; align-self: center; visibility: hidden; min-width: 28px; padding: 0 8px; line-height: 20px;
+  text-align: center; border-radius: 999px; border: 1px solid rgba(157, 183, 255, 0.6); background: rgba(157, 183, 255, 0.18);
+  color: light-dark(#2a3a8c, #c9d6ff); font-size: 13px; }
+.com-pleitos .el-pleito > .el-seta { visibility: visible; }
+/* no computador o botão da eleição tem o tamanho do nome (o "▾" logo ao lado) e o selo vai para a direita */
+@media (min-width: 641px) { .el-pleito { flex: 0 1 auto; } }
+.eleicao .conexao { flex: none; width: 200px; height: 34px; margin-left: auto; }
+.eleicao .conexao .txt { flex: none; }
+.el-l2 { display: flex; align-items: center; gap: 6px; height: 46px; padding: 0 8px; border-top: 1px solid var(--borda);
+  background: linear-gradient(90deg, rgba(140, 107, 255, 0.16), rgba(79, 195, 255, 0.10)); }
+/* o local e o "…": o texto à vista e, por cima, um seletor nativo transparente (a lista do próprio aparelho) */
+.el-local, .el-mais { position: relative; flex: none; display: inline-flex; align-items: center; height: 34px; border-radius: 999px;
+  border: 1px solid var(--borda); background: var(--vidro-forte); color: var(--texto); cursor: pointer; }
+.el-local { flex: none; min-width: 0; max-width: 46%; gap: 5px; padding: 0 12px 0 10px; font-size: 15px; font-weight: 650; }
+.el-local-txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.el-local > .el-seta { flex: none; font-size: 11px; color: var(--texto-2); }
+.local-unico .el-local { cursor: default; padding-right: 14px; }
+.local-unico .el-local > .el-seta { display: none; }
+.el-local select, .el-mais select { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: inherit;
+  font-size: 16px; /* (16 px: o iOS não aproxima a página ao abrir) */ }
+.el-local:focus-within, .el-mais:focus-within { outline: 2px solid #9db7ff; outline-offset: 2px; }
+.el-pino { width: 14px; height: 14px; fill: #9db7ff; flex: none; }
+.el-mais { justify-content: center; width: 42px; background: var(--vidro); font-size: 18px; font-weight: 800; letter-spacing: 0.04em; }
+.el-mais.oculto { display: none; }
+.el-mais:hover, .el-local:hover { border-color: var(--borda-luz); }
 @media (max-width: 640px) {
-  :root { --ident-h: 80px; }
-  .ident-recolhida { --ident-h: 40px; }
-  .ident .id-eleicao { font-size: 16px; }
-  .ident .id-l2 { font-size: 14px; }
-  .ident-barra { gap: 6px; padding-left: 8px; }
-  .ident-barra .id-eleicao { display: none; }
-  .ident-barra .id-l2 { padding: 0 42px 0 10px; }
+  :root { --el-mx: 8px; }
+  /* (7 px à direita: o selo termina na margem de 16 px da página, como os cartões) */
+  .el-l1 { height: 52px; gap: 4px; padding: 0 7px 0 2px; }
+  .el-pleito { padding: 0 5px; column-gap: 6px; grid-template-rows: 22px 20px; }
+  /* o nome inteiro ("Eleição suplementar · Roraima" a 360 px): estreitado pelo eixo de largura da fonte, não cortado;
+     ele ocupa a 1ª linha toda e o selo "▾" (M-026) vai para a 2ª, ao lado do turno e da data, onde sobra lugar */
+  .el-nome { grid-column: 1 / -1; font-size: 15.5px; line-height: 22px; font-stretch: 72%; }
+  .el-sub { align-self: center; }
+  .el-sub { font-size: 12.5px; }
+  .el-dia { display: none; }
+  .el-dia-c { display: inline; }
+  .el-pleito > .el-seta { grid-row: 2; line-height: 18px; font-size: 14px; }
+  /* "EM BREVE ▶", "REPLAY ▶", "CONSULTA" e "AO VIVO" inteiros (modo_pagina.mjs, B-084) */
+  .eleicao .conexao { width: 120px; padding: 0 8px; gap: 5px; }
+  .eleicao .conexao[data-modo] { letter-spacing: 0.02em; }
+  .el-l2 { height: 44px; gap: 4px; padding: 0 6px; }
+  .el-local { max-width: 52%; font-size: 14px; gap: 4px; padding: 0 9px 0 7px; }
+  .cargos button { padding: 0 10px; font-size: 14px; }
+  .el-mais { width: 38px; }
 }
-@media (prefers-reduced-motion: reduce) { .ident-barra { transition: none; } }
 
 /* ---------------------------------------------------------------- termos de uso e privacidade
    No fim da página (até a 0.9.18 era uma linha fixa à direita, logo acima do letreiro, sempre à vista). */

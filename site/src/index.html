@@ -20,43 +20,41 @@
 </head>
 <body>
 <div class="aurora" aria-hidden="true"></div>
+<!-- M-025 (30/10/2026, proposta P2 com os ajustes do Luciano): o topo só com o que é geral, independente da eleição
+     (a marca e o tema); rola e some -->
 <header class="topo">
   <a class="marca" href="#/br/c0001" aria-label="Urna Velox, versão {{versao}}">Urna <span>Velox</span><small class="marca-versao" aria-hidden="true">v{{versao}}</small></a>
-  <nav class="rota" id="rota" aria-label="Onde ver o resultado"></nav>
-  <!-- M-004: o selo do modo (REPLAY / AO VIVO / aguardando) e o acesso à playlist num chip só; abre o aviso -->
-  <!-- 24/10/2026 (Luciano): o selo fica escondido até o fim da totalização do 2º turno (M-012); para voltar, tire o
-       atributo hidden. O app.js continua atualizando o selo, só não aparece. -->
-  <button class="conexao" id="conexao" type="button" hidden data-estado="conectando" data-modo="" aria-haspopup="dialog" aria-controls="folha"><span class="ponto"></span><span class="txt">conectando…</span><span class="pl oculto" aria-hidden="true">▶<span class="pl-longo">&nbsp;Playlist</span></span></button>
   <!-- M-018 (25/10/2026): sem o chip "Anuncie Aqui" do M-011 -->
   <button class="icone-btn" id="tema" type="button" aria-label="Trocar tema claro/escuro">◐</button>
 </header>
-<div class="faixa" id="faixa" aria-live="off"></div>
-<!-- M-001: eleição, turno e abrangência sempre à vista (lugar reservado: nada pula; ao rolar, o cartão fica preso no
-     alto, numa linha só; o botão recolhe) -->
-<section class="ident" id="ident" aria-label="Eleição que está na tela">
-  <div class="ident-cartao" id="ident-cartao">
-    <div class="id-l1">
-      <div class="id-txt"><b class="id-eleicao">Eleições</b><span class="id-tipo">&nbsp;</span></div>
-      <div class="id-turnos"><small>Turno</small><span class="id-seg"><i>1º</i><i>2º</i></span></div>
+<!-- M-025: a barra da eleição, presa no alto ao rolar (position: sticky; altura fixa: nada pula quando se preenche).
+     1ª linha: a eleição (nome, turno e data do pleito; abre a escolha da eleição) e o selo do modo; 2ª linha: o local e
+     os cargos (os que não cabem vão para o "…"). Substitui o cartão de identificação da M-001, a escolha da abrangência
+     do topo, as pílulas soltas e o chip do pleito da faixa. -->
+<section class="eleicao" id="eleicao" aria-label="Eleição que está na tela">
+  <div class="el-cartao">
+    <div class="el-l1">
+      <button class="el-pleito" type="button" aria-haspopup="dialog" aria-controls="pleitos" title="Trocar de eleição: em curso, agendadas e encerradas">
+        <span class="el-nome">Eleições</span>
+        <span class="el-sub"><span class="el-turno"></span><span class="el-data"><span class="el-dia"></span><span class="el-dia-c"></span><span class="el-dd"></span></span></span>
+        <span class="el-seta" aria-hidden="true">▾</span>
+      </button>
+      <!-- M-004: o selo do modo (REPLAY / AO VIVO / CONSULTA / EM BREVE) e o acesso à playlist num chip só; abre o aviso.
+           Para escondê-lo (M-012), ponha o atributo hidden. -->
+      <button class="conexao" id="conexao" type="button" data-estado="conectando" data-modo="" aria-haspopup="dialog" aria-controls="folha"><span class="ponto"></span><span class="txt">conectando…</span><span class="pl oculto" aria-hidden="true">▶<span class="pl-longo">&nbsp;Playlist</span></span></button>
     </div>
-    <div class="id-l2">
-      <svg class="id-pino" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></svg>
-      <span class="id-onde"><span class="id-local"></span><span class="id-sep">·</span><span class="id-cargo"></span></span>
+    <div class="el-l2">
+      <label class="el-local" title="Onde: Brasil, estado ou município">
+        <svg class="el-pino" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></svg>
+        <span class="el-local-txt"></span><span class="el-seta" aria-hidden="true">▾</span>
+        <select aria-label="Onde: Brasil, estado ou município"></select>
+      </label>
+      <nav class="cargos" id="cargos" role="tablist" aria-label="Cargo"></nav>
+      <label class="el-mais oculto" title="Outros cargos"><span aria-hidden="true">…</span><select aria-label="Outros cargos"></select></label>
     </div>
-    <button class="icone-btn id-recolher" type="button" aria-label="Recolher a identificação da eleição" aria-expanded="true">⌃</button>
-  </div>
-  <!-- a mesma identificação numa linha, presa no alto da tela quando o cartão sai dela (aparece por opacidade/deslocamento: nada pula) -->
-  <div class="ident-barra" id="ident-barra" aria-hidden="true">
-    <b class="id-eleicao">Eleições</b>
-    <span class="id-seg"><i>1º</i><i>2º</i></span>
-    <span class="id-l2">
-      <svg class="id-pino" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></svg>
-      <span class="id-onde"><span class="id-local"></span><span class="id-sep">·</span><span class="id-cargo"></span></span>
-    </span>
-    <button class="icone-btn id-recolher" type="button" tabindex="-1" aria-label="Recolher a identificação da eleição" aria-expanded="true">⌃</button>
   </div>
 </section>
-<nav class="cargos" id="cargos" role="tablist" aria-label="Cargo"></nav>
+<div class="faixa" id="faixa" aria-live="off"></div>
 <main class="painel" id="painel"><div class="carregando" id="carregando">Carregando a apuração…</div></main>
 <!-- termos de uso e privacidade: no fim da página (à vista só ao rolar até lá), centralizados (0.9.19) -->
 <p class="termos" id="termos"><span class="termos-caixa"><a href="/termos" rel="license"

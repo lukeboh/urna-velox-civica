@@ -101,7 +101,7 @@ pub fn totais(cat: &Catalogo, est: &Estado, abr: &Abrangencia, cargo: u8) -> Opt
     }
 }
 
-// ------------------------------------------------------------------ publicação (JSON, docs/FORMATO_RESULTADO.md)
+// ------------------------------------------------------------------ publicação (JSON, docs/arquitetura/FORMATO_RESULTADO.md)
 
 use crate::acompanhamento::Acompanhamento;
 use crate::candidatos::{circunscricao_de, Candidatos};
@@ -129,7 +129,7 @@ pub struct Momento {
     pub totalizado_ms: Option<i64>,
 }
 
-/// Monta os resultados por (cargo, abrangência) no formato documentado em `docs/FORMATO_RESULTADO.md`.
+/// Monta os resultados por (cargo, abrangência) no formato documentado em `docs/arquitetura/FORMATO_RESULTADO.md`.
 pub struct Publicador<'a> {
     pub cat: &'a Catalogo,
     pub cad: Option<&'a Candidatos>,

@@ -1,6 +1,6 @@
 [Unit]
 Description=Urna Velox — painel dos nós (uv-painel: monitoramento e configuração, login do Google)
-Documentation=https://github.com/lukeboh/urna-velox-civica/blob/main/docs/PAINEL.md
+Documentation=https://github.com/lukeboh/urna-velox-civica/blob/main/docs/operacao/PAINEL.md
 Wants=network-online.target
 After=network-online.target
 

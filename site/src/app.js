@@ -1,4 +1,4 @@
-// Urna Velox — página de resultados (etapa 5). Acompanha a apuração só pelo protocolo público (docs/PROTOCOLO_WS.md):
+// Urna Velox — página de resultados (etapa 5). Acompanha a apuração só pelo protocolo público (docs/arquitetura/PROTOCOLO_WS.md):
 // WebSocket /ws (instantâneo, atualização, evento, marco, estado) e REST /api/v1/nomes e /api/v1/topicos.
 //
 // Ritmo de desenho ≠ ritmo de mensagens: a 60× chegam ~100 versões/s do br-c0001; cada mensagem só guarda o último
@@ -19,9 +19,14 @@ import { Controle, celulasTse, desenharCelulas, DICA_MS, DICA_TEXTO, dicaVista, 
 import { CartaoPrevisao, juntarPrevisao } from './previsao.js';
 import { ancora, comparar, diaDe, horaDe, quando, segundosF, tseNoSistema } from './relogio.js';
 import { Identificacao } from './identificacao.js';
+import { Telemetria, textoChip } from './sonda.js';
+import { PainelTelemetria } from './telemetria.js';
 import { CartaoMapa } from './mapa.js';
 import { Cartoes } from './cartoes.js';
 import { buscarPlaylist, contagemPartes, diaLocal, modoDe, proximaDe, quandoTxt } from './proxima.js';
+import { buscarConsultas, buscarPleitos, PainelPleitos, resumoTxt } from './pleitos.js';
+import { comLinks } from './normas.js';
+import { ConexaoSerie, PlayerLocal, carregarSerie, rotaConsulta } from './serie.js';
 import { abr, digitos, el, hora, mil, pct, segundos, movimentoReduzido } from './util.js';
 
 const $ = (s) => document.querySelector(s);
@@ -74,6 +79,9 @@ const S = {
   // previsão (etapa 8, previsao.js): tópico → última mensagem `previsao` (com o histórico das faixas)
   prev: new Map(),
   prevConfirmadas: new Map(), // tópico → confirmação (marco "previsão confirmada", para os ensaios)
+  // sondas (sonda.js): o caminho dos BUs está andando? e com que atraso
+  tele: new Telemetria(),
+  ritmoAtual: null,         // BUs/min mostrado no chip
 };
 window.__uv = S; // para os ensaios (Playwright)
 
@@ -174,7 +182,14 @@ function receber(m) {
       break;
     }
     case 'estado':
+      // B-088: a playlist trocou o pleito no ar (o serviço recomeçou com outro): nomes, tópicos e mapa eram do anterior
+      // (municípios pelo código, candidatos pelo número) — a página recomeça com os do pleito novo
+      if (!S.consulta && m.pleito != null) {
+        if (S.pleitoVivo != null && String(m.pleito) !== String(S.pleitoVivo)) { location.reload(); return; }
+        S.pleitoVivo = m.pleito;
+      }
       S.estado = m;
+      desenharSeletor();
       verificarVersao(m.versao);
       // ritmo da apuração também pelo estado (≤ 10 s): a página não recebe mais os tópicos de todo o país (B-014)
       if (m.ultimo_bu?.seq != null) S.seqMax = Math.max(S.seqMax || 0, m.ultimo_bu.seq);
@@ -191,6 +206,9 @@ function receber(m) {
       S.player?.estadoWs(m.replay);
       pedirQuadro();
       break;
+    case 'sonda':
+      if (S.tele.receber(m, performance.now())) desenharChipSonda();
+      break;
     case 'erro':
       // servidor sem a comparação (--sem-tse): o cabeçalho das fontes avisa
       if (m.motivo === 'comparacao_desligada') { S.tseDesligada = true; S.fontesSujo = true; pedirQuadro(); }
@@ -201,6 +219,7 @@ function receber(m) {
 }
 
 function estadoConexao(e, info) {
+  if (e === 'vivo' && S.conexao !== 'vivo') S.tele.conectou(performance.now());
   S.conexao = e;
   S.conexaoInfo = info;
   S.estadoSujo = true;
@@ -209,10 +228,31 @@ function estadoConexao(e, info) {
 
 // ---------------------------------------------------------------- feed
 let feed, folha, hist;
+// B-081: o letreiro recebe os itens em lote (no fim da tarefa que os entregou): com muitos de uma vez (a consulta
+// acelerada de um geral, uma reconexão), só os últimos FEED_LOTE entram — cada item novo mede a própria largura, e
+// milhares de medidas seguidas travavam a página; o histórico recebe todos na hora. No máximo um lote a cada
+// FEED_INTERVALO ms (o letreiro anda a poucos itens por segundo: mais que isso não se vê).
+const FEED_LOTE = 8;
+const FEED_INTERVALO = 250;
+let filaFeed = null;
+let feedEm = -Infinity;
 function porNoFeed(it) {
   hist.por(it);
-  const item = feed.por(it);
-  if (it.destaque) destacar(item.el);
+  if (!filaFeed) { filaFeed = new Map(); setTimeout(descarregarFeed, Math.max(0, FEED_INTERVALO - (performance.now() - feedEm))); }
+  filaFeed.delete(it.id);
+  filaFeed.set(it.id, it);
+}
+function descarregarFeed() {
+  feedEm = performance.now();
+  const l = [...filaFeed.values()];
+  filaFeed = null;
+  // os que já estão no letreiro (atualizações) e os fixos entram sempre; dos novos, os últimos FEED_LOTE
+  const corte = l.length - FEED_LOTE;
+  l.forEach((it, i) => {
+    if (i < corte && !it.fixo && !feed.porId.has(it.id)) return;
+    const item = feed.por(it);
+    if (it.destaque) destacar(item.el);
+  });
 }
 const destaques = [];
 function destacar(e) {
@@ -228,7 +268,8 @@ function destacar(e) {
 
 // ---------------------------------------------------------------- tela (rota, cargos, painel)
 function lerRota() {
-  const m = /^#\/([a-z]{2}(?:\d{5})?)\/c(\d{4})$/.exec(location.hash);
+  // consulta de um pleito (multipleito, 1.1): #/p/<pleito>/<abrangência>/c<cargo>
+  const m = /^#\/(?:p\/\d+\/)?([a-z]{2}(?:\d{5})?)\/c(\d{4})$/.exec(location.hash);
   let a = m?.[1], c = m ? +m[2] : null;
   if (!a || !S.topicos.has(`${a}-c${cargo4(c)}`)) {
     // padrão: Presidente no Brasil; senão o primeiro tópico do cargo de menor código
@@ -245,35 +286,24 @@ function cargosDe(a) {
   return [...S.topicos].filter((t) => t.startsWith(`${a}-c`)).map((t) => +t.slice(-4)).sort((x, y) => x - y);
 }
 
+/** M-025: o seletor do local na barra da eleição — Brasil, os estados e os municípios do estado da tela. */
 function montarRota(t) {
-  const nav = $('#rota');
   const a = abr(t.abr);
-  const ufs = [...new Set([...S.topicos].map((x) => x.split('-')[0]).filter((x) => x.length === 2 && x !== 'br'))].sort();
-  const munis = a.uf ? [...new Set([...S.topicos].map((x) => x.split('-')[0]).filter((x) => x.length === 7 && x.startsWith(a.uf)))] : [];
-  const br = el('button', 'passo', 'Brasil');
-  br.type = 'button';
-  br.addEventListener('click', () => irPara('br'));
-  const filhos = [];
-  if (S.topicos.has('br-c0001') || [...S.topicos].some((x) => x.startsWith('br-'))) filhos.push(br);
+  const raizes = [...S.topicos].map((x) => x.split('-')[0]);
+  const ufs = [...new Set(raizes.filter((x) => x.length === 2 && x !== 'br'))];
+  const munis = a.uf ? [...new Set(raizes.filter((x) => x.length === 7 && x.startsWith(a.uf)))] : [];
   // UFs: as que têm tópico próprio e as que só têm municípios (eleições municipais)
-  const ufsTodas = [...new Set([...ufs, ...[...S.topicos].map((x) => x.split('-')[0]).filter((x) => x.length === 7).map((x) => x.slice(0, 2))])].sort();
-  if (ufsTodas.length) {
-    const s = el('select', 'passo');
-    s.setAttribute('aria-label', 'Estado');
-    s.append(new Option('Estado…', ''));
-    for (const u of ufsTodas) s.append(new Option(S.N.uf(u), u, false, u === a.uf));
-    s.addEventListener('change', () => s.value && irPara(s.value));
-    filhos.push(s);
-  }
-  if (munis.length) {
-    const s = el('select', 'passo');
-    s.setAttribute('aria-label', 'Município');
-    s.append(new Option('Município…', ''));
-    munis.map((m) => [m, S.N.mun(m)]).sort((x, y) => x[1].localeCompare(y[1], 'pt-BR')).forEach(([m, n]) => s.append(new Option(n, m, false, m === t.abr)));
-    s.addEventListener('change', () => s.value && irPara(s.value));
-    filhos.push(s);
-  }
-  nav.replaceChildren(...filhos);
+  const ufsTodas = [...new Set([...ufs, ...raizes.filter((x) => x.length === 7).map((x) => x.slice(0, 2))])]
+    .map((u) => [u, S.N.uf(u)]).sort((x, y) => x[1].localeCompare(y[1], 'pt-BR'));
+  const grupos = [];
+  if (raizes.includes('br')) grupos.push([null, [['br', 'Brasil']]]);
+  grupos.push([ufsTodas.length > 1 || grupos.length ? 'Estados' : null, ufsTodas]);
+  if (munis.length) grupos.push([`Municípios · ${a.uf.toUpperCase()}`, munis.map((m) => [m, S.N.local(m)]).sort((x, y) => x[1].localeCompare(y[1], 'pt-BR'))]);
+  S.ident.locais(grupos, a.tipo === 'mun' ? t.abr : a.tipo === 'uf' ? a.uf : 'br');
+  // já com a tela (sem esperar o primeiro resultado): o local muda a largura que sobra para os cargos, e nada pode andar
+  // depois do primeiro desenho
+  S.ident.definir({ turno: S.N.cargos.get(t.cargo)?.turno, cargo: S.N.cargo(t.cargo), local: t.abr === 'br' ? 'Brasil' : S.N.local(t.abr) });
+  S.ident.eleicao(eleicaoAtual(null));
 }
 
 function irPara(a, c) {
@@ -285,7 +315,7 @@ function irPara(a, c) {
     if (!m) return;
     a = m; cargo = cargosDe(m)[0];
   }
-  location.hash = `#/${a}/c${cargo4(cargo)}`;
+  location.hash = `${S.consulta ? `#/p/${S.consulta.pleito}` : '#'}/${a}/c${cargo4(cargo)}`;
 }
 
 function montarCargos(t) {
@@ -293,11 +323,14 @@ function montarCargos(t) {
   nav.replaceChildren(...cargosDe(t.abr).map((c) => {
     const b = el('button', null, S.N.cargo(c));
     b.type = 'button';
+    b.dataset.cargo = String(c);
     b.setAttribute('role', 'tab');
     b.setAttribute('aria-selected', String(c === t.cargo));
     b.addEventListener('click', () => irPara(t.abr, c));
     return b;
   }));
+  // M-025: os que não cabem na barra vão para o "…" (antes do primeiro desenho: nada pula)
+  S.ident.ajustarCargos();
 }
 
 function cardTatil(c) {
@@ -428,9 +461,10 @@ function montarPainel(t) {
   // curva
   const curva = new Curva();
   // a noite até agora (o servidor guarda um ponto por minuto de cada tópico): a curva não começa na hora em que a página abriu
-  fetch(`/api/v1/curva/${t.topico}`).then((r) => (r.ok ? r.json() : null)).then((j) => {
+  // na consulta de um pleito, a curva sai da série (até o instante do slider)
+  (S.con?.curva ? S.con.pronto(t.topico).then(() => S.con.curva(t.topico)) : fetch(`/api/v1/curva/${t.topico}`).then((r) => (r.ok ? r.json() : null))).then((j) => {
     if (!j || S.ui?.curva !== curva) return;
-    curva.semear(j.pontos.map(([tt, ap, tot, c]) => ({ t: tt, s: tot ? (100 * ap) / tot : 0, c: new Map(c) })));
+    curva.semear(j.pontos.map(([tt, ap, tot, c]) => ({ t: tt, s: tot ? (100 * ap) / tot : 0, c: new Map(c) })), S.consulta ? null : j.relogio === 'sistema' ? 'sistema' : 'noite');
     pedirQuadro();
   }).catch(() => {});
   const legenda = el('div', 'legenda');
@@ -469,12 +503,30 @@ function montarPainel(t) {
   S.prevSujo = true;
   // a circunscrição da tela só se conhece com o primeiro resultado: agora entra nas inscrições
   atualizarTopicos();
-  // M-001: eleição, turno, cargo e abrangência no cartão de identificação
-  if (S.ident) {
-    const ano = [res.ultimo_bu, S.estado?.relogio_site].map((x) => /(20\d\d)/.exec(x || '')?.[1]).find(Boolean);
-    S.ident.definir({ ano, geral: [...S.topicos].some((x) => x.startsWith('br-')), turno: res.turno, cargo: S.N.cargo(res.cargo),
-      local: t.abr === 'br' ? 'Brasil' : S.N.local(t.abr) });
-  }
+  // M-025: turno, local e cargo na barra da eleição; o nome e a data da eleição
+  S.ident.definir({ turno: res.turno, cargo: S.N.cargo(res.cargo), local: t.abr === 'br' ? 'Brasil' : S.N.local(t.abr) });
+  S.ident.eleicao(eleicaoAtual(res));
+}
+
+/** M-025: o nome e a data da eleição na tela — pela lista dos pleitos (o título sem o turno, que vai ao lado: "Eleições
+ *  Gerais 2026", "Eleição suplementar · Roraima") e, sem ela, pelo tipo (B-087), pelo ano e pela data da noite. */
+function eleicaoAtual(res = S.tela && S.res.get(S.tela.topico)) {
+  const cod = String(S.consulta?.pleito ?? S.estado?.pleito ?? '');
+  const p = cod && S.pleitos?.pleitos?.find((x) => String(x.codigo) === cod);
+  if (p?.titulo) return { nome: p.titulo.replace(/\s*·\s*\dº turno$/, ''), dataIso: p.data_iso || '' };
+  const ano = [res?.ultimo_bu, S.serieInicio, S.estado?.relogio_site].map((x) => /(20\d\d)/.exec(x || '')?.[1]).find(Boolean) || '';
+  const tipo = tipoEleicao(res?.cargo);
+  const nome = tipo === 'Suplementar' ? `Eleição suplementar ${ano}` : `Eleições ${tipo} ${ano}`;
+  return { nome: nome.trim(), dataIso: dataDaNoite(res) };
+}
+
+/** A data da eleição sem a lista dos pleitos: o começo da série (consulta) ou o dia do último BU (ao vivo/replay; antes
+ *  das 8 h pode ser a madrugada seguinte ou o exterior, e então fica sem data). */
+function dataDaNoite(res) {
+  const s = /^(\d\d)\/(\d\d)\/(\d{4})/.exec(S.serieInicio || '');
+  if (s) return `${s[3]}-${s[2]}-${s[1]}`;
+  const u = /^(\d{4}-\d\d-\d\d)T(\d\d)/.exec(res?.ultimo_bu || '');
+  return u && +u[2] >= 8 ? u[1] : '';
 }
 
 function montarTela() {
@@ -618,8 +670,11 @@ function desenharTopico(agora) {
       selo = `${encerrada ? '2º turno' : 'Matematicamente 2º turno'}${dois.length ? ': ' + dois.map(nomeL).join(' × ') : ''}${em ? ' às ' + horaMat(res, em) : ''}`;
     } else if (res.estado === 'sem_eleito') selo = 'Sem eleito (art. 224)';
   }
-  if (ui.selo.textContent !== selo) {
-    ui.selo.textContent = selo;
+  if (ui.selo.dataset.texto !== selo) {
+    // artigos citados (ex.: "Sem eleito (art. 224)") viram link para a norma no site do TSE (normas.js); um só
+    // filho para o grid do selo centralizar o texto inteiro
+    ui.selo.dataset.texto = selo;
+    ui.selo.replaceChildren(...(selo ? [el('span', 'selo-txt', comLinks(selo))] : []));
     ui.selo.classList.toggle('ligado', !!selo);
     if (selo && !movimentoReduzido()) { ui.selo.classList.add('brilho'); if (!ui.selo.querySelector('.halo')) ui.selo.append(el('span', 'halo')); }
     else { ui.selo.classList.remove('brilho'); }
@@ -662,7 +717,9 @@ function desenharTopico(agora) {
     const a = res.cand[0], b = res.cand[1];
     ui.curva.linhas([a, b].filter(Boolean).map((k) => ({ n: k.n, cor: ui.linhas.get(k.n)?.cor })));
     // M-003: o eixo é o relógio do sistema (o mesmo do GET /api/v1/curva desde a M-003)
-    ui.curva.ponto(res.totalizado_em ? segundosF(res.totalizado_em) : segundos(res.ultimo_bu), totUv ? (100 * apUv) / totUv : 0, res.cand.map((k) => [k.n, k.pct]));
+    // B-082: o relógio do ponto vai junto (uma publicação sem `totalizado_em` no meio das outras não mistura os eixos)
+    ui.curva.ponto(res.totalizado_em ? segundosF(res.totalizado_em) : segundos(res.ultimo_bu), totUv ? (100 * apUv) / totUv : 0, res.cand.map((k) => [k.n, k.pct]),
+      S.consulta ? null : res.totalizado_em ? 'sistema' : 'noite');
     const leg = `${a?.n}|${b?.n}`;
     if (ui.leg !== leg) {
       ui.leg = leg;
@@ -873,8 +930,18 @@ let faixa;
 function montarFaixa() {
   // B-041: o conteúdo do chip desliza junto com o número (metade dos dígitos vazios): fica centrado
   const ritmoH = new Hodometro({ inteiros: 6, centro: true });
-  const ritmo = el('span', 'chip ritmo', ritmoH.arrastarEl = el('span', 'ritmo-in', [ritmoH.el, el('span', null, ' BUs/min')]));
+  // o chip alterna, de leve, o BUs/min e a confirmação da sonda (camada por cima, mesma caixa: nada se mexe); tocar
+  // nele abre a telemetria
+  const sondaL = el('span', 'longo', ''), sondaC = el('span', 'curto', '');
+  const ritmo = el('button', 'chip ritmo', [ritmoH.arrastarEl = el('span', 'ritmo-in', [ritmoH.el, el('span', null, ' BUs/min')]),
+    el('span', 'ritmo-sonda', [sondaL, sondaC])]);
+  if (S.consulta) ritmo.classList.add('oculto');   // B-084: desde o começo (sem mexer na faixa depois)
+  ritmo.type = 'button';
+  ritmo.setAttribute('aria-haspopup', 'dialog');
+  ritmo.setAttribute('aria-controls', 'telemetria');
+  ritmo.title = 'Telemetria da apuração: ritmo e atraso de processamento';
   ritmo.style.width = '150px';
+  ritmo.addEventListener('click', () => { S.painelTele.alternar(ritmo); atualizarTelemetria(); });
   const pausa = el('span', 'chip alerta oculto', '');
   pausa.style.width = '260px';
   const alerta = el('span', 'chip alerta oculto', '');
@@ -907,9 +974,45 @@ function montarFaixa() {
   const paradoTxt = el('span', null, '');
   const parado = el('span', 'chip parado oculto', [el('span', 'ic', '!'), paradoTxt, el('span', 'longo', ' · retomamos automaticamente quando voltarem')]);
   parado.setAttribute('role', 'status');
-  // o aviso das 17h depois do ritmo: quando ele aparece, nada do que está à vista anda (CLS 0)
-  $('#faixa').replaceChildren(parado, promo, http, ritmo, cedo, pausa, alerta);
-  faixa = { ritmoH, ritmo, pausa, alerta, promo, pNome, pQuando, pCont, pExt, pA, pB, pTrilho, pJanela, http, cedo, parado, paradoTxt };
+  // M-025: o seletor de pleito saiu da faixa (a eleição da barra é o seletor); a faixa fica só com o que muda na noite.
+  // B-077: o ritmo à frente de tudo o que aparece e some (a promo, o aviso de TSE parado, o das 17h): nada do que está
+  // à vista anda (CLS 0). No celular o aviso de TSE parado toma o lugar do ritmo (que está em 0)
+  $('#faixa').replaceChildren(ritmo, http, parado, promo, cedo, pausa, alerta);
+  faixa = { ritmoH, ritmo, sondaL, sondaC, pausa, alerta, promo, pNome, pQuando, pCont, pExt, pA, pB, pTrilho, pJanela, http, cedo, parado, paradoTxt };
+}
+
+// ---------------------------------------------------------------- sonda no chip e telemetria
+const CICLO_MS = 9000, SONDA_MS = 3500; // a cada 9 s, 3,5 s com a confirmação da sonda no lugar do BUs/min
+
+/** Texto e camada do chip: a confirmação da sonda aparece por SONDA_MS a cada CICLO_MS (sempre, com o caminho parado). */
+function desenharChipSonda() {
+  if (!faixa) return;
+  const agora = performance.now();
+  const t = textoChip(S.tele, agora, S.conexao === 'vivo');
+  const c = faixa.ritmo;
+  const sit = t?.situacao || '';
+  if (c.dataset.sonda !== sit) c.dataset.sonda = sit;
+  if (t) {
+    if (faixa.sondaL.textContent !== t.longo) faixa.sondaL.textContent = t.longo;
+    if (faixa.sondaC.textContent !== t.curto) faixa.sondaC.textContent = t.curto;
+  }
+  // M-023: se o sistema está operando e processando BUs (ritmo > 0), a própria operação já indica
+  // que está tudo ok; o checkup no chip só aparece quando ocioso/esperando BUs (ou em alerta de atraso).
+  const ocioso = !S.ritmoAtual;
+  const mostrar = !!t && (sit === 'atrasada' || (ocioso && (Date.now() % CICLO_MS) < SONDA_MS));
+  if (c.classList.contains('mostra-sonda') !== mostrar) c.classList.toggle('mostra-sonda', mostrar);
+  const rot = `${S.ritmoAtual == null ? '' : `${mil(S.ritmoAtual)} BUs por minuto. `}${t ? `${t.longo.replace('✓', 'Confirmado:').replace('⚠', 'Atenção:')}. ` : ''}Toque para ver a telemetria.`;
+  if (c.getAttribute('aria-label') !== rot) c.setAttribute('aria-label', rot);
+}
+
+function atualizarTelemetria() {
+  const p = S.painelTele;
+  if (!p?.aberta()) return;
+  const t = S.tele, agora = performance.now(), lb = S.estado?.latencia_bu_ms;
+  p.atualizar({ situacao: t.situacao(agora, S.conexao === 'vivo'), conectado: S.conexao === 'vivo', suportada: t.suportada, ritmo: S.ritmoAtual,
+    atrasoMs: t.atrasoMs(), atrasoMedMs: t.atrasoMedianoMs(), envioMs: t.envioMs(), idadeMs: t.idadeMs(agora), limiteMs: t.limiteMs(),
+    intervaloMs: t.intervaloMs(), recebidas: t.recebidas, pulos: t.pulos, ultima: t.ultima, seq: S.seqMax ?? null, remotas: t.remotas,
+    buMs: lb?.n ? lb.p50 : null, buP99: lb?.n ? lb.p99 : null });
 }
 
 // ---------------------------------------------------------------- M-004: modo, próxima eleição ao vivo e aviso do dia
@@ -1033,7 +1136,16 @@ function desenharParado() {
   if (f.parado.classList.contains('oculto') === (tb != null)) f.parado.classList.toggle('oculto', tb == null);
   if (tb == null) return;
   const d = new Date(tb * 1000), hh = String(d.getUTCHours()).padStart(2, '0'), mm = String(d.getUTCMinutes()).padStart(2, '0');
-  const txt = `TSE sem novos BUs desde ${hh}h${mm}`;
+  const agora = agoraSite();
+  const deltaS = agora != null && agora > tb ? agora - tb : 0;
+  const min = Math.floor(deltaS / 60);
+  // M-023: tempo decorrido do silêncio do TSE além da hora de corte ("desde 17h11")
+  const tempoTxt = min >= 60
+    ? `${Math.floor(min / 60)}h${min % 60 ? `${min % 60}m` : ''}`
+    : `${min} min`;
+  const txtCurto = `TSE sem novos BUs há ${tempoTxt}`;
+  const txtLongo = `TSE sem novos BUs há ${tempoTxt} (desde ${hh}h${mm})`;
+  const txt = window.innerWidth <= 640 ? txtCurto : txtLongo;
   if (f.paradoTxt.textContent !== txt) f.paradoTxt.textContent = txt;
 }
 
@@ -1079,7 +1191,14 @@ function detalheAviso() {
   const modo = modoDe(e);
   const linhas = [];
   let titulo = 'Urna Velox';
-  if (modo === 'replay') {
+  if (S.consulta) {
+    titulo = 'CONSULTA: a noite de uma eleição encerrada';
+    const vivo = el('a', null, '● Voltar ao que está no ar');
+    vivo.href = '/';
+    linhas.push(['Consulta', 'A noite inteira desta eleição, guardada minuto a minuto: a linha do tempo embaixo leva a qualquer instante, toca e acelera. Cada visitante tem a sua.'],
+      ['Dados', 'Os boletins de urna reais, publicados pelo TSE, totalizados pelo Urna Velox; no fim, idênticos ao resultado oficial. O lado do TSE são os arquivos oficiais da noite ou, quando eles não foram guardados, a reconstrução pela hora em que o TSE recebeu cada boletim (marcada assim).'],
+      ['Ao vivo', vivo]);
+  } else if (modo === 'replay') {
     titulo = 'REPLAY: dados reais, totalizados de novo';
     linhas.push(['Replay', 'A apuração de uma eleição que já aconteceu, passando de novo — como a reprise de um jogo.'],
       ['Dados', 'Os boletins de urna reais, publicados pelo TSE: nenhum voto é inventado. A totalização recomeça do zero, na ordem em que os boletins chegaram à Justiça Eleitoral, e no fim é conferida com o resultado oficial.'],
@@ -1110,6 +1229,13 @@ function detalheAviso() {
     link.href = '/playlist';
     linhas.push(['Playlist', link]);
   }
+  // multipleito (1.1): todos os pleitos do site de resultados do TSE, com a situação de cada um
+  if (S.pleitos) {
+    const b = el('button', 'pl-abrir', [el('span', null, 'Ver todos os pleitos'), el('small', null, resumoTxt(S.pleitos))]);
+    b.type = 'button';
+    b.addEventListener('click', () => { folha.fechar(); S.painelPleitos.abrir(); });
+    linhas.push(['Pleitos', b]);
+  }
   return { titulo, linhas };
 }
 
@@ -1135,6 +1261,42 @@ function talvezAvisar() {
   if (visto === hoje) return;
   try { localStorage.setItem('uv-aviso-dia', hoje); } catch { /* sem armazenamento */ }
   abrirAviso();
+}
+
+/** O seletor de pleito (faixa): o nome do pleito em exibição (consulta ou no ar); sem a lista, "Pleitos". */
+/** B-087: "Gerais", "Municipais" ou "Suplementar" — pela lista dos pleitos (as eleições do pleito na tela) e, sem ela,
+ *  pelos cargos (federais e estaduais = Gerais). Antes, sem tópico do Brasil era sempre "Municipais" (o suplementar de
+ *  Governador de RR aparecia como municipal). */
+function tipoEleicao(cargo) {
+  const cod = String(S.consulta?.pleito ?? S.estado?.pleito ?? '');
+  const p = cod && S.pleitos?.pleitos?.find((x) => String(x.codigo) === cod);
+  const tipos = (p?.eleicoes || []).map((e) => e.tipo);
+  if (tipos.length && tipos.every((t) => t === 'suplementar')) return 'Suplementar';
+  if (p?.titulo) { if (/Gerais/.test(p.titulo)) return 'Gerais'; if (/Municipais/.test(p.titulo)) return 'Municipais'; }
+  const c = cargo ?? S.tela?.cargo;
+  return [...S.topicos].some((x) => x.startsWith('br-')) || [1, 3, 5, 6, 7, 8].includes(c) ? 'Gerais' : 'Municipais';
+}
+
+/** M-025: a lista dos pleitos chegou (ou mudou): o nome e a data da eleição na barra. */
+function desenharSeletor() {
+  if (S.tela && S.ident) S.ident.eleicao(eleicaoAtual());
+}
+
+/** Pleitos do TSE (multipleito, 1.1): na partida e a cada ~10 min (o uv-pleitos.sh relê o ele-c.json a cada 15 min). */
+async function acompanharPleitos() {
+  S.consultas = new Set();
+  // M-024: "no ar" é o que o serviço totaliza (na consulta, o da playlist); "na tela", o que a página mostra
+  S.painelPleitos = new PainelPleitos({ noAr: () => S.pl?.no_ar?.pleito ?? (S.consulta ? null : S.estado?.pleito), comPlaylist: () => !!S.pl, consultas: () => S.consultas,
+    naTela: () => S.consulta?.pleito ?? S.estado?.pleito, emConsulta: () => !!S.consulta });
+  // M-024/M-025: a eleição da barra abre a lista
+  $('#eleicao .el-pleito').addEventListener('click', () => S.painelPleitos.abrir());
+  buscarConsultas().then((c) => { S.consultas = c; if (S.pleitos) S.painelPleitos.definir(S.pleitos); });
+  const buscar = async () => {
+    const l = await buscarPleitos();
+    if (l) { S.pleitos = l; S.painelPleitos.definir(l); desenharSeletor(); document.documentElement.classList.add('com-pleitos'); }
+    setTimeout(buscar, l ? 10 * 60e3 + Math.random() * 60e3 : 60e3 + Math.random() * 30e3);
+  };
+  await buscar();
 }
 
 /** Playlist: na partida e a cada ~15 min (a agenda muda pouco; o uv-playlist é um só, no nó A). */
@@ -1167,7 +1329,8 @@ function desenharEstado() {
   const http = S.conexao === 'http';
   const ligada = S.conexao === 'vivo' || http;
   // (espera: "EM BREVE" cabe inteiro no selo do celular, 136 px; "AGUARDANDO" era cortado)
-  const nomeModo = { replay: 'REPLAY', ao_vivo: 'AO VIVO', espera: 'EM BREVE' }[modo] || '';
+  // consulta de um pleito encerrado (1.1, serie.js): a linha do tempo do visitante, não o que está no ar
+  const nomeModo = S.consulta ? 'CONSULTA' : { replay: 'REPLAY', ao_vivo: 'AO VIVO', espera: 'EM BREVE' }[modo] || '';
   let est = S.conexao, txt = nomeModo || 'conectando…';
   if (S.conexao === 'conectando' && !e) txt = 'conectando…';
   if (S.conexao === 'caiu') {
@@ -1178,8 +1341,10 @@ function desenharEstado() {
   }
   if (http && !e) txt = 'a cada minuto';
   if (ligada && e?.pausa_429?.ativa) { est = 'pausa'; txt = `${nomeModo ? `${nomeModo} · ` : ''}TSE pediu pausa`; }
-  if (ligada && e?.encerrada) { est = 'encerrada'; txt = modo === 'replay' ? 'REPLAY · fim' : 'apuração encerrada'; }
+  if (ligada && e?.encerrada) { est = 'encerrada'; txt = S.consulta ? 'CONSULTA' :   /* B-084: o fim já está no slider; "CONSULTA · fim" não cabia no celular */ modo === 'replay' ? 'REPLAY · fim' : 'apuração encerrada'; }
   // B-026: o aviso "a cada minuto" toma o lugar do BUs/min (que, com uma consulta por minuto, não diria nada)
+  // B-084: o ritmo (BUs/min do serviço) não diz nada na consulta, que anda no relógio de quem vê
+  if (faixa?.ritmo && faixa.ritmo.classList.contains('oculto') !== !!S.consulta) faixa.ritmo.classList.toggle('oculto', !!S.consulta);
   if (faixa?.http && faixa.http.classList.contains('oculto') === http) { faixa.http.classList.toggle('oculto', !http); faixa.ritmo.classList.toggle('com-http', http); }
   if (c.dataset.estado !== est) c.dataset.estado = est;
   if (c.dataset.modo !== modo) c.dataset.modo = modo;
@@ -1187,10 +1352,13 @@ function desenharEstado() {
   if (t.textContent !== txt) t.textContent = txt;
   // o selo também é o acesso à playlist (o aviso que ele abre tem o link)
   const pl = c.querySelector('.pl');
-  const comPl = !!S.pl && modo !== 'ao_vivo';
+  // B-084: na consulta o selo não leva à playlist (a consulta é de um pleito só): "CONSULTA" cabe inteiro no celular
+  const comPl = !!S.pl && modo !== 'ao_vivo' && !S.consulta;
   if (pl.classList.contains('oculto') === comPl) pl.classList.toggle('oculto', !comPl);
   const rot = e?.simulacao?.rotulo || '';
-  const dica = modo === 'replay'
+  const dica = S.consulta
+    ? 'CONSULTA de uma eleição encerrada: a noite inteira guardada minuto a minuto, com os boletins de urna reais publicados pelo TSE. Use a linha do tempo para ir a qualquer instante, tocar e acelerar; o lado do TSE mostra os arquivos oficiais da noite, ou a reconstrução pela hora de recebimento quando eles não foram guardados.'
+    : modo === 'replay'
     ? `REPLAY com dados reais: os boletins de urna são os publicados pelo TSE, totalizados de novo, do zero, na ordem em que chegaram à Justiça Eleitoral (${rot}); no fim, o resultado é conferido com o oficial. O relógio mostra o horário da noite da eleição.`
     : modo === 'espera' ? 'A apuração ainda não começou.' : modo === 'ao_vivo' ? 'Totalização ao vivo.' : '';
   const dicaHttp = http ? ` ${TEXTO_HTTP}` : '';
@@ -1198,6 +1366,8 @@ function desenharEstado() {
   talvezAvisar();
   desenharPromo();
   if (!e) return;
+  // M-025: o pleito do serviço pode chegar depois da lista dos pleitos (o nome e a data da eleição dependem dos dois)
+  if (S.pleitoNaBarra !== e.pleito) { S.pleitoNaBarra = e.pleito; desenharSeletor(); }
   const pz = e.pausa_429?.ativa ? `Pausa de rede (HTTP 429)${e.pausa_429.retomada_em ? ' até ' + hora(e.pausa_429.retomada_em) : ''}` : '';
   if (faixa.pausa.textContent !== pz) { faixa.pausa.textContent = pz; faixa.pausa.title = pz; faixa.pausa.classList.toggle('oculto', !pz); }
   const al = e.alertas || {};
@@ -1236,8 +1406,9 @@ function curiosidades() {
   const r = S.ritmoSessao !== undefined ? S.ritmoSrv : S.ritmo;
   if (r.length >= 2) {
     const [t0, s0] = r[0], [t1, s1] = r[r.length - 1];
-    faixa.ritmoH.definir(t1 > t0 ? Math.round(((s1 - s0) * 60000) / Math.max(5000, t1 - t0)) : 0);
-  } else faixa.ritmoH.definir(0);
+    S.ritmoAtual = t1 > t0 ? Math.round(((s1 - s0) * 60000) / Math.max(5000, t1 - t0)) : 0;
+  } else S.ritmoAtual = 0;
+  faixa.ritmoH.definir(S.ritmoAtual);
   if (S.primeirosSujo) { S.primeirosSujo = false; for (const it of primeiros(S.N, S.eventos.values())) porNoFeed(it); }
   // B-014: "disputa mais apertada / mais folgada" e "comparecimento por UF" saíram do letreiro: precisavam do resultado
   // de todos os tópicos do país, e a página agora só recebe o da tela (podem voltar como marcos calculados no servidor)
@@ -1283,6 +1454,19 @@ function feedFaltam() {
   }
 }
 
+/** Consulta de um pleito: o slider voltou no tempo — a página esquece o que viu e recebe tudo de novo até o instante. */
+function reiniciarConsulta() {
+  S.res = new Resultados();
+  for (const k of ['eventos', 'marcos', 'faltam', 'tse', 'prev', 'matSis', 'confirmados', 'ordemDesde', 'prevConfirmadas']) S[k]?.clear?.();
+  S.seqMax = 0;
+  S.ritmo = [];
+  S.ritmoSrv = [];
+  S.primeiraUf100 = null;
+  feed?.limpar();
+  hist?.limpar();
+  montarTela();
+}
+
 // ---------------------------------------------------------------- partida
 async function iniciar() {
   const tema = (() => { try { return localStorage.getItem('uv-tema'); } catch { return null; } })();
@@ -1294,34 +1478,59 @@ async function iniciar() {
   });
   folha = new Folha($('#folha'));
   feed = new Feed($('#feed'), (d) => folha.abrir(d));
+  folha.aoFechar = () => feed.retomar();   // B-089
   hist = new Historico($('#hist'), $('#feed-hist'));
   // a fonte embutida antes do primeiro desenho dos números (sem troca de fonte depois: nada de layout shift)
   const fonte = document.fonts.load('700 20px "Archivo UV"').catch(() => null);
+  // consulta de um pleito encerrado (multipleito, 1.1; serie.js): a série estática no lugar do WebSocket, com o slider
+  const rc = rotaConsulta(location.hash);
+  const serie = rc ? await carregarSerie(rc.pleito) : null;
+  if (rc && !serie) history.replaceState(null, '', location.pathname + location.search);
+  if (serie) document.documentElement.classList.add('com-replay');
   const [nomes, topicos, player] = await Promise.all([
-    fetch('/api/v1/nomes').then((r) => (r.ok ? r.json() : null)).catch(() => null),
-    fetch('/api/v1/topicos').then((r) => (r.ok ? r.json() : [])).catch(() => []),
-    // barra do replay só no site simulado; montada (e o espaço dela reservado) antes do primeiro desenho
-    iniciarPlayer(),
+    serie ? serie.nomes : fetch('/api/v1/nomes').then((r) => (r.ok ? r.json() : null)).catch(() => null),
+    serie ? serie.topicos : fetch('/api/v1/topicos').then((r) => (r.ok ? r.json() : [])).catch(() => []),
+    // barra do replay só no site simulado (na consulta, o slider local); montada (e o espaço dela reservado) antes do primeiro desenho
+    serie ? new PlayerLocal(serie.indice, (t) => S.con?.reposicionar(t)) : iniciarPlayer(),
     fonte,
   ]);
   S.player = player;
+  // a faixa já nasce sabendo que é consulta (B-084: sem o chip do ritmo)
+  if (serie) { S.consulta = { pleito: serie.pleito }; S.serieInicio = serie.indice?.inicio_texto || ''; }
+  // M-025: a barra da eleição (o local e os cargos levam a outra tela)
+  S.ident = new Identificacao({ aoLocal: (a) => irPara(a), aoCargo: (c) => S.tela && irPara(S.tela.abr, c) });
   await document.fonts.ready;
   montarFaixa();
+  S.painelTele = new PainelTelemetria();
+  // chip da sonda (alternância) e telemetria aberta: uma vez por segundo
+  setInterval(() => { desenharChipSonda(); atualizarTelemetria(); }, 1000);
   // M-004: o selo abre o aviso (com a playlist); a contagem anda a cada segundo
   $('#conexao').addEventListener('click', () => abrirAviso());
   acompanharPlaylist();
+  acompanharPleitos();
   setInterval(() => desenharPromo(), 1000);
-  // M-001: eleição, turno e abrangência sempre à vista
-  S.ident = new Identificacao();
   S.N = new Nomes(nomes);
   S.topicos = new Set(topicos.map((t) => t.topico));
-  S.con = new Conexao(receber, estadoConexao);
+  if (serie) {
+    S.avisado = true;
+    S.con = new ConexaoSerie(receber, estadoConexao, serie, `Consulta · pleito ${serie.pleito}`);
+    S.con.aoReiniciar = reiniciarConsulta;
+    // pleito em curso: o slider se estende com a noite; "ao vivo" volta ao tempo real (a página ao vivo)
+    S.con.aoIndice = (ind) => S.player?.estender(ind.fim);
+    S.player.aoVivo = () => { location.hash = `#/${S.tela?.abr || 'br'}/c${cargo4(S.tela?.cargo ?? 1)}`; };
+    setInterval(() => S.con.avancar(S.player.agora()), 250);
+  } else S.con = new Conexao(receber, estadoConexao);
   // mapa das seções (mapa.js) e cartões que se maximizam e se reorganizam (cartoes.js)
   const versao = new URL(import.meta.url).searchParams.get('v') || '';
   S.mapa = new CartaoMapa({ obter: (c) => S.con.obter(c), pedirMapa: (f) => S.con.pedirMapa(f), nomes: () => S.N, versao });
   S.con.aoConsultar = () => S.mapa?.consultar();
   S.cartoes = new Cartoes({ aoMaximizar: (c, sim) => { if (c === S.mapa?.el) S.mapa.maximizado(sim); } });
-  window.addEventListener('hashchange', montarTela);
+  window.addEventListener('hashchange', () => {
+    // entrar na consulta de um pleito, sair dela ou trocar de pleito: a página recomeça
+    const p = rotaConsulta(location.hash)?.pleito ?? null;
+    if (p !== (S.consulta?.pleito ?? null)) { location.reload(); return; }
+    montarTela();
+  });
   // aba escondida: cancela a comparação com o TSE (e a refaz ao voltar)
   document.addEventListener('visibilitychange', () => { if (S.comparar !== 'uv') atualizarTopicos(); });
   // a idade do arquivo do TSE anda mesmo sem mensagens: um quadro por segundo enquanto a comparação está ligada

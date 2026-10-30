@@ -1,5 +1,5 @@
 [Unit]
-Description=Urna Velox — troca de eleição do ciclo rotativo contínuo (docs/CICLO_DIARIO.md)
+Description=Urna Velox — troca de eleição do ciclo rotativo contínuo (docs/operacao/CICLO_DIARIO.md)
 After=network-online.target
 
 [Service]

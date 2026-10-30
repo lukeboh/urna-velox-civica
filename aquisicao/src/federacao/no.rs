@@ -51,7 +51,8 @@ const MAGICO: &[u8] = b"UVTR1\n";
 /// Cabeçalho de um registro trocado entre nós.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Cabecalho {
-    /// "bu" | "nao_instalada" | "agregada" | "confirmada"
+    /// "bu" | "nao_instalada" | "agregada" | "confirmada" | "sonda" (desde a `1.0.24`, `crate::sonda`: `hash` = id,
+    /// `recebido` = sessão, `hora_site` = injeção em µs; sem seção e sem bytes)
     pub tipo: String,
     pub uf: String,
     pub m: u32,
@@ -132,6 +133,10 @@ pub struct ContFed {
     pub mudancas_particao: AtomicU64,
     /// seções deste nó que não foram ao TSE porque o resultado já tinha vindo de um par
     pub puladas: AtomicU64,
+    /// sondas (`crate::sonda`) postas nos lotes deste nó e recebidas dos pares (fora dos contadores de seções e da
+    /// retomada: não são resultados)
+    pub sondas_publicadas: AtomicU64,
+    pub sondas_recebidas: AtomicU64,
 }
 
 /// Contadores do nó gravados no armazém local (B-006): fora de `nos/` e `bus/`, não vão para os pares.
@@ -310,6 +315,13 @@ impl Federado {
         c.disp = b.disp.clone(); c.recebido = b.recebido.clone(); c.hora_site = b.hora_site;
         self.guardar(c, b.bytes.clone());
     }
+    /// Sonda deste nó (`crate::sonda`) para os pares: vai no próximo lote, sem contar como resultado publicado.
+    pub fn publicar_sonda(&self, s: &crate::sonda::Sonda) {
+        let c = Cabecalho { tipo: "sonda".into(), uf: String::new(), m: 0, z: 0, s: 0, hash: s.id.to_string(), sha: String::new(), situacao: String::new(),
+            anulada: false, disp: String::new(), recebido: s.sessao.to_string(), hora_site: s.t_injecao as i64 };
+        self.cont.sondas_publicadas.fetch_add(1, Relaxed);
+        self.saida.lock().unwrap().push((c, Bytes::new()));
+    }
     /// Resultado sem BU: "nao_instalada", "agregada" ou "confirmada".
     pub fn publicar_sem_bu(&self, tipo: &str, k: ChaveUf, disp: &str) {
         let mut c = Self::cab(tipo, k);
@@ -332,6 +344,7 @@ impl Federado {
             "publicados": c.publicados.load(Relaxed), "lotes_gravados": c.lotes_gravados.load(Relaxed), "republicados": c.republicados.load(Relaxed),
             "recebidos": c.recebidos.load(Relaxed), "ja_aplicados": c.ja_aplicados.load(Relaxed), "rejeitados": c.rejeitados.load(Relaxed),
             "lotes_lidos": c.lotes_lidos.load(Relaxed), "mudancas_particao": c.mudancas_particao.load(Relaxed), "puladas": c.puladas.load(Relaxed),
+            "sondas_publicadas": c.sondas_publicadas.load(Relaxed), "sondas_recebidas": c.sondas_recebidas.load(Relaxed),
             "sincronia": {"servidas": self.sinc.servidas.load(Relaxed), "servidas_304": self.sinc.servidas_304.load(Relaxed),
                 "buscas": self.sinc.buscas.load(Relaxed), "buscas_erro": self.sinc.buscas_erro.load(Relaxed),
                 "lotes_copiados": self.sinc.lotes_copiados.load(Relaxed), "por_repasse": self.sinc.por_repasse.load(Relaxed)},
@@ -531,14 +544,29 @@ fn consumir(f: &Federado, com: &Arc<Comum>, no: &str) -> Result<()> {
         let o = match f.armazem.ler(&chave_lote(no, seq), None)? { Lido::Novo(o) => o, _ => bail!("lote {seq} de {no} ausente") };
         f.cont.lotes_lidos.fetch_add(1, Relaxed);
         for (c, bu) in decodificar(&o.bytes)? {
-            entregar(f, com, c, bu);
+            entregar(f, com, no, c, bu);
         }
         if let Some(x) = f.lidos.lock().unwrap().get_mut(no) { x.0 = seq; }
     }
     Ok(())
 }
 
-fn entregar(f: &Federado, com: &Arc<Comum>, c: Cabecalho, bu: Bytes) {
+/// A sonda de um par vira uma sonda deste nó, com a origem: atravessa o motor e a gravação daqui e sai na difusão
+/// daqui (eco). `None` = registro de sonda ilegível.
+pub fn sonda_do_par(no: &str, c: &Cabecalho, agora_us: u64) -> Option<crate::sonda::Sonda> {
+    let id = c.hash.parse().ok()?;
+    let sessao = c.recebido.parse().unwrap_or(0);
+    Some(crate::sonda::Sonda::remota(no, id, sessao, u64::try_from(c.hora_site).ok()?, agora_us))
+}
+
+fn entregar(f: &Federado, com: &Arc<Comum>, no: &str, c: Cabecalho, bu: Bytes) {
+    if c.tipo == "sonda" {
+        let Some(s) = sonda_do_par(no, &c, crate::difusao::agora_us()) else { f.cont.rejeitados.fetch_add(1, Relaxed); return };
+        f.cont.sondas_recebidas.fetch_add(1, Relaxed);
+        // com as sondas desligadas aqui, a do par não tem quem a verifique: não entra no motor
+        if com.sonda.is_some() { let _ = com.tx_motor.send(Msg::Sonda(Box::new(s))); }
+        return;
+    }
     let Some(k) = k_de(&c) else { f.cont.rejeitados.fetch_add(1, Relaxed); return };
     f.cont.recebidos.fetch_add(1, Relaxed);
     f.resolvida(k, &c.disp);
@@ -677,6 +705,43 @@ mod testes {
         assert!(decodificar(&b[..b.len() - 1]).is_err());
         assert!(decodificar(b"outra coisa").is_err());
         assert_eq!(k_de(&regs[0].0), Some((*b"am", tse::chave(2550, 1, 550))));
+    }
+
+    /// Sonda pela federação: vai no lote do nó sem contar como resultado publicado e volta, no par, como sonda remota
+    /// com a origem, o id, a sessão e o instante da injeção.
+    #[test]
+    fn sonda_no_lote_e_no_par() {
+        let tmp = std::env::temp_dir().join(format!("uv-fed-sonda-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let f = federado_teste(&tmp);
+        let s = crate::sonda::Sonda::nova(7, 1_792_000_000_000_000, 1_792_000_000_123_456);
+        f.publicar_sonda(&s);
+        assert_eq!((f.cont.publicados.load(Relaxed), f.cont.sondas_publicadas.load(Relaxed)), (0, 1), "sonda não é resultado");
+        gravar_lote(&f).unwrap();
+        let l = decodificar(&match f.armazem.ler(&chave_lote(&f.id, 1), None).unwrap() { Lido::Novo(o) => o.bytes, _ => panic!() }).unwrap();
+        assert_eq!(l.len(), 1);
+        let (c, b) = &l[0];
+        assert_eq!((c.tipo.as_str(), c.uf.as_str(), b.len()), ("sonda", "", 0));
+        assert_eq!(k_de(c), None, "sem seção: um nó antigo a rejeita sem aplicar nada");
+        let r = sonda_do_par("no-a", c, 1_792_000_000_200_000).unwrap();
+        assert_eq!(r, crate::sonda::Sonda::remota("no-a", 7, 1_792_000_000_000_000, 1_792_000_000_123_456, 1_792_000_000_200_000));
+        assert_eq!(r.json()["ms"]["federacao"], 76.544);
+        // ilegíveis
+        let mut c2 = c.clone();
+        c2.hash = "x".into();
+        assert_eq!(sonda_do_par("no-a", &c2, 0), None);
+        let mut c3 = c.clone();
+        c3.hora_site = -1;
+        assert_eq!(sonda_do_par("no-a", &c3, 0), None);
+        let mut c4 = c.clone();
+        c4.recebido = String::new();
+        assert_eq!(sonda_do_par("no-a", &c4, 0).unwrap().sessao, 0, "sem sessão: 0");
+        let j = f.saude_json();
+        assert_eq!((j["sondas_publicadas"].as_u64(), j["sondas_recebidas"].as_u64(), j["publicados"].as_u64()), (Some(1), Some(0), Some(0)));
+        // a sonda não entra nos contadores persistidos (retomada)
+        assert!(f.cont.instantaneo().get("sondas_publicadas").is_none());
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 
     #[test]

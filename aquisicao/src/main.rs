@@ -3,7 +3,7 @@
 //!
 //! Recebe/recupera os Boletins de Urna (BUs) brutos publicados pelo TSE e os entrega ao
 //! núcleo de totalização, em pacotes `.uvpk` e/ou diretamente ao totalizador em memória.
-//! Veja `aquisicao/README.md` e `docs/AQUISICAO.md`.
+//! Veja `aquisicao/README.md` e `docs/arquitetura/AQUISICAO.md`.
 
 use uv_aquisicao::{coletor, preparo, replay, tse, zip};
 
@@ -108,6 +108,30 @@ enum Cmd {
     Eleicoes {
         #[command(flatten)]
         alvo: AlvoArgs,
+    },
+    /// Multipleito (1.1): descobre os pleitos no ele-c.json e os classifica (agendado, em curso, encerrado) no
+    /// pleitos.json lido pela página (uv-servico --pleitos), pela playlist e pelo ciclo. Uma requisição ao TSE
+    Pleitos {
+        #[command(flatten)]
+        alvo: AlvoArgs,
+        /// Onde gravar o pleitos.json (sem isto, só a tabela)
+        #[arg(long)]
+        saida: Option<PathBuf>,
+        /// Lê este ele-c.json em vez de baixá-lo (sem rede)
+        #[arg(long)]
+        ele_c: Option<PathBuf>,
+        /// Guarda aqui uma cópia do ele-c.json baixado
+        #[arg(long)]
+        guardar: Option<PathBuf>,
+        /// Pasta dos acervos de replay (<acervo>/<pleito>/.completo marca o pleito como pronto para a playlist)
+        #[arg(long)]
+        acervo: Option<PathBuf>,
+        /// Instante da classificação ("dd/mm/aaaa hh:mm:ss", hora de Brasília); padrão: agora
+        #[arg(long)]
+        agora: Option<String>,
+        /// Horas depois do início do dia da eleição em que o pleito deixa de estar em curso
+        #[arg(long, default_value_t = uv_aquisicao::pleitos::FIM_APURACAO_H)]
+        fim_apuracao_h: i64,
     },
     /// Lê as listas de seções (cs.json) das UFs e mostra quantas há
     Secoes {
@@ -497,6 +521,32 @@ fn main() -> anyhow::Result<()> {
             for p in &e.pl { for el in &p.e { println!("{:<7} {:<8} {:<11} {:<8} {:<6} {}", p.cd, p.c, p.dt, el.cd, el.t, el.nm); } }
             anyhow::Ok(())
         })?,
+
+        Cmd::Pleitos { alvo, saida, ele_c, guardar, acervo, agora, fim_apuracao_h } => {
+            use uv_aquisicao::pleitos;
+            let bytes = match &ele_c {
+                Some(p) => std::fs::read(p).map_err(|e| anyhow::anyhow!("{}: {e}", p.display()))?,
+                None => rt.block_on(async {
+                    let rede = Rede::nova(&ConfigRede::simples(1, 5.0, 3, 30, 1))?;
+                    anyhow::Ok(rede.get(&alvo.alvo().url_ele_c(), None, None).await?.corpo.to_vec())
+                })?,
+            };
+            if let Some(g) = &guardar { pleitos::gravar_atomico(g, &bytes)?; }
+            let agora = match &agora {
+                Some(s) => urna_velox::metricas::segundos(s).ok_or_else(|| anyhow::anyhow!("--agora inválido: {s}"))?,
+                None => uv_aquisicao::agora_brasilia(),
+            };
+            let lista = pleitos::descobrir(&bytes, agora, &pleitos::Opcoes { acervo, fim_apuracao_h })?;
+            println!("pleito  data        situação   replay  nome");
+            for p in &lista {
+                println!("{:<7} {:<11} {:<10} {:<7} {}", p.codigo, p.data, p.situacao.texto(), if p.replay { "sim" } else { "-" }, p.titulo);
+            }
+            if let Some(s) = &saida {
+                let j = pleitos::json(&lista, agora, &bytes);
+                pleitos::gravar_atomico(s, serde_json::to_string_pretty(&j)?.as_bytes())?;
+                eprintln!("{} pleitos em {}", lista.len(), s.display());
+            }
+        }
 
         Cmd::Secoes { alvo, ufs, cache, csv } => rt.block_on(async {
             let rede = Rede::nova(&ConfigRede::simples(28, 50.0, 3, 60, 5))?;

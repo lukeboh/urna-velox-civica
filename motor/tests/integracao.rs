@@ -81,7 +81,7 @@ fn segundo_turno_2024_51_municipios() {
 fn primeiro_turno_2026_pre_eleicao() {
     let u = uv_dados();
     let cand_json = u.join("preparo_2026_1t").join("candidatos.json");
-    assert!(cand_json.exists(), "{} não existe: gere com `uv-coletor preparar` (docs/FORMATO_CANDIDATOS.md)", cand_json.display());
+    assert!(cand_json.exists(), "{} não existe: gere com `uv-coletor preparar` (docs/arquitetura/FORMATO_CANDIDATOS.md)", cand_json.display());
     let (c, cad) = totalizar_com_candidatos(&u.join("dados"), &metricas_2026(), &cand_json, 28);
     let r = conferir_pasta_com_candidatos(&c, &u.join("oficial"), &cad);
     eprintln!("2026 pré-eleição: {}", r.resumo());
@@ -100,7 +100,7 @@ fn primeiro_turno_2026_pre_eleicao() {
 fn primeiro_turno_2024_pre_eleicao() {
     let u = uv_dados().join("2024-1t");
     let cand_json = u.join("preparo").join("candidatos.json");
-    assert!(cand_json.exists(), "{} não existe: gere com `uv-coletor preparar` (docs/FORMATO_CANDIDATOS.md)", cand_json.display());
+    assert!(cand_json.exists(), "{} não existe: gere com `uv-coletor preparar` (docs/arquitetura/FORMATO_CANDIDATOS.md)", cand_json.display());
     let (c, cad) = totalizar_com_candidatos(&u.join("dados"), &[u.join("metricas_aux.csv")], &cand_json, 28);
     // destinação presumida "Válido": votos idênticos; a situação diverge só onde o oficial tem candidato não apto
     let r = conferir_pasta_com_candidatos(&c, &u.join("oficial"), &cad);
@@ -149,7 +149,7 @@ const SIT_DESTINACAO_2024: usize = 33;
 fn segundo_turno_2024_pre_eleicao() {
     let u = uv_dados().join("2024-2t");
     let cand_json = u.join("preparo").join("candidatos.json");
-    assert!(cand_json.exists(), "{} não existe: gere com `uv-coletor preparar` (docs/FORMATO_CANDIDATOS.md)", cand_json.display());
+    assert!(cand_json.exists(), "{} não existe: gere com `uv-coletor preparar` (docs/arquitetura/FORMATO_CANDIDATOS.md)", cand_json.display());
     let (c, cad) = totalizar_com_candidatos(&u.join("dados"), &[u.join("metricas_2t.csv")], &cand_json, 28);
     let r = conferir_pasta_com_candidatos(&c, &u.join("oficial"), &cad);
     eprintln!("2024 2º turno pré-eleição: {}", r.resumo());

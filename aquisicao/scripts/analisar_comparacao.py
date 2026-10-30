@@ -3,7 +3,7 @@
 
     python3 analisar_comparacao.py ~/uvreal/ensaios/etapa7-<nome>
 
-Critérios do handoff (docs/HANDOFF_0.7.0.md):
+Critérios do handoff (docs/handoffs/HANDOFF_0.7.0.md):
  1. no fim, coluna do TSE = oficial = coluna do Urna Velox nas telas das abas, posições iguais, CLS 0;
  2. rede: ≤ 1 busca por (abrangência, cargo) por intervalo (fora a conferência do fim, que baixa todos), 0 buscas da
     comparação depois que a página fechou, 0 HTTP 429; BU → publicação p99;

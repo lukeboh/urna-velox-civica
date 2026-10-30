@@ -1,4 +1,4 @@
-//! **Federação de órgãos** (2.0, etapa A; ADR-022 e ADR-028; plano em `docs/HANDOFF_0.6.0.md`).
+//! **Federação de órgãos** (2.0, etapa A; ADR-022 e ADR-028; plano em `docs/handoffs/HANDOFF_0.6.0.md`).
 //!
 //! Vários `uv-servico`, cada um de um órgão diferente e no IP de saída desse órgão, dividem as seções entre si e
 //! trocam os BUs **diretamente, nó a nó** (sem storage compartilhado): cada um guarda tudo no seu diretório e

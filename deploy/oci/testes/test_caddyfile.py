@@ -133,7 +133,7 @@ class TestCaddyfile(unittest.TestCase):
 
 
 class TestDados(unittest.TestCase):
-    """Passo 3 do plano de borda (docs/HANDOFF_MODELO_BORDA_E_CONSISTENCIA.md): o subdomínio `dados`, atrás da
+    """Passo 3 do plano de borda (docs/handoffs/HANDOFF_MODELO_BORDA_E_CONSISTENCIA.md): o subdomínio `dados`, atrás da
     Cloudflare (cache de 30 s), só com a leitura do resultado e do estado — o modo HTTP da página (B-026). O site
     principal fica idêntico; sem o 6º argumento (DOMINIO_DADOS vazio no nos.env), o bloco não entra (o Caddy não tenta
     o certificado de um nome que ainda não está no DNS)."""
@@ -150,6 +150,16 @@ class TestDados(unittest.TestCase):
         tirado = [l for l in dif if l.startswith('- ')]
         self.assertEqual(tirado, [], 'o site principal mudou com o dados')
         return com, '\n'.join(l[2:] for l in dif if l.startswith('+ '))
+
+    def test_dados_serve_a_consulta_com_o_cache_do_servico(self):
+        """Multipleito (1.1): as séries de consulta (`/consulta/*`) também pelo `dados`, com o Cache-Control do próprio
+        uv-servico (5 min no índice, 1 h no resto), sem a troca para 30 s das rotas ao vivo."""
+        _, novo = self.acrescimo(self.B, self.DADOS)
+        self.assertIn('path /consulta/*', novo)
+        i = novo.index('path /consulta/*')
+        bloco = novo[i:novo.index('}\n    }', novo.index('handle @consulta', i)) + 6]
+        self.assertIn('reverse_proxy 127.0.0.1:8080 10.0.1.10:8080', bloco)
+        self.assertNotIn('header_down Cache-Control', bloco)
 
     def test_sem_dados_nada_muda(self):
         rc, out, err = gerar(*self.B)

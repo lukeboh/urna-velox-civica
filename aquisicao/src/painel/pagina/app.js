@@ -1,5 +1,5 @@
 'use strict';
-// Painel dos nós do Urna Velox (docs/PAINEL.md). Sem bibliotecas: o DOM é montado com textContent (nada vindo da rede vira HTML).
+// Painel dos nós do Urna Velox (docs/operacao/PAINEL.md). Sem bibliotecas: o DOM é montado com textContent (nada vindo da rede vira HTML).
 
 const API = '/painel/api';
 const INTERVALO_MS = 5000;
@@ -124,6 +124,9 @@ function situacao(n) {
   if (idade != null && idade > 120) return ['critico', `saúde parada há ${duracao(idade)}`];
   if (idade != null && idade > 30) return ['atencao', `saúde atrasada ${duracao(idade)}`];
   if (sv.pausa_429_s > 0) return ['critico', `pausa por HTTP 429 até ${sv.retomada_em || '?'}`];
+  // sonda (Test Message) que não volta: o processo está vivo, mas o caminho dos BUs parou
+  const sd = n.resumo.sonda;
+  if (sd && sd.atrasada) return ['critico', `caminho dos BUs parado: sonda pendente há ${duracao(sd.atraso_s)}`];
   const e = String(sv.estado || 'ativo');
   if (/parad|erro|falh|abort/i.test(e)) return ['atencao', e];
   return ['bom', e];
@@ -189,6 +192,19 @@ function cartaoNo(id, n) {
       tile('Cota deste nó', fed.rps_cota == null ? '—' : `${num(fed.rps_cota, 0)} req/s`, `federação ${num(fed.rps_federacao, 0)} req/s`,
         fed.participa ? '' : 'atencao')));
   }
+  const sd = r.sonda, vf = r.sonda_verificador;
+  if (sd || vf) {
+    const alvos = vf && vf.alvos ? Object.entries(vf.alvos) : [];
+    const ruins = alvos.filter(([, a]) => a.situacao !== 'ok');
+    const vfVelho = vf && vf.idade_arquivo_s > 30;
+    partes.push(h('div', { class: 'subtitulo' }, 'Sondas (caminho dos BUs)'), h('div', { class: 'tiles' },
+      sd ? tile('Sonda injeção → gravação', sd.ultima ? `${num(sd.ultima.ms && sd.ultima.ms.gravacao, 1)} ms` : '—',
+        `pendente mais antiga ${duracao(sd.atraso_s)} · ${inteiro(sd.concluidas)}/${inteiro(sd.injetadas)} voltaram`, sd.atrasada ? 'critico' : '') : null,
+      sd ? tile('Episódios de atraso', inteiro(sd.episodios_atraso), `limite ${duracao(sd.limite_s)} · perdidas ${inteiro(sd.perdidas)}`, sd.episodios_atraso ? 'atencao' : '') : null,
+      vf ? tile('Verificador externo', vfVelho ? 'parado' : vf.ok ? 'ok' : `${ruins.length} com problema`,
+        vfVelho ? `relatório de ${duracao(vf.idade_arquivo_s)} atrás` : ruins.map(([u, a]) => `${u}: ${a.situacao}`).join(' · ') || `${alvos.length} alvo(s)`,
+        vfVelho ? 'atencao' : vf.ok ? '' : 'critico') : null));
+  }
   const al = r.alertas;
   if (Array.isArray(al) && al.length) {
     partes.push(h('div', { class: 'subtitulo' }, 'Alertas recentes'), h('ul', { class: 'alertas' },
@@ -206,6 +222,7 @@ const GRAFICOS = [
   { col: 'rss_mb', titulo: 'Memória do uv-servico', unid: 'MB (RSS)' },
   { col: 'sis_cpu_pct', titulo: 'CPU da máquina', unid: '%', max: 100 },
   { col: 'ws_clientes', titulo: 'Clientes WebSocket', unid: 'conexões abertas' },
+  { col: 'sonda_ms', titulo: 'Sonda: injeção → gravação', unid: 'ms pelo caminho dos BUs (motor e gravação)' },
 ];
 
 function desenharVisao() {

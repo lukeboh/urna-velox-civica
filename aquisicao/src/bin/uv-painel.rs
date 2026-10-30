@@ -1,4 +1,4 @@
-//! `uv-painel` — painel de monitoramento e gerenciamento dos nós (módulo `uv_aquisicao::painel`, `docs/PAINEL.md`).
+//! `uv-painel` — painel de monitoramento e gerenciamento dos nós (módulo `uv_aquisicao::painel`, `docs/operacao/PAINEL.md`).
 //!
 //! Os segredos vêm do ambiente (no servidor, `/etc/urna-velox/painel.env`, lido pelo systemd), nunca da linha de
 //! comando: `UV_PAINEL_GOOGLE_ID`, `UV_PAINEL_GOOGLE_SEGREDO`, `UV_PAINEL_SEGREDO` (o mesmo nos dois nós) e
@@ -56,7 +56,7 @@ struct Cli {
 }
 
 fn var(k: &str) -> anyhow::Result<String> {
-    std::env::var(k).map(|v| v.trim().to_string()).with_context(|| format!("falta a variável de ambiente {k} (ver docs/PAINEL.md)"))
+    std::env::var(k).map(|v| v.trim().to_string()).with_context(|| format!("falta a variável de ambiente {k} (ver docs/operacao/PAINEL.md)"))
 }
 
 #[tokio::main]

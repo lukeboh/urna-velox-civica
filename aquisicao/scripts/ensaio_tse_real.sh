@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Ensaio da comparação Urna Velox × TSE contra o site REAL do TSE (etapa 7, critério 3 do docs/HANDOFF_0.7.0.md):
+# Ensaio da comparação Urna Velox × TSE contra o site REAL do TSE (etapa 7, critério 3 do docs/handoffs/HANDOFF_0.7.0.md):
 # uv-servico --sem-coleta --http contra https://resultados.tse.jus.br e 3 abas da página (2 no PC, 1 no celular) por N
 # minutos. A única coisa que vai ao TSE são as buscas da comparação: o -u.json de cada tela, no máximo uma vez a cada
 # 30 s por tópico (3 telas ≈ 6 req/min). Nenhum cs.json, aux.json ou BU (--sem-coleta).

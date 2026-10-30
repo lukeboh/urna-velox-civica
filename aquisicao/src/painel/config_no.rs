@@ -33,7 +33,7 @@ const fn c(chave: &'static str, rotulo: &'static str, tipo: Tipo, editavel: bool
 pub const TETO_RPS: f64 = 100.0;
 
 pub const CAMPOS: &[Campo] = &[
-    c("PLEITO", "Pleito", Tipo::Texto, true, true, false, "código do pleito (3221 = 2º turno de 2026)"),
+    c("PLEITO", "Pleito", Tipo::Texto, true, true, true, "código do pleito (3221 = 2º turno de 2026); vazio = o ciclo escolhe (multipleito)"),
     c("CICLO", "Ciclo", Tipo::Texto, true, true, false, "diretório do ciclo no site, ex.: ele2026"),
     c("AMBIENTE", "Ambiente", Tipo::Opcao(&["oficial", "simulado"]), true, true, false, "oficial | simulado"),
     c("BASE", "Servidor de resultados", Tipo::Url, true, true, false, "de onde o nó coleta; o TSE pede a confirmação \"CONFIRMO TSE\""),
@@ -237,6 +237,8 @@ NO_ID=no-a\nFED_PORTA=7700\nUFS=\"sp,rj\"\nEXTRA='--aceitar-incompleto --x 1'\nO
         for ok in ["0", "10", "2.5", "100", ""] { assert!(validar("TRAVA_PP", ok).is_ok(), "TRAVA_PP={ok}"); }
         for ruim in ["101", "-1", "dez", "1e9"] { assert!(validar("TRAVA_PP", ruim).is_err(), "TRAVA_PP={ruim}"); }
         assert!(campo("TRAVA_PP").is_some_and(|c| c.editavel && !c.sensivel && c.opcional));
+        // multipleito (§3.6 do HANDOFF_1.1.0): o no.env pode ficar sem PLEITO (o ciclo escolhe)
+        assert!(campo("PLEITO").is_some_and(|c| c.editavel && c.sensivel && c.opcional));
         assert!(validar("ACESSO", "qualquer").is_err());
         assert!(validar("RPS", "0").is_err());
         assert!(validar("RPS", "abc").is_err());

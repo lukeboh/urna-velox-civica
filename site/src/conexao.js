@@ -1,4 +1,4 @@
-// Cliente do protocolo público (docs/PROTOCOLO_WS.md): só /ws e /api/v1/*. Reconexão com espera crescente (1, 2, 4…
+// Cliente do protocolo público (docs/arquitetura/PROTOCOLO_WS.md): só /ws e /api/v1/*. Reconexão com espera crescente (1, 2, 4…
 // até 30 s, com variação aleatória, §5); a cada conexão reinscreve os tópicos, pede `eventos` e `marcos`.
 //
 // B-026 — modo HTTP: depois de FALHAS_PARA_HTTP falhas seguidas do WebSocket (recusa — 503 "limite de clientes"
@@ -77,6 +77,9 @@ export class Conexao {
       // B-014: eventos e marcos do Brasil e das UFs (e os dos tópicos inscritos), não os das 5.574 circunscrições municipais
       this.#mandar({ op: 'eventos', escopo: 'uf' });
       this.#mandar({ op: 'marcos', escopo: 'uf', faltam: this.faltam });
+      // sondas (PROTOCOLO_WS §4.9): uma mensagem pequena a cada ~30 s, para o chip e a telemetria mostrarem que o
+      // caminho dos BUs está andando (servidor antigo responde `op_desconhecida`, ignorado)
+      this.#mandar({ op: 'sonda' });
       if (this.mapa) this.#mandar({ op: 'mapa', ...this.mapa() });
     };
     ws.onmessage = (e) => {

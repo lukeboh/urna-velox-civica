@@ -81,6 +81,13 @@ struct Cli {
     /// dele, HTTP 429 e caixa de penalidade do IP por 600 s simulados (2.0, federação). 0 = sem limite
     #[arg(long, default_value_t = 0.0)]
     limite_ip_rps: f64,
+    /// Regra do limite por IP (B-067; a regra exata da borda do TSE não é conhecida): segundo (segundos reais fechados,
+    /// o padrão), fixa:W (blocos de W s, limite × W) ou deslizante[:W] (as últimas W s antes de cada requisição)
+    #[arg(long, default_value = "segundo")]
+    limite_ip_regra: String,
+    /// Peso de uma resposta 404 no limite por IP (1 = como qualquer requisição)
+    #[arg(long, default_value_t = 1.0)]
+    limite_ip_peso_404: f64,
     /// TSE simulado (etapa 7): candidatos.json do pleito; os -u.json passam a ser servidos durante a noite, progressivos,
     /// com o atraso da divulgação oficial, e iguais ao oficial depois da última divulgação
     #[arg(long, value_name = "CANDIDATOS")]
@@ -116,6 +123,8 @@ fn main() -> anyhow::Result<()> {
         falhas: Falhas { rajadas_429: a.rajada_429, latencia_ms: a.latencia_ms, erros_5xx: a.erros_5xx, semente: a.semente,
             reenvios: a.reenviar, anulacoes: a.anular, quedas: a.queda },
         limite_ip_rps: a.limite_ip_rps,
+        regra_limite_ip: uv_aquisicao::simulador::RegraLimite::de_texto(&a.limite_ip_regra)?,
+        peso_404_ip: a.limite_ip_peso_404,
         acompanhar_pct: a.acompanhar_servico.max(0.0),
         tse: a.tse_simulado.map(|c| { let mut o = uv_aquisicao::tse_simulado::Opcoes::padrao(c); o.passo_s = a.tse_passo.max(1); o.semente = a.semente; o }),
     };

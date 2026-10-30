@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Funções comuns dos scripts de implantação (carregado pelos NN_*.sh). Ver docs/HANDOFF_IMPLANTACAO_OCI.md.
+# Funções comuns dos scripts de implantação (carregado pelos NN_*.sh). Ver docs/handoffs/HANDOFF_IMPLANTACAO_OCI.md.
 set -euo pipefail
 
 AQUI="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

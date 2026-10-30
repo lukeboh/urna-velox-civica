@@ -1,4 +1,4 @@
-//! `uv-coletor preparar`: monta o `candidatos.json` de um pleito (docs/FORMATO_CANDIDATOS.md) só com arquivos
+//! `uv-coletor preparar`: monta o `candidatos.json` de um pleito (docs/arquitetura/FORMATO_CANDIDATOS.md) só com arquivos
 //! publicados **antes da apuração**, baixando-os com cache local:
 //!
 //! * `ele-c.json` — eleições do pleito, turno, cargos (majoritários e consultas; proporcionais ficam de fora) e

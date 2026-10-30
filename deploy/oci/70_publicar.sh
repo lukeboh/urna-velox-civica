@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 70 — Publica no bucket (pull, Parte B de docs/HANDOFF_DEPLOY_SEM_SSH.md) o pacote de binários aarch64 e o
+# 70 — Publica no bucket (pull, Parte B de docs/handoffs/HANDOFF_DEPLOY_SEM_SSH.md) o pacote de binários aarch64 e o
 # manifesto.json assinado com Ed25519 (ssh-keygen -Y sign). Os nós consultam o manifesto a cada 1 min via
 # uv-atualizador (systemd timer), conferem a assinatura, o número de série, o SHA-256 e a trava combinado_ate,
 # e se atualizam sozinhos sem SSH e sem Run Command.

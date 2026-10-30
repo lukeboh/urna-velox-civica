@@ -1,11 +1,11 @@
-//! Previsão do "matematicamente" e do fim da apuração no `uv-servico` (etapa 8, `docs/HANDOFF_0.8.0.md`; o cálculo é o
+//! Previsão do "matematicamente" e do fim da apuração no `uv-servico` (etapa 8, `docs/handoffs/HANDOFF_0.8.0.md`; o cálculo é o
 //! do motor, `urna_velox::previsao`).
 //!
 //! Roda numa thread própria (`uv-previsao`), **fora da thread do motor**: lê o estado (contadores atômicos) e os
 //! candidatos, e recebe do motor só os instantes em que cada circunscrição ficou matematicamente decidida. A cada
 //! `--previsao-intervalo` segundos do relógio do serviço (o do site; no replay, o simulado), registra o avanço de cada
 //! tópico publicado e prevê só os que mudaram; as previsões vão para a difusão (mensagem `previsao`,
-//! `docs/PROTOCOLO_WS.md` §4.7) e para `<saida>/previsoes.csv`. Sempre **estimativa**, com faixa P10–P90.
+//! `docs/arquitetura/PROTOCOLO_WS.md` §4.7) e para `<saida>/previsoes.csv`. Sempre **estimativa**, com faixa P10–P90.
 
 use crate::relogio::Ancora;
 use crate::servico::{Amostra, Comum};

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Versionamento do Urna Velox (ver docs/VERSIONAMENTO.md).
+# Versionamento do Urna Velox (ver docs/processo/VERSIONAMENTO.md).
 #
 #   scripts/versao.sh atual                 mostra a versão (arquivo VERSION)
 #   scripts/versao.sh bump [patch|minor|major|alpha] "resumo"   (alpha: X.Y.Z-alpha.N → N+1)
