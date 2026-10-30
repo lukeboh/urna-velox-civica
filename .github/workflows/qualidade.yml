@@ -1,0 +1,96 @@
+name: Qualidade, Cobertura e SonarQube
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: qualidade-civica
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  qualidade:
+    name: Testes, Métricas e SonarQube
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Cache de dependências e compilação Rust
+        uses: Swatinem/rust-cache@v2
+
+      - name: Instalar cargo-llvm-cov e ferramentas
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov,cargo-geiger
+
+      - name: Clippy (Linter e Análise Estática)
+        run: |
+          cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Auditoria de Unsafe (cargo-geiger)
+        run: |
+          echo "## 🛡️ Auditoria de Segurança Unsafe (cargo-geiger)" >> $GITHUB_STEP_SUMMARY
+          echo '```text' >> $GITHUB_STEP_SUMMARY
+          cargo geiger -p urna-velox -p uv-aquisicao >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Cobertura de Código (LCOV e HTML)
+        run: |
+          # 1. Gera lcov.info para o SonarCloud
+          cargo llvm-cov --workspace --lcov --output-path lcov.info
+          
+          # 2. Resumo em Markdown para o GitHub Actions
+          echo "## 📊 Resumo de Cobertura de Código" >> $GITHUB_STEP_SUMMARY
+          echo '```text' >> $GITHUB_STEP_SUMMARY
+          cargo llvm-cov --workspace --summary-only >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          
+          # 3. Gera o site HTML para o GitHub Pages
+          cargo llvm-cov --workspace --html --output-dir relatorio-cobertura
+          if [ -d "relatorio-cobertura/html" ]; then
+            cp -r relatorio-cobertura/html/* relatorio-cobertura/
+          fi
+
+      - name: SonarCloud Scan
+        if: env.SONAR_TOKEN != ''
+        uses: SonarSource/sonarcloud-github-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+      - name: Salvar artefato zip para download
+        uses: actions/upload-artifact@v4
+        with:
+          name: relatorio-cobertura
+          path: relatorio-cobertura/
+          retention-days: 14
+
+      - name: Preparar artefato para GitHub Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: relatorio-cobertura/
+
+  deploy-pages:
+    name: Publicar no GitHub Pages
+    needs: qualidade
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy para GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
