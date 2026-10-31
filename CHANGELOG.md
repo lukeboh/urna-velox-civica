@@ -2,6 +2,15 @@
 
 Todas as versões do Urna Velox. Regras em [docs/processo/VERSIONAMENTO.md](docs/processo/VERSIONAMENTO.md): cada commit sobe a versão; só as versões `X.Y.0` ganham tag (`vX.Y.0`; até a `0.3.0` todo commit ganhava a sua); o MINOR acompanha a última etapa concluída do [ROADMAP](ROADMAP.md) (etapas 1 a 9 = `0.1.0` a `0.9.0`, com a escalabilidade segura na etapa 6, a comparação com o TSE na 7, a previsão na 8 e o ensaio geral na 9 desde a renumeração de 16/10/2026; nas entradas anteriores à `0.6.7`, "etapa 7" / `0.7.0` = ensaio geral, hoje `0.9.0`; majoritários completos = `1.0.0`; proporcionais = `2.0.0`; até a 0.0.19 valia o esquema antigo de seis fases). As entradas `2.0.0-alpha.N`, abaixo da `0.6.0`, são o trabalho da etapa 6 feito na branch `feature/2.0-escalabilidade` antes da renumeração de 15/10/2026; nelas, "2.0" quer dizer a etapa 6 e "3.0", os proporcionais (hoje `2.0.0`).
 
+## [1.1.9] — 2026-10-31
+
+- **M-030: a última vulnerabilidade do SonarCloud (jssecurity:S8476).** A análise de 31/10 (10h09 UTC) zerou bugs e code
+  smells, mas o `encodeURIComponent` da 1.1.8 não conta como proteção para o Sonar, que segue o texto do endereço até o
+  `fetch` da curva. O `lerRota` (`site/src/app.js`) passa a usar o próprio tópico da lista publicada pelo servidor; o
+  endereço só escolhe qual. Mesmo resultado de antes. `site/dist` regerado; testes da página das rotas verdes
+  (`cabecalho`, `consulta_pagina`, `mapa_pagina`, `pleitos_pagina`, `modo_pagina`, `playlist_identidade`, `antes_17h`,
+  `faixa_estavel`). Não mexe em totalização nem em resultado.
+
 ## [1.1.8] — 2026-10-31
 
 - **M-030: achados do SonarCloud na página** (`site/src`; análise de 31/10, 02h37 UTC, a 1ª com a página). O tópico

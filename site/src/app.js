@@ -270,16 +270,18 @@ function destacar(e) {
 function lerRota() {
   // consulta de um pleito (multipleito, 1.1): #/p/<pleito>/<abrangência>/c<cargo>
   const m = /^#\/(?:p\/\d+\/)?([a-z]{2}(?:\d{5})?)\/c(\d{4})$/.exec(location.hash);
-  let a = m?.[1], c = m ? +m[2] : null;
-  if (!a || !S.topicos.has(`${a}-c${cargo4(c)}`)) {
+  // o endereço só escolhe: o tópico usado (e pedido ao servidor) é sempre um dos que o servidor publicou, nunca o texto
+  // do endereço (SonarCloud jssecurity:S8476)
+  const pedido = m ? `${m[1]}-c${cargo4(+m[2])}` : null;
+  let t = pedido && [...S.topicos].find((x) => x === pedido);
+  if (!t) {
     // padrão: Presidente no Brasil; senão o primeiro tópico do cargo de menor código
     const pref = ['br-c0001', ...[...S.topicos].sort(porCodigo)];
-    const t = pref.find((x) => S.topicos.has(x));
+    t = pref.find((x) => S.topicos.has(x));
     if (!t) return null;
-    const p = /^(.+)-c(\d{4})$/.exec(t);
-    a = p[1]; c = +p[2];
   }
-  return { abr: a, cargo: c, topico: `${a}-c${cargo4(c)}` };
+  const p = /^(.+)-c(\d{4})$/.exec(t);
+  return { abr: p[1], cargo: +p[2], topico: t };
 }
 
 function cargosDe(a) {

@@ -4641,16 +4641,15 @@ function destacar(e) {
 }
 function lerRota() {
   const m = /^#\/(?:p\/\d+\/)?([a-z]{2}(?:\d{5})?)\/c(\d{4})$/.exec(location.hash);
-  let a = m?.[1], c = m ? +m[2] : null;
-  if (!a || !S.topicos.has(`${a}-c${cargo4(c)}`)) {
+  const pedido2 = m ? `${m[1]}-c${cargo4(+m[2])}` : null;
+  let t = pedido2 && [...S.topicos].find((x) => x === pedido2);
+  if (!t) {
     const pref = ["br-c0001", ...[...S.topicos].sort(porCodigo)];
-    const t = pref.find((x) => S.topicos.has(x));
+    t = pref.find((x) => S.topicos.has(x));
     if (!t) return null;
-    const p = /^(.+)-c(\d{4})$/.exec(t);
-    a = p[1];
-    c = +p[2];
   }
-  return { abr: a, cargo: c, topico: `${a}-c${cargo4(c)}` };
+  const p = /^(.+)-c(\d{4})$/.exec(t);
+  return { abr: p[1], cargo: +p[2], topico: t };
 }
 function cargosDe(a) {
   return [...S.topicos].filter((t) => t.startsWith(`${a}-c`)).map((t) => +t.slice(-4)).sort((x, y) => x - y);
