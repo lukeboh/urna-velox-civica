@@ -2,6 +2,27 @@
 
 Todas as versões do Urna Velox. Regras em [docs/processo/VERSIONAMENTO.md](docs/processo/VERSIONAMENTO.md): cada commit sobe a versão; só as versões `X.Y.0` ganham tag (`vX.Y.0`; até a `0.3.0` todo commit ganhava a sua); o MINOR acompanha a última etapa concluída do [ROADMAP](ROADMAP.md) (etapas 1 a 9 = `0.1.0` a `0.9.0`, com a escalabilidade segura na etapa 6, a comparação com o TSE na 7, a previsão na 8 e o ensaio geral na 9 desde a renumeração de 16/10/2026; nas entradas anteriores à `0.6.7`, "etapa 7" / `0.7.0` = ensaio geral, hoje `0.9.0`; majoritários completos = `1.0.0`; proporcionais = `2.0.0`; até a 0.0.19 valia o esquema antigo de seis fases). As entradas `2.0.0-alpha.N`, abaixo da `0.6.0`, são o trabalho da etapa 6 feito na branch `feature/2.0-escalabilidade` antes da renumeração de 15/10/2026; nelas, "2.0" quer dizer a etapa 6 e "3.0", os proporcionais (hoje `2.0.0`).
 
+## [1.1.8] — 2026-10-31
+
+- **M-030: achados do SonarCloud na página** (`site/src`; análise de 31/10, 02h37 UTC, a 1ª com a página). O tópico
+  vindo do endereço vai ao `fetch` da curva com `encodeURIComponent` (jssecurity:S8476); as 12 chamadas assíncronas
+  soltas terminam em `.catch(noConsole(…))`, que leva a falha ao console como antes (S9383); `sort(porCodigo)` nos três
+  `sort()` sem comparador, na mesma ordem (S2871); `milhar()`, `semBarraFinal()` e `semTurno()` no lugar das regex com
+  retrocesso (S8786); `Number.parseFloat`/`Number.parseInt` (S7773); o título da folha de detalhe deixa de ser vazio
+  (Web:S6850). Auxiliares no `util.js`. `site/dist` regerado. Prova: equivalência dos auxiliares com as regex antigas
+  (20 mil números e casos de borda); testes da página que rodam sem servidor real, 28 verdes (`cabecalho`, `hodometro`,
+  `mapa_pagina`, `consulta_pagina`, `pleitos_pagina`, `painel_celular`, `normas_links`, `letreiro_celular` no Chromium…);
+  `consulta_lote` e `diag_cabecalho` falham igual com o código anterior (máquina de 2 núcleos, fixture do diagnóstico
+  ausente); os que pedem `uv-servico` no ar ou a produção e o WebKit não rodaram na nuvem; `cargo test` da `pagina`
+  verde. Não mexe em totalização nem em resultado.
+
+## [1.1.7] — 2026-10-30
+
+- **M-029: as ferramentas de linha de comando da página saem da avaliação do SonarCloud** (pedido do Luciano, 30/10
+  23h43): `site/*.mjs` (build, documentos, capa, marca) e `site/geo/**` (gerador do mapa) rodam só na máquina de quem
+  gera o `site/dist`. Na análise de 31/10 (02h37 UTC) eles respondiam por 9 vulnerabilidades e 7 achados dos 41 da
+  página. Não mexe em código, totalização nem resultado.
+
 ## [1.1.6] — 2026-10-30
 
 - **M-029: o `sonar-project.properties` passa a viver neste repositório** (Luciano, 30/10/2026 23h06: a configuração da

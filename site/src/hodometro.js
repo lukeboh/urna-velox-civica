@@ -9,7 +9,7 @@
 // a coluna tem os dígitos 0–9 três vezes seguidas e a posição de cada dígito anda sem limite; quando sairia da coluna,
 // ela é trazida de volta 10 ou 20 posições (o mesmo dígito na cópia vizinha: nada muda na tela).
 
-import { el, movimentoReduzido } from './util.js';
+import { el, milhar, movimentoReduzido } from './util.js';
 
 const COPIAS = 3, POS = COPIAS * 10;
 
@@ -203,7 +203,7 @@ export class Hodometro {
       for (let i = 0; i < casas; i++) this.#por(this.nInt + i, dec[i] ?? '0');
       for (const s of this.seps) s.span.classList.toggle('vazio', cheio[s.apos] === ' ');
       if (this.op.enxuto || this.op.prefixo || this.arrastarEl) this.#deslizar();
-      this.texto.textContent = nulo ? '—' : (int.replace(/\B(?=(\d{3})+(?!\d))/g, '.') + (casas ? ',' + dec : '') + (this.op.sufixo ? ' ' + this.op.sufixo : ''));
+      this.texto.textContent = nulo ? '—' : (milhar(int) + (casas ? ',' + dec : '') + (this.op.sufixo ? ' ' + this.op.sufixo : ''));
     }
     if (antes !== undefined && antes !== null && movimentoReduzido() && this.el.animate) {
       this.el.animate([{ opacity: 0.35 }, { opacity: 1 }], { duration: 220, easing: 'ease-out' });

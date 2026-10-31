@@ -133,7 +133,7 @@ export class PainelTelemetria {
     const r = ancora?.getBoundingClientRect();
     if (r) {
       const topo = Math.round(r.bottom + 8);
-      const feed = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--feed-h')) || 64;
+      const feed = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--feed-h')) || 64;
       this.raiz.style.top = `${topo}px`;
       this.raiz.style.maxHeight = `${Math.max(200, innerHeight - topo - feed - 16)}px`;
     }

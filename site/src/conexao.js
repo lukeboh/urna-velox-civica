@@ -9,6 +9,8 @@
 // pelo WebSocket. Base das consultas: `<meta name="uv-dados" content="…">` no index.html (no passo 3 do plano de
 // borda, o subdomínio `dados`, com cache na borda); vazia, ou fora do ar, o próprio domínio.
 
+import { noConsole, semBarraFinal } from './util.js';
+
 const MAX_POR_MSG = 90; // tópicos por mensagem (cada mensagem ≤ 4 KB)
 const FALHAS_PARA_HTTP = 3; // falhas seguidas do WebSocket até o modo HTTP (~3 s: tentativas em 0, 1 e 2 s)
 const VIDA_MINIMA_MS = 30000; // uma conexão que durou isso zera a contagem de falhas
@@ -46,7 +48,7 @@ export class Conexao {
     this.consultaMs = o.consultaMs || CONSULTA_MS;
     this.novoWsMs = o.novoWsMs || NOVO_WS_MS;
     const meta = typeof document !== 'undefined' ? document.querySelector('meta[name="uv-dados"]')?.content : '';
-    this.base = String(o.base ?? meta ?? '').trim().replace(/\/+$/, '');
+    this.base = semBarraFinal(String(o.base ?? meta ?? '').trim());
     if (this.base && typeof location !== 'undefined' && this.base === location.origin) this.base = '';
     // `?modo=http` na URL: este navegador age como se o /ws fosse recusado (conferir o modo HTTP do celular, sem
     // mexer no servidor); as consultas vão ao servidor de verdade, nos intervalos de verdade
@@ -123,7 +125,7 @@ export class Conexao {
   #entrarHttp() {
     this.http = true;
     this.aoEstado('http', { consultaMs: this.consultaMs });
-    this.#consultar();
+    this.#consultar().catch(noConsole('consulta'));
     this.#agendarWs();
   }
 
@@ -229,6 +231,6 @@ export class Conexao {
     if (entrar.length) this.#mandarInscricoes(entrar);
     for (let i = 0; i < sair.length; i += MAX_POR_MSG) this.#mandar({ op: 'cancelar', topicos: sair.slice(i, i + MAX_POR_MSG) });
     // modo HTTP: o tópico que entrou na tela é consultado na hora (os outros seguem no intervalo)
-    if (this.http) for (const t of this.#topicosHttp(entrar)) this.#buscar(t);
+    if (this.http) for (const t of this.#topicosHttp(entrar)) this.#buscar(t).catch(noConsole('modo HTTP'));
   }
 }

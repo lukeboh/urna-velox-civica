@@ -4,8 +4,33 @@ export const movimentoReduzido = () => window.matchMedia('(prefers-reduced-motio
 
 export function mil(x) {
   if (x == null || !Number.isFinite(x)) return '—';
-  return Math.round(x).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return milhar(Math.round(x).toString());
 }
+
+/** Separa os milhares com ponto ("1234567" → "1.234.567"; o sinal fica de fora), sem regex: a antiga
+ *  `/\B(?=(\d{3})+(?!\d))/g` tem retrocesso super-linear (SonarCloud S8786). */
+export function milhar(s) {
+  if (s.startsWith('-')) return '-' + milhar(s.slice(1));
+  let r = '';
+  for (let i = 0; i < s.length; i++) {
+    if (i > 0 && (s.length - i) % 3 === 0) r += '.';
+    r += s[i];
+  }
+  return r;
+}
+
+/** Tira as barras do fim sem regex (a `/\/+$/` tem retrocesso super-linear numa sequência longa de barras). */
+export function semBarraFinal(s) {
+  let fim = s.length;
+  while (fim > 0 && s[fim - 1] === '/') fim--;
+  return s.slice(0, fim);
+}
+
+/** Para chamadas assíncronas que não são aguardadas: a falha vai para o console, como antes, sem virar rejeição solta. */
+/** Ordem por unidade de código (a do `sort()` sem comparador), explícita (SonarCloud S2871). */
+export const porCodigo = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+
+export const noConsole = (onde) => (e) => console.error(`[urna-velox] ${onde}:`, e);
 
 export function pct(x, casas = 2) {
   if (x == null || !Number.isFinite(x)) return '—';

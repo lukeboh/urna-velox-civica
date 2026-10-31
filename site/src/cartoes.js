@@ -137,7 +137,7 @@ export class Cartoes {
     if (!a) return;
     this.arr = null;
     const d = a.vaga.getBoundingClientRect(), r = a.c.getBoundingClientRect();
-    const [tx, ty] = (a.c.style.translate || '0px 0px').split(' ').map((v) => parseFloat(v) || 0);
+    const [tx, ty] = (a.c.style.translate || '0px 0px').split(' ').map((v) => Number.parseFloat(v) || 0);
     a.c.style.translate = `${tx + d.left - r.left}px ${ty + d.top - r.top}px`;
     const fim = () => {
       a.c.classList.remove('arrastando');

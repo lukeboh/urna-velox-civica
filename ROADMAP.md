@@ -317,6 +317,7 @@ pela ordem de ataque; depois os já entregues nesta série.
 - ✅ **[M-017](docs/itens/M-017.md)** (melhoria) — Mapa das seções: cada BU totalizado "explode" e deixa um ponto no mapa do Brasil (no fim, o Brasil todo iluminado pelas ~500 mil seções), só o Brasil… · *feito (testes `site/testes/mapa_pagina.mjs`, `mapa::testes`…* · 1.0.0
 - ✅ **[M-028](docs/itens/M-028.md)** (melhoria) — Corrigir os 26 achados do SonarCloud (24 bugs, 2 code smells; gate reprovado por confiabilidade C no código novo). · *feito (sem teste antes, por decisão do Luciano; suíte verde…* · 1.1.4
 - ✅ **[M-029](docs/itens/M-029.md)** (melhoria) — Avaliar a página (site/) no Sonar e tirar da avaliação o código que só serve para teste. · *feito (testes do Rust em `<módulo>/testes.rs`, 204 testes v…* · 1.1.5
+- ✅ **[M-030](docs/itens/M-030.md)** (melhoria) — Corrigir os 25 achados do SonarCloud na página (1 vulnerabilidade, 17 bugs, 7 code smells). · *feito (sem teste antes; auxiliares equivalentes às regex an…* · 1.1.8
 <!-- /itens:1.0.x -->
 
 ---

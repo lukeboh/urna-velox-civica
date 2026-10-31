@@ -35,7 +35,7 @@ export function normalizarSigla(s) {
 
 /** #rrggbb → [L, C, h] em OKLCH */
 export function oklch(hex) {
-  const n = parseInt(hex.slice(1), 16);
+  const n = Number.parseInt(hex.slice(1), 16);
   const lin = (v) => { v /= 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
   const r = lin((n >> 16) & 255), g = lin((n >> 8) & 255), b = lin(n & 255);
   const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);

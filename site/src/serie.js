@@ -4,6 +4,8 @@
 // interface da `Conexao` (conexao.js) e entrega as mesmas mensagens do protocolo (resultado, tse, evento, marco, mapa,
 // estado), filtradas pelo instante do slider: todos os componentes da página funcionam como na noite. O slider é a
 // barra do replay (replay.js) com o relógio local: cada visitante tem a sua linha do tempo.
+import { noConsole, semBarraFinal } from './util.js';
+
 import { Player } from './replay.js';
 
 const pad4 = (c) => String(c).padStart(4, '0');
@@ -40,7 +42,7 @@ const num = (x) => (x === '' || x == null ? null : Number.isNaN(+x) ? x : +x);
 /** Bases da consulta, na ordem: a do `<meta name="uv-dados">` (a borda, com cache: a consulta não chega aos nós) e o
  * próprio domínio (se a borda falhar, como no modo HTTP da conexao.js). */
 export function basesConsulta() {
-  const m = (typeof document !== 'undefined' ? document.querySelector('meta[name="uv-dados"]')?.content || '' : '').trim().replace(/\/+$/, '');
+  const m = semBarraFinal((typeof document !== 'undefined' ? document.querySelector('meta[name="uv-dados"]')?.content || '' : '').trim());
   const o = typeof location !== 'undefined' ? location.origin : '';
   return m && m !== o ? [`${m}/consulta`, '/consulta'] : ['/consulta'];
 }
@@ -104,7 +106,7 @@ export class ConexaoSerie {
       if (this.mapaF) this.aoReceber({ tipo: 'mapa', reiniciar: true, epoca: this.epoca });
     }
     // as versões novas dos tópicos da tela
-    for (const t of this.topicos) { this.series.delete(t); this.#carregar(t); }
+    for (const t of this.topicos) { this.series.delete(t); this.#carregar(t).catch(noConsole('série')); }
     this.aoIndice?.(j);
   }
 
@@ -165,7 +167,7 @@ export class ConexaoSerie {
     this.topicos = new Set(lista);
     for (const t of lista) {
       const s = this.series.get(t);
-      if (!s) this.#carregar(t);
+      if (!s) this.#carregar(t).catch(noConsole('série'));
       else if (s.v) this.#emitir(t, true);
     }
   }

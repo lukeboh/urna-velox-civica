@@ -9,7 +9,7 @@
 // Nada pula: o palco tem proporção fixa e as linhas de texto, altura reservada.
 
 import { Hodometro } from './hodometro.js';
-import { el, mil, movimentoReduzido } from './util.js';
+import { el, mil, movimentoReduzido, noConsole, porCodigo } from './util.js';
 const FX_GRANDES = 8;   // ondas grandes (marcos) ao mesmo tempo no mapa
 
 const PREF = 'uv-mapa';
@@ -103,7 +103,7 @@ export class CartaoMapa {
     // só busca e desenha quando o cartão aparece (e para de desenhar quando sai)
     this.io = new IntersectionObserver((es) => {
       this.visivel = es.some((e) => e.isIntersecting) || this.el.classList.contains('max');
-      if (this.visivel) { this.#carregar(); this.#pedirQuadro(); }
+      if (this.visivel) { this.#carregar().catch(noConsole('mapa')); this.#pedirQuadro(); }
     }, { rootMargin: '200px' });
     this.io.observe(this.el);
     this.ro = new ResizeObserver(() => this.#redesenhar());
@@ -124,7 +124,7 @@ export class CartaoMapa {
   /** O cartão foi maximizado ou restaurado (cartoes.js): desenha mesmo fora da área visível e mostra as UFs. */
   maximizado(sim) {
     this.visivel = sim || this.visivel;
-    if (sim) { this.#carregar(); this.#painelUfs(); }
+    if (sim) { this.#carregar().catch(noConsole('mapa')); this.#painelUfs(); }
     this.#pedirQuadro();
   }
 
@@ -143,7 +143,7 @@ export class CartaoMapa {
     if (!geo || !lista || !est) {
       this.aviso.textContent = 'O mapa das seções não está disponível neste servidor.';
       this.carregando = false;
-      setTimeout(() => { if (!this.carregado) this.#carregar(); }, 60000);
+      setTimeout(() => { if (!this.carregado) this.#carregar().catch(noConsole('mapa')); }, 60000);
       return;
     }
     this.geo = geo;
@@ -352,7 +352,7 @@ export class CartaoMapa {
   receber(m) {
     if (!this.carregado) return;
     // B-064: o total mudou (agregada da noite): relê a fotografia, que diz quais seções saíram
-    if (m.reiniciar || (m.epoca != null && m.epoca !== this.epoca) || m.de > this.n || (m.total ?? this.total) !== this.total) { this.#recarregar(); return; }
+    if (m.reiniciar || (m.epoca != null && m.epoca !== this.epoca) || m.de > this.n || (m.total ?? this.total) !== this.total) { this.#recarregar().catch(noConsole('mapa')); return; }
     if (m.n <= this.n) return;
     const s = m.s, ini = (this.n - m.de) * 2, novas = [];
     for (let k = ini; k < s.length; k += 2) {
@@ -509,7 +509,7 @@ export class CartaoMapa {
   #painelUfs() {
     if (!this.carregado) return;
     if (!this.ufLinhas) {
-      this.ufLinhas = [...this.totUf.keys()].sort().map((u) => {
+      this.ufLinhas = [...this.totUf.keys()].sort(porCodigo).map((u) => {
         const t = el('span', 't', el('i')), v = el('span', 'v', '0%');
         const l = el('div', 'mp-uf', [el('b', null, u.toUpperCase()), t, v]);
         this.ufs.append(l);

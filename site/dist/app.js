@@ -1,5 +1,69 @@
 // Urna Velox — página de resultados (gerado por site/build.mjs a partir de site/src; não edite aqui)
 
+// src/util.js
+var movimentoReduzido = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+function mil(x) {
+  if (x == null || !Number.isFinite(x)) return "—";
+  return milhar(Math.round(x).toString());
+}
+function milhar(s) {
+  if (s.startsWith("-")) return "-" + milhar(s.slice(1));
+  let r = "";
+  for (let i = 0; i < s.length; i++) {
+    if (i > 0 && (s.length - i) % 3 === 0) r += ".";
+    r += s[i];
+  }
+  return r;
+}
+function semBarraFinal(s) {
+  let fim = s.length;
+  while (fim > 0 && s[fim - 1] === "/") fim--;
+  return s.slice(0, fim);
+}
+var porCodigo = (a, b) => a < b ? -1 : a > b ? 1 : 0;
+var noConsole = (onde) => (e) => console.error(`[urna-velox] ${onde}:`, e);
+function pct(x, casas = 2) {
+  if (x == null || !Number.isFinite(x)) return "—";
+  return x.toFixed(casas).replace(".", ",");
+}
+var NOME_CARGO = { 1: "Presidente", 3: "Governador", 5: "Senador", 11: "Prefeito" };
+var NOME_CARGO_PLURAL = { 1: "presidente", 3: "governador", 5: "senador", 11: "prefeito" };
+function abr(cod) {
+  if (cod === "br") return { tipo: "br", uf: null, mun: null };
+  if (cod.length === 2) return { tipo: "uf", uf: cod, mun: null };
+  return { tipo: "mun", uf: cod.slice(0, 2), mun: cod };
+}
+function titulo(s) {
+  if (!s) return "";
+  const pequenas = /* @__PURE__ */ new Set(["de", "da", "do", "das", "dos", "e", "d'"]);
+  return s.toLowerCase().split(/(\s+|-)/).map((p, i) => i > 0 && pequenas.has(p) ? p : p.charAt(0).toUpperCase() + p.slice(1)).join("");
+}
+function hora(t) {
+  if (!t) return "";
+  const m = /(\d{2}):(\d{2}):(\d{2})/.exec(t);
+  return m ? `${m[1]}:${m[2]}:${m[3]}` : "";
+}
+function segundos(t) {
+  if (!t) return null;
+  const m = /(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})/.exec(t);
+  if (!m) return null;
+  return Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]) / 1e3;
+}
+function el(tag, cls, filhos) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (filhos != null) for (const f2 of [].concat(filhos)) e.append(f2);
+  return e;
+}
+function svg(tag, attrs = {}) {
+  const e = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  return e;
+}
+function digitos(n) {
+  return Math.max(1, Math.floor(Math.log10(Math.max(1, n))) + 1);
+}
+
 // src/conexao.js
 var MAX_POR_MSG = 90;
 var FALHAS_PARA_HTTP = 3;
@@ -32,7 +96,7 @@ var Conexao = class {
     this.consultaMs = o.consultaMs || CONSULTA_MS;
     this.novoWsMs = o.novoWsMs || NOVO_WS_MS;
     const meta = typeof document !== "undefined" ? document.querySelector('meta[name="uv-dados"]')?.content : "";
-    this.base = String(o.base ?? meta ?? "").trim().replace(/\/+$/, "");
+    this.base = semBarraFinal(String(o.base ?? meta ?? "").trim());
     if (this.base && typeof location !== "undefined" && this.base === location.origin) this.base = "";
     try {
       this.forcarHttp = new URLSearchParams(location.search).get("modo") === "http";
@@ -108,7 +172,7 @@ var Conexao = class {
   #entrarHttp() {
     this.http = true;
     this.aoEstado("http", { consultaMs: this.consultaMs });
-    this.#consultar();
+    this.#consultar().catch(noConsole("consulta"));
     this.#agendarWs();
   }
   #sairHttp() {
@@ -228,57 +292,9 @@ var Conexao = class {
     this.topicos = novo;
     if (entrar.length) this.#mandarInscricoes(entrar);
     for (let i = 0; i < sair.length; i += MAX_POR_MSG) this.#mandar({ op: "cancelar", topicos: sair.slice(i, i + MAX_POR_MSG) });
-    if (this.http) for (const t of this.#topicosHttp(entrar)) this.#buscar(t);
+    if (this.http) for (const t of this.#topicosHttp(entrar)) this.#buscar(t).catch(noConsole("modo HTTP"));
   }
 };
-
-// src/util.js
-var movimentoReduzido = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-function mil(x) {
-  if (x == null || !Number.isFinite(x)) return "—";
-  return Math.round(x).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-}
-function pct(x, casas = 2) {
-  if (x == null || !Number.isFinite(x)) return "—";
-  return x.toFixed(casas).replace(".", ",");
-}
-var NOME_CARGO = { 1: "Presidente", 3: "Governador", 5: "Senador", 11: "Prefeito" };
-var NOME_CARGO_PLURAL = { 1: "presidente", 3: "governador", 5: "senador", 11: "prefeito" };
-function abr(cod) {
-  if (cod === "br") return { tipo: "br", uf: null, mun: null };
-  if (cod.length === 2) return { tipo: "uf", uf: cod, mun: null };
-  return { tipo: "mun", uf: cod.slice(0, 2), mun: cod };
-}
-function titulo(s) {
-  if (!s) return "";
-  const pequenas = /* @__PURE__ */ new Set(["de", "da", "do", "das", "dos", "e", "d'"]);
-  return s.toLowerCase().split(/(\s+|-)/).map((p, i) => i > 0 && pequenas.has(p) ? p : p.charAt(0).toUpperCase() + p.slice(1)).join("");
-}
-function hora(t) {
-  if (!t) return "";
-  const m = /(\d{2}):(\d{2}):(\d{2})/.exec(t);
-  return m ? `${m[1]}:${m[2]}:${m[3]}` : "";
-}
-function segundos(t) {
-  if (!t) return null;
-  const m = /(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})/.exec(t);
-  if (!m) return null;
-  return Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]) / 1e3;
-}
-function el(tag, cls, filhos) {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  if (filhos != null) for (const f2 of [].concat(filhos)) e.append(f2);
-  return e;
-}
-function svg(tag, attrs = {}) {
-  const e = document.createElementNS("http://www.w3.org/2000/svg", tag);
-  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
-  return e;
-}
-function digitos(n) {
-  return Math.max(1, Math.floor(Math.log10(Math.max(1, n))) + 1);
-}
 
 // src/hodometro.js
 var COPIAS = 3;
@@ -475,7 +491,7 @@ var Hodometro = class {
       for (let i = 0; i < casas; i++) this.#por(this.nInt + i, dec[i] ?? "0");
       for (const s of this.seps) s.span.classList.toggle("vazio", cheio[s.apos] === " ");
       if (this.op.enxuto || this.op.prefixo || this.arrastarEl) this.#deslizar();
-      this.texto.textContent = nulo ? "—" : int.replace(/\B(?=(\d{3})+(?!\d))/g, ".") + (casas ? "," + dec : "") + (this.op.sufixo ? " " + this.op.sufixo : "");
+      this.texto.textContent = nulo ? "—" : milhar(int) + (casas ? "," + dec : "") + (this.op.sufixo ? " " + this.op.sufixo : "");
     }
     if (antes !== void 0 && antes !== null && movimentoReduzido() && this.el.animate) {
       this.el.animate([{ opacity: 0.35 }, { opacity: 1 }], { duration: 220, easing: "ease-out" });
@@ -1517,7 +1533,7 @@ function normalizarSigla(s) {
   return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[\s*]/g, "").toUpperCase();
 }
 function oklch(hex) {
-  const n = parseInt(hex.slice(1), 16);
+  const n = Number.parseInt(hex.slice(1), 16);
   const lin = (v) => {
     v /= 255;
     return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
@@ -2473,7 +2489,7 @@ var PainelTelemetria = class {
     const r = ancora2?.getBoundingClientRect();
     if (r) {
       const topo = Math.round(r.bottom + 8);
-      const feed2 = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--feed-h")) || 64;
+      const feed2 = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--feed-h")) || 64;
       this.raiz.style.top = `${topo}px`;
       this.raiz.style.maxHeight = `${Math.max(200, innerHeight - topo - feed2 - 16)}px`;
     }
@@ -2648,7 +2664,7 @@ var CartaoMapa = class {
     this.io = new IntersectionObserver((es) => {
       this.visivel = es.some((e) => e.isIntersecting) || this.el.classList.contains("max");
       if (this.visivel) {
-        this.#carregar();
+        this.#carregar().catch(noConsole("mapa"));
         this.#pedirQuadro();
       }
     }, { rootMargin: "200px" });
@@ -2669,7 +2685,7 @@ var CartaoMapa = class {
   maximizado(sim) {
     this.visivel = sim || this.visivel;
     if (sim) {
-      this.#carregar();
+      this.#carregar().catch(noConsole("mapa"));
       this.#painelUfs();
     }
     this.#pedirQuadro();
@@ -2691,7 +2707,7 @@ var CartaoMapa = class {
       this.aviso.textContent = "O mapa das seções não está disponível neste servidor.";
       this.carregando = false;
       setTimeout(() => {
-        if (!this.carregado) this.#carregar();
+        if (!this.carregado) this.#carregar().catch(noConsole("mapa"));
       }, 6e4);
       return;
     }
@@ -2944,7 +2960,7 @@ var CartaoMapa = class {
   receber(m) {
     if (!this.carregado) return;
     if (m.reiniciar || m.epoca != null && m.epoca !== this.epoca || m.de > this.n || (m.total ?? this.total) !== this.total) {
-      this.#recarregar();
+      this.#recarregar().catch(noConsole("mapa"));
       return;
     }
     if (m.n <= this.n) return;
@@ -3107,7 +3123,7 @@ var CartaoMapa = class {
   #painelUfs() {
     if (!this.carregado) return;
     if (!this.ufLinhas) {
-      this.ufLinhas = [...this.totUf.keys()].sort().map((u) => {
+      this.ufLinhas = [...this.totUf.keys()].sort(porCodigo).map((u) => {
         const t = el("span", "t", el("i")), v = el("span", "v", "0%");
         const l = el("div", "mp-uf", [el("b", null, u.toUpperCase()), t, v]);
         this.ufs.append(l);
@@ -3560,7 +3576,7 @@ var Cartoes = class {
     if (!a) return;
     this.arr = null;
     const d = a.vaga.getBoundingClientRect(), r = a.c.getBoundingClientRect();
-    const [tx, ty] = (a.c.style.translate || "0px 0px").split(" ").map((v) => parseFloat(v) || 0);
+    const [tx, ty] = (a.c.style.translate || "0px 0px").split(" ").map((v) => Number.parseFloat(v) || 0);
     a.c.style.translate = `${tx + d.left - r.left}px ${ty + d.top - r.top}px`;
     const fim = () => {
       a.c.classList.remove("arrastando");
@@ -3729,7 +3745,7 @@ function linhas(j) {
 }
 var num = (x) => x === "" || x == null ? null : Number.isNaN(+x) ? x : +x;
 function basesConsulta() {
-  const m = (typeof document !== "undefined" ? document.querySelector('meta[name="uv-dados"]')?.content || "" : "").trim().replace(/\/+$/, "");
+  const m = semBarraFinal((typeof document !== "undefined" ? document.querySelector('meta[name="uv-dados"]')?.content || "" : "").trim());
   const o = typeof location !== "undefined" ? location.origin : "";
   return m && m !== o ? [`${m}/consulta`, "/consulta"] : ["/consulta"];
 }
@@ -3797,7 +3813,7 @@ var ConexaoSerie = class {
     }
     for (const t of this.topicos) {
       this.series.delete(t);
-      this.#carregar(t);
+      this.#carregar(t).catch(noConsole("série"));
     }
     this.aoIndice?.(j);
   }
@@ -3861,7 +3877,7 @@ var ConexaoSerie = class {
     this.topicos = new Set(lista);
     for (const t of lista) {
       const s = this.series.get(t);
-      if (!s) this.#carregar(t);
+      if (!s) this.#carregar(t).catch(noConsole("série"));
       else if (s.v) this.#emitir(t, true);
     }
   }
@@ -4627,7 +4643,7 @@ function lerRota() {
   const m = /^#\/(?:p\/\d+\/)?([a-z]{2}(?:\d{5})?)\/c(\d{4})$/.exec(location.hash);
   let a = m?.[1], c = m ? +m[2] : null;
   if (!a || !S.topicos.has(`${a}-c${cargo4(c)}`)) {
-    const pref = ["br-c0001", ...[...S.topicos].sort()];
+    const pref = ["br-c0001", ...[...S.topicos].sort(porCodigo)];
     const t = pref.find((x) => S.topicos.has(x));
     if (!t) return null;
     const p = /^(.+)-c(\d{4})$/.exec(t);
@@ -4657,7 +4673,7 @@ function irPara(a, c) {
   const cs = cargosDe(a);
   let cargo = c ?? (S.tela && cs.includes(S.tela.cargo) ? S.tela.cargo : cs[0]);
   if (cargo == null) {
-    const m = [...S.topicos].map((x) => x.split("-")[0]).filter((x) => x.startsWith(a) && x.length === 7).sort()[0];
+    const m = [...S.topicos].map((x) => x.split("-")[0]).filter((x) => x.startsWith(a) && x.length === 7).sort(porCodigo)[0];
     if (!m) return;
     a = m;
     cargo = cargosDe(m)[0];
@@ -4730,7 +4746,7 @@ function montarPainel(t) {
   const linhas2 = /* @__PURE__ */ new Map();
   const lista = el("ol", "lista");
   lista.setAttribute("aria-label", "Candidatos em ordem de votos");
-  const altura = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--linha-cand")) || 76;
+  const altura = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--linha-cand")) || 76;
   lista.style.height = `${Math.max(1, ordem.length) * altura}px`;
   for (const k of ordem) {
     const info2 = S.N.candidato(circ, res.cargo, k.n);
@@ -4808,7 +4824,7 @@ function montarPainel(t) {
     el("div", "faltam", [camadaN, camadaD])
   ]));
   const curva = new Curva();
-  (S.con?.curva ? S.con.pronto(t.topico).then(() => S.con.curva(t.topico)) : fetch(`/api/v1/curva/${t.topico}`).then((r) => r.ok ? r.json() : null)).then((j) => {
+  (S.con?.curva ? S.con.pronto(t.topico).then(() => S.con.curva(t.topico)) : fetch(`/api/v1/curva/${encodeURIComponent(t.topico)}`).then((r) => r.ok ? r.json() : null)).then((j) => {
     if (!j || S.ui?.curva !== curva) return;
     curva.semear(j.pontos.map(([tt, ap, tot, c]) => ({ t: tt, s: tot ? 100 * ap / tot : 0, c: new Map(c) })), S.consulta ? null : j.relogio === "sistema" ? "sistema" : "noite");
     pedirQuadro();
@@ -4878,10 +4894,15 @@ function montarPainel(t) {
   S.ident.definir({ turno: res.turno, cargo: S.N.cargo(res.cargo), local: t.abr === "br" ? "Brasil" : S.N.local(t.abr) });
   S.ident.eleicao(eleicaoAtual(res));
 }
+function semTurno(s) {
+  const i = s.lastIndexOf("·");
+  if (i < 0 || !/^\dº turno$/.test(s.slice(i + 1).trimStart())) return s;
+  return s.slice(0, i).trimEnd();
+}
 function eleicaoAtual(res = S.tela && S.res.get(S.tela.topico)) {
   const cod = String(S.consulta?.pleito ?? S.estado?.pleito ?? "");
   const p = cod && S.pleitos?.pleitos?.find((x) => String(x.codigo) === cod);
-  if (p?.titulo) return { nome: p.titulo.replace(/\s*·\s*\dº turno$/, ""), dataIso: p.data_iso || "" };
+  if (p?.titulo) return { nome: semTurno(p.titulo), dataIso: p.data_iso || "" };
   const ano = [res?.ultimo_bu, S.serieInicio, S.estado?.relogio_site].map((x) => /(20\d\d)/.exec(x || "")?.[1]).find(Boolean) || "";
   const tipo = tipoEleicao(res?.cargo);
   const nome = tipo === "Suplementar" ? `Eleição suplementar ${ano}` : `Eleições ${tipo} ${ano}`;
@@ -5663,7 +5684,7 @@ async function acompanharPleitos() {
   buscarConsultas().then((c) => {
     S.consultas = c;
     if (S.pleitos) S.painelPleitos.definir(S.pleitos);
-  });
+  }).catch(noConsole("consultas"));
   const buscar = async () => {
     const l = await buscarPleitos();
     if (l) {
@@ -5896,8 +5917,8 @@ async function iniciar() {
     atualizarTelemetria();
   }, 1e3);
   $2("#conexao").addEventListener("click", () => abrirAviso());
-  acompanharPlaylist();
-  acompanharPleitos();
+  acompanharPlaylist().catch(noConsole("playlist"));
+  acompanharPleitos().catch(noConsole("pleitos"));
   setInterval(() => desenharPromo(), 1e3);
   S.N = new Nomes(nomes);
   S.topicos = new Set(topicos.map((t) => t.topico));
@@ -5934,4 +5955,4 @@ async function iniciar() {
   montarTela();
   S.con.abrir();
 }
-iniciar();
+iniciar().catch(noConsole("início"));

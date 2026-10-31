@@ -27,7 +27,7 @@ import { buscarPlaylist, contagemPartes, diaLocal, modoDe, proximaDe, quandoTxt 
 import { buscarConsultas, buscarPleitos, PainelPleitos, resumoTxt } from './pleitos.js';
 import { comLinks } from './normas.js';
 import { ConexaoSerie, PlayerLocal, carregarSerie, rotaConsulta } from './serie.js';
-import { abr, digitos, el, hora, mil, pct, segundos, movimentoReduzido } from './util.js';
+import { abr, digitos, el, hora, mil, pct, segundos, movimentoReduzido, noConsole, porCodigo } from './util.js';
 
 const $ = (s) => document.querySelector(s);
 const cargo4 = (c) => String(c).padStart(4, '0');
@@ -273,7 +273,7 @@ function lerRota() {
   let a = m?.[1], c = m ? +m[2] : null;
   if (!a || !S.topicos.has(`${a}-c${cargo4(c)}`)) {
     // padrão: Presidente no Brasil; senão o primeiro tópico do cargo de menor código
-    const pref = ['br-c0001', ...[...S.topicos].sort()];
+    const pref = ['br-c0001', ...[...S.topicos].sort(porCodigo)];
     const t = pref.find((x) => S.topicos.has(x));
     if (!t) return null;
     const p = /^(.+)-c(\d{4})$/.exec(t);
@@ -311,7 +311,7 @@ function irPara(a, c) {
   let cargo = c ?? (S.tela && cs.includes(S.tela.cargo) ? S.tela.cargo : cs[0]);
   if (cargo == null) {
     // UF sem tópico próprio (só municípios): vai para o primeiro município
-    const m = [...S.topicos].map((x) => x.split('-')[0]).filter((x) => x.startsWith(a) && x.length === 7).sort()[0];
+    const m = [...S.topicos].map((x) => x.split('-')[0]).filter((x) => x.startsWith(a) && x.length === 7).sort(porCodigo)[0];
     if (!m) return;
     a = m; cargo = cargosDe(m)[0];
   }
@@ -384,7 +384,7 @@ function montarPainel(t) {
   const linhas = new Map();
   const lista = el('ol', 'lista');
   lista.setAttribute('aria-label', 'Candidatos em ordem de votos');
-  const altura = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--linha-cand')) || 76;
+  const altura = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--linha-cand')) || 76;
   lista.style.height = `${Math.max(1, ordem.length) * altura}px`;
   for (const k of ordem) {
     const info = S.N.candidato(circ, res.cargo, k.n);
@@ -462,7 +462,7 @@ function montarPainel(t) {
   const curva = new Curva();
   // a noite até agora (o servidor guarda um ponto por minuto de cada tópico): a curva não começa na hora em que a página abriu
   // na consulta de um pleito, a curva sai da série (até o instante do slider)
-  (S.con?.curva ? S.con.pronto(t.topico).then(() => S.con.curva(t.topico)) : fetch(`/api/v1/curva/${t.topico}`).then((r) => (r.ok ? r.json() : null))).then((j) => {
+  (S.con?.curva ? S.con.pronto(t.topico).then(() => S.con.curva(t.topico)) : fetch(`/api/v1/curva/${encodeURIComponent(t.topico)}`).then((r) => (r.ok ? r.json() : null))).then((j) => {
     if (!j || S.ui?.curva !== curva) return;
     curva.semear(j.pontos.map(([tt, ap, tot, c]) => ({ t: tt, s: tot ? (100 * ap) / tot : 0, c: new Map(c) })), S.consulta ? null : j.relogio === 'sistema' ? 'sistema' : 'noite');
     pedirQuadro();
@@ -510,10 +510,18 @@ function montarPainel(t) {
 
 /** M-025: o nome e a data da eleição na tela — pela lista dos pleitos (o título sem o turno, que vai ao lado: "Eleições
  *  Gerais 2026", "Eleição suplementar · Roraima") e, sem ela, pelo tipo (B-087), pelo ano e pela data da noite. */
+
+/** Tira o " · 2º turno" do fim do título do pleito, sem regex com retrocesso (SonarCloud S8786). */
+function semTurno(s) {
+  const i = s.lastIndexOf('·');
+  if (i < 0 || !/^\dº turno$/.test(s.slice(i + 1).trimStart())) return s;
+  return s.slice(0, i).trimEnd();
+}
+
 function eleicaoAtual(res = S.tela && S.res.get(S.tela.topico)) {
   const cod = String(S.consulta?.pleito ?? S.estado?.pleito ?? '');
   const p = cod && S.pleitos?.pleitos?.find((x) => String(x.codigo) === cod);
-  if (p?.titulo) return { nome: p.titulo.replace(/\s*·\s*\dº turno$/, ''), dataIso: p.data_iso || '' };
+  if (p?.titulo) return { nome: semTurno(p.titulo), dataIso: p.data_iso || '' };
   const ano = [res?.ultimo_bu, S.serieInicio, S.estado?.relogio_site].map((x) => /(20\d\d)/.exec(x || '')?.[1]).find(Boolean) || '';
   const tipo = tipoEleicao(res?.cargo);
   const nome = tipo === 'Suplementar' ? `Eleição suplementar ${ano}` : `Eleições ${tipo} ${ano}`;
@@ -1290,7 +1298,7 @@ async function acompanharPleitos() {
     naTela: () => S.consulta?.pleito ?? S.estado?.pleito, emConsulta: () => !!S.consulta });
   // M-024/M-025: a eleição da barra abre a lista
   $('#eleicao .el-pleito').addEventListener('click', () => S.painelPleitos.abrir());
-  buscarConsultas().then((c) => { S.consultas = c; if (S.pleitos) S.painelPleitos.definir(S.pleitos); });
+  buscarConsultas().then((c) => { S.consultas = c; if (S.pleitos) S.painelPleitos.definir(S.pleitos); }).catch(noConsole('consultas'));
   const buscar = async () => {
     const l = await buscarPleitos();
     if (l) { S.pleitos = l; S.painelPleitos.definir(l); desenharSeletor(); document.documentElement.classList.add('com-pleitos'); }
@@ -1506,8 +1514,8 @@ async function iniciar() {
   setInterval(() => { desenharChipSonda(); atualizarTelemetria(); }, 1000);
   // M-004: o selo abre o aviso (com a playlist); a contagem anda a cada segundo
   $('#conexao').addEventListener('click', () => abrirAviso());
-  acompanharPlaylist();
-  acompanharPleitos();
+  acompanharPlaylist().catch(noConsole('playlist'));
+  acompanharPleitos().catch(noConsole('pleitos'));
   setInterval(() => desenharPromo(), 1000);
   S.N = new Nomes(nomes);
   S.topicos = new Set(topicos.map((t) => t.topico));
@@ -1539,4 +1547,4 @@ async function iniciar() {
   S.con.abrir();
 }
 
-iniciar();
+iniciar().catch(noConsole('início'));
