@@ -45,8 +45,8 @@ async fn google_falso(prox: Proximo) -> String {
 
 async fn painel(no: &str, google: &str, pares: Vec<String>, l: tokio::net::TcpListener) -> (Arc<Painel>, PathBuf) {
     let d = pasta();
-    std::fs::write(d.join("no.env"), "# teste\nPLEITO=3220\nCICLO=ele2026\nAMBIENTE=oficial\nBASE=http://127.0.0.1:18080\nRPS=95\nNO_ID=x\n").unwrap();
-    std::fs::write(d.join("saida/saude.json"), json!({"versao": "0.8.33", "estado": "coletando", "secoes": {"aplicadas": 10}}).to_string()).unwrap();
+    tokio::fs::write(d.join("no.env"), "# teste\nPLEITO=3220\nCICLO=ele2026\nAMBIENTE=oficial\nBASE=http://127.0.0.1:18080\nRPS=95\nNO_ID=x\n").await.unwrap();
+    tokio::fs::write(d.join("saida/saude.json"), json!({"versao": "0.8.33", "estado": "coletando", "secoes": {"aplicadas": 10}}).to_string()).await.unwrap();
     let a = l.local_addr().unwrap();
     let cfg = Config {
         escuta: a, no_id: no.into(), saida: d.join("saida"), no_env: d.join("no.env"), federacao: None, pares,

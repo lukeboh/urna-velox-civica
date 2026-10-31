@@ -315,6 +315,8 @@ pela ordem de ataque; depois os já entregues nesta série.
 - ✅ **[B-087](docs/itens/B-087.md)** (bug) — O cartão diz "Eleições 2026 · Municipais" numa eleição de Governador. · *corrigido* · 1.0.57
 - ✅ **[B-088](docs/itens/B-088.md)** (bug) — Em alguns momentos a página mostra municípios pelo código ("spNNNNN") e candidatos pelo número no lugar do nome. · *corrigido* · 1.0.57
 - ✅ **[M-017](docs/itens/M-017.md)** (melhoria) — Mapa das seções: cada BU totalizado "explode" e deixa um ponto no mapa do Brasil (no fim, o Brasil todo iluminado pelas ~500 mil seções), só o Brasil… · *feito (testes `site/testes/mapa_pagina.mjs`, `mapa::testes`…* · 1.0.0
+- ✅ **[M-028](docs/itens/M-028.md)** (melhoria) — Corrigir os 26 achados do SonarCloud (24 bugs, 2 code smells; gate reprovado por confiabilidade C no código novo). · *feito (sem teste antes, por decisão do Luciano; suíte verde…* · 1.1.4
+- ✅ **[M-029](docs/itens/M-029.md)** (melhoria) — Avaliar a página (site/) no Sonar e tirar da avaliação o código que só serve para teste. · *feito (testes do Rust em `<módulo>/testes.rs`, 204 testes v…* · 1.1.5
 <!-- /itens:1.0.x -->
 
 ---

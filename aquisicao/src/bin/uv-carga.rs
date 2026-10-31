@@ -131,7 +131,7 @@ fn chave_evento(v: &Value) -> String {
 async fn endereco(a: &Cli) -> String {
     let Some(p) = &a.porta_arquivo else { return a.endereco.clone() };
     loop {
-        if let Ok(s) = std::fs::read_to_string(p) { if let Ok(n) = s.trim().parse::<u16>() { return format!("127.0.0.1:{n}"); } }
+        if let Ok(s) = tokio::fs::read_to_string(p).await { if let Ok(n) = s.trim().parse::<u16>() { return format!("127.0.0.1:{n}"); } }
         tokio::time::sleep(Duration::from_millis(200)).await;
     }
 }
@@ -526,7 +526,7 @@ fn main() -> anyhow::Result<()> {
         for h in hl { let _ = h.await; }
         let dur = t0.elapsed().as_secs_f64();
         let conf = conferir(&a, &g);
-        if let Some(p) = &a.amostras { let _ = std::fs::write(p, g.amostras.lock().unwrap().join("\n") + "\n"); }
+        if let Some(p) = &a.amostras { let txt = g.amostras.lock().unwrap().join("\n") + "\n"; let _ = tokio::fs::write(p, txt).await; }
         Ok(json!({
             "conexao0": {"estados": g.estados.lock().unwrap().clone(), "avisos_e_eventos_de_apuracao": g.avisos_c0.lock().unwrap().clone()},
             "versao": urna_velox::VERSAO, "endereco": end, "clientes": a.clientes, "lentos": a.lentos, "perfil": a.perfil, "semente": a.semente, "eventos": a.eventos,

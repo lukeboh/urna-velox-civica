@@ -85,6 +85,9 @@ O `ext4.vhdx` da distro `Ubuntu-24.04` fica em `C:\_PRJ\WSL\Ubuntu-24.04`, no SS
   com o início literal do artigo) e `comLinks`/`linkArtigo` (`target="_blank"`, `rel="noopener noreferrer"`); a âncora é
   o fragmento de texto `#:~:text=<início do artigo>` (o TSE não publica âncoras por artigo); teste
   `site/testes/normas_links.mjs`. Nos documentos (`.md`), o mesmo link com o fragmento (o Markdown não escolhe a aba).
+* **Testes de Rust ficam no arquivo `testes.rs` do módulo** (`#[cfg(test)] mod testes;` no fim do arquivo; ex.:
+  `motor/src/estado/testes.rs`), nunca embutidos no código de produção: o SonarCloud exclui `**/testes.rs` da avaliação
+  (M-029, 30/10/2026).
 * Textos e mensagens em português do Brasil. Mensagens de commit `área: resumo`. Todos os executáveis começam com `uv-` (`uv-motor`, `uv-coletor`).
 * Compilar e testar o workspace sem tocar no binário de uma coleta em andamento: `aquisicao/scripts/compilar_dev.sh` (usa `~/uvreal/target-dev`).
 * Conferência de resultados: `aquisicao/scripts/fechar_nacional.sh` (totais × divulgação oficial, Presidente e Governador).

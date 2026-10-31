@@ -58,6 +58,16 @@ function aviso(msg) {
   clearTimeout(aviso.t); aviso.t = setTimeout(() => { a.hidden = true; }, 4000);
 }
 
+// para as chamadas assíncronas que não são aguardadas (cliques, troca de aba, intervalos): a falha vira aviso
+function falhou(e) { aviso(`falhou: ${e && e.message || e}`); }
+
+// tira as barras do fim sem regex (a /\/+$/ tem retrocesso super-linear numa sequência longa de barras)
+function semBarraFinal(s) {
+  let fim = s.length;
+  while (fim > 0 && s[fim - 1] === '/') fim--;
+  return s.slice(0, fim);
+}
+
 async function api(caminho, opcoes = {}) {
   const r = await fetch(API + caminho, { credentials: 'same-origin', cache: 'no-store', ...opcoes,
     headers: { 'content-type': 'application/json', 'x-uv-csrf': est.eu ? est.eu.csrf : '', ...(opcoes.headers || {}) } });
@@ -67,7 +77,9 @@ async function api(caminho, opcoes = {}) {
   return { status: r.status, corpo };
 }
 
-function ids() { return [...est.nos.keys()].sort(); }
+// ordem por unidade de código (a mesma do sort() sem comparador), explícita
+const porCodigo = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+function ids() { return [...est.nos.keys()].sort(porCodigo); }
 function corDe(id) { const i = ids().indexOf(id); return `var(--serie-${(i % 3) + 1})`; }
 
 // ------------------------------------------------------------------ dados
@@ -444,7 +456,7 @@ async function enviar(caminho, corpo, res, conf, botao, confirmacao) {
       const inp = h('input', { placeholder: r.confirmacao, autocomplete: 'off', spellcheck: 'false' });
       const ok = h('button', { class: 'botao perigo' }, 'Confirmar');
       const cancelar = h('button', { class: 'botao discreto' }, 'Cancelar');
-      ok.addEventListener('click', () => { conf.hidden = true; enviar(caminho, corpo, res, conf, botao, inp.value.trim()); });
+      ok.addEventListener('click', () => { conf.hidden = true; enviar(caminho, corpo, res, conf, botao, inp.value.trim()).catch(falhou); });
       cancelar.addEventListener('click', () => { conf.hidden = true; botao.disabled = false; });
       conf.replaceChildren(h('p', {}, r.mensagem, '. Digite ', h('b', {}, r.confirmacao), ' para seguir.'),
         h('div', { class: 'acoes' }, inp, ok, cancelar));
@@ -487,8 +499,8 @@ function trocarAba(aba) {
   for (const b of document.querySelectorAll('[data-aba]')) b.setAttribute('aria-selected', String(b.dataset.aba === aba));
   for (const s2 of document.querySelectorAll('.aba')) s2.hidden = s2.id !== `aba-${aba}`;
   if (aba === 'visao') desenharVisao();
-  if (aba === 'config') carregarConfig();
-  if (aba === 'detalhe') carregarDetalhe();
+  if (aba === 'config') carregarConfig().catch(falhou);
+  if (aba === 'detalhe') carregarDetalhe().catch(falhou);
 }
 
 async function iniciar() {
@@ -510,7 +522,7 @@ async function iniciar() {
   let rz; addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { if (est.aba === 'visao') desenharVisao(); }, 150); });
   await atualizar();
   setInterval(atualizar, INTERVALO_MS);
-  setInterval(() => { if (est.aba === 'detalhe') carregarDetalhe(); }, 15000);
+  setInterval(() => { if (est.aba === 'detalhe') carregarDetalhe().catch(falhou); }, 15000);
 }
 
 document.addEventListener('DOMContentLoaded', iniciar);
@@ -571,7 +583,7 @@ function montarEnderecos(id, e) {
   const rotasDoForm = () => {
     const r = {};
     for (const [k, i] of campos) r[k] = i.value.trim();
-    const b = outra.value.trim().replace(/\/+$/, '');
+    const b = semBarraFinal(outra.value.trim());
     if (b) r.base_arquivos = b;
     return r;
   };
@@ -593,7 +605,7 @@ function montarEnderecos(id, e) {
 
   usar.addEventListener('click', () => aplicarEnderecos(id, () => {
     const r = rotasDoForm();
-    const p = proposta || { BASE: url.value.trim().replace(/\/+$/, ''), AMBIENTE: amb.value, PLEITO: pleito.value.trim() };
+    const p = proposta || { BASE: semBarraFinal(url.value.trim()), AMBIENTE: amb.value, PLEITO: pleito.value.trim() };
     return { base: p.BASE, AMBIENTE: p.AMBIENTE, CICLO: p.CICLO, PLEITO: p.PLEITO, rotas: ehPadrao(r) ? null : r, reiniciar: reiniciar.checked };
   }, doisNos.checked, usar, conf, res, () => !proposta && !confirm('Você não rodou "Descobrir e testar" com estes endereços. Gravar assim mesmo? O campo da URL vira a BASE do nó.')));
 

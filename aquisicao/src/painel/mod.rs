@@ -170,7 +170,7 @@ impl Painel {
             Some(o) => o.iter().map(|(k, v)| (k.clone(), match v { Value::String(s) => s.trim().to_string(), Value::Null => String::new(), o => o.to_string() })).collect(),
             None => return Err(ruim("faltou `alteracoes`".into())),
         };
-        let texto = std::fs::read_to_string(&self.cfg.no_env).map_err(|e| ruim(format!("lendo {}: {e}", self.cfg.no_env.display())))?;
+        let texto = tokio::fs::read_to_string(&self.cfg.no_env).await.map_err(|e| ruim(format!("lendo {}: {e}", self.cfg.no_env.display())))?;
         let atual = config_no::ler(&texto);
         let mudou: Vec<String> = alt.iter().filter(|(k, v)| atual.get(*k).map(String::as_str).unwrap_or("") != v.as_str()).map(|(k, _)| k.clone()).collect();
         let reiniciar = corpo["reiniciar"].as_bool().unwrap_or(false);
@@ -189,12 +189,12 @@ impl Painel {
         let mut saida = String::new();
         if !mudou.is_empty() {
             if self.cfg.acao.is_empty() {
-                gravar_atomico(&self.cfg.no_env, &novo).map_err(falha)?;
+                gravar_atomico(&self.cfg.no_env, &novo).await.map_err(falha)?;
             } else {
                 let p = self.cfg.estado.join("pendente").join(format!("no.env.{}", amostras::agora_ms()));
-                std::fs::write(&p, &novo).map_err(|e| falha(e.into()))?;
+                tokio::fs::write(&p, &novo).await.map_err(|e| falha(e.into()))?;
                 let r = self.acao(vec!["aplicar-no-env".into(), p.to_string_lossy().into_owned()]).await;
-                let _ = std::fs::remove_file(&p);
+                let _ = tokio::fs::remove_file(&p).await;
                 saida = r.map_err(|e| { self.auditar(operador, &self.cfg.no_id, "config_falhou", json!({"erro": e.to_string(), "mudancas": det})); falha(e) })?;
             }
         }
@@ -216,7 +216,7 @@ impl Painel {
             "travar" | "destravar" => vec![acao.into()],
             _ => return Err((StatusCode::BAD_REQUEST, json!({"erro": "invalido", "mensagem": "ação desconhecida"}))),
         };
-        let base = config_no::ler(&std::fs::read_to_string(&self.cfg.no_env).unwrap_or_default()).get("BASE").cloned().unwrap_or_default();
+        let base = config_no::ler(&tokio::fs::read_to_string(&self.cfg.no_env).await.unwrap_or_default()).get("BASE").cloned().unwrap_or_default();
         let exigida = match acao {
             "iniciar" | "reiniciar" if config_no::eh_tse(&base) => Some("CONFIRMO TSE"),
             "iniciar" | "reiniciar" | "parar" => Some("CONFIRMO"),
@@ -245,7 +245,7 @@ impl Painel {
         if self.saude_local()["rede"]["pausa_restante_s"].as_f64().unwrap_or(0.0) > 0.0 {
             return Err(ruim(StatusCode::SERVICE_UNAVAILABLE, "o serviço deste nó está em pausa por HTTP 429: nenhuma requisição ao servidor até ela acabar".into()));
         }
-        let ne = config_no::ler(&std::fs::read_to_string(&self.cfg.no_env).unwrap_or_default());
+        let ne = config_no::ler(&tokio::fs::read_to_string(&self.cfg.no_env).await.unwrap_or_default());
         let campo = |k: &str, env: &str, padrao: &str| -> String {
             c[k].as_str().map(str::trim).filter(|v| !v.is_empty()).map(String::from)
                 .or_else(|| ne.get(env).cloned()).unwrap_or_else(|| padrao.to_string())
@@ -281,7 +281,7 @@ impl Painel {
         r.validar(&base).map_err(|e| ruim(e.to_string()))?;
         // o acesso do nó (borda/interno) tem de valer também com a base e a base dos arquivos novas
         {
-            let mut ne = config_no::ler(&std::fs::read_to_string(&self.cfg.no_env).unwrap_or_default());
+            let mut ne = config_no::ler(&tokio::fs::read_to_string(&self.cfg.no_env).await.unwrap_or_default());
             ne.insert("BASE".into(), base.clone());
             config_no::validar_conjunto(&ne, r.base_arquivos.as_deref()).map_err(|e| ruim(e.to_string()))?;
         }
@@ -296,15 +296,15 @@ impl Painel {
         let muda_rotas = r != atual || (r.padrao() && arq.exists());
         if muda_rotas {
             if self.cfg.acao.is_empty() {
-                if r.padrao() { let _ = std::fs::remove_file(&arq); }
-                else { gravar_atomico(&arq, &(serde_json::to_string_pretty(&r).unwrap_or_default() + "\n")).map_err(falha)?; }
+                if r.padrao() { let _ = tokio::fs::remove_file(&arq).await; }
+                else { gravar_atomico(&arq, &(serde_json::to_string_pretty(&r).unwrap_or_default() + "\n")).await.map_err(falha)?; }
             } else if r.padrao() {
                 saida = self.acao(vec!["remover-rotas".into()]).await.map_err(falha)?;
             } else {
                 let p = self.cfg.estado.join("pendente").join(format!("rotas_tse.json.{}", amostras::agora_ms()));
-                std::fs::write(&p, serde_json::to_string_pretty(&r).unwrap_or_default() + "\n").map_err(|e| falha(e.into()))?;
+                tokio::fs::write(&p, serde_json::to_string_pretty(&r).unwrap_or_default() + "\n").await.map_err(|e| falha(e.into()))?;
                 let res = self.acao(vec!["aplicar-rotas".into(), p.to_string_lossy().into_owned(), base.clone()]).await;
-                let _ = std::fs::remove_file(&p);
+                let _ = tokio::fs::remove_file(&p).await;
                 saida = res.map_err(falha)?;
             }
         }
@@ -412,10 +412,11 @@ fn estado_unidade(u: &str) -> String {
     }
 }
 
-fn gravar_atomico(p: &std::path::Path, texto: &str) -> Result<()> {
+/// Grava `texto` em `p` por um temporário e `rename` (assíncrono: roda nos handlers do painel).
+async fn gravar_atomico(p: &std::path::Path, texto: &str) -> Result<()> {
     let tmp = p.with_extension(format!("tmp{}", std::process::id()));
-    std::fs::write(&tmp, texto)?;
-    std::fs::rename(&tmp, p)?;
+    tokio::fs::write(&tmp, texto).await?;
+    tokio::fs::rename(&tmp, p).await?;
     Ok(())
 }
 

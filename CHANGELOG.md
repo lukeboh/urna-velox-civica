@@ -2,6 +2,56 @@
 
 Todas as versões do Urna Velox. Regras em [docs/processo/VERSIONAMENTO.md](docs/processo/VERSIONAMENTO.md): cada commit sobe a versão; só as versões `X.Y.0` ganham tag (`vX.Y.0`; até a `0.3.0` todo commit ganhava a sua); o MINOR acompanha a última etapa concluída do [ROADMAP](ROADMAP.md) (etapas 1 a 9 = `0.1.0` a `0.9.0`, com a escalabilidade segura na etapa 6, a comparação com o TSE na 7, a previsão na 8 e o ensaio geral na 9 desde a renumeração de 16/10/2026; nas entradas anteriores à `0.6.7`, "etapa 7" / `0.7.0` = ensaio geral, hoje `0.9.0`; majoritários completos = `1.0.0`; proporcionais = `2.0.0`; até a 0.0.19 valia o esquema antigo de seis fases). As entradas `2.0.0-alpha.N`, abaixo da `0.6.0`, são o trabalho da etapa 6 feito na branch `feature/2.0-escalabilidade` antes da renumeração de 15/10/2026; nelas, "2.0" quer dizer a etapa 6 e "3.0", os proporcionais (hoje `2.0.0`).
 
+## [1.1.6] — 2026-10-30
+
+- **M-029: o `sonar-project.properties` passa a viver neste repositório** (Luciano, 30/10/2026 23h06: a configuração da
+  análise tem de chegar ao civica pela sincronia, sem passo manual). É a configuração da 1.1.5 (chave
+  `lukeboh_urna-velox-civica`; `site` avaliado; `**/testes.rs`, `uv-carga`, `site/testes/**`, `site/dist/**` fora). O
+  roteiro da cópia pública deixa de tratá-lo como arquivo só do civica; a action do SonarCloud continua só lá, sem
+  mudança. Não mexe em código, totalização nem resultado.
+
+## [1.1.5] — 2026-10-30
+
+- **M-029: o Sonar avalia a página e deixa de avaliar o código de teste.** Os 36 módulos de teste embutidos no fim dos
+  arquivos de `motor/src` e `aquisicao/src` foram para `<módulo>/testes.rs` (`#[cfg(test)] mod testes;`), para o Sonar
+  poder excluí-los pelo caminho (`**/testes.rs`); mesmos 204 testes antes e depois (nomes conferidos), todos verdes. Novo
+  `sonar-project.properties` do civica (fora deste repositório): `site` entra em `sonar.sources`; saem os `testes.rs`, o
+  `uv-carga`, `site/testes/**`, `site/dist/**` (gerado) e os testes de `motor/tests` e `aquisicao/tests`; a página fica
+  fora da cobertura (não gera relatório). Regra nova no `CLAUDE.md`: teste de Rust no `testes.rs` do módulo. Detalhe em
+  [docs/itens/M-029.md](docs/itens/M-029.md). Não mexe em totalização nem em resultado (`cargo test --release
+  --workspace` verde, inclusive a conferência do motor com as fixtures oficiais).
+- Correção das entradas 1.1.2 e 1.1.3: a suíte tem 204 testes, não 208 (erro de soma).
+
+## [1.1.4] — 2026-10-30
+
+- **M-028 feito (lote 3 de 3): achados do SonarCloud na página do painel** (`aquisicao/src/painel/pagina/app.js`).
+  Comparador explícito na ordem dos nós (javascript:S2871; a mesma ordem de antes, por unidade de código);
+  `.catch(falhou)` nas chamadas assíncronas soltas de `enviar`, `carregarConfig` e `carregarDetalhe` (S9383: a falha
+  vira aviso no painel em vez de rejeição perdida); `semBarraFinal()` sem regex no lugar de `replace(/\/+$/, '')`
+  (S8786, retrocesso super-linear). Prova: `node --check`, equivalência dos dois auxiliares com o código antigo e
+  `site/testes/painel_celular.mjs` tudo ok. Com os três lotes, os 26 achados da análise de 30/10 estão tratados; falta a
+  reanálise do Sonar na cópia pública. Não mexe em totalização nem em resultado.
+
+## [1.1.3] — 2026-10-30
+
+- **M-028 (lote 2 de 3): achados do SonarCloud nas ferramentas e nos testes.** `std::fs` dentro de `async` trocado por
+  `tokio::fs` no `uv-carga` (arquivo da porta, amostras), no `uv-coletor secoes --csv`, na gravação dos `cs.json` em
+  cache do coletor e nos testes do painel (rust:S7493, 11 achados); no teste `rest_pleitos_relido_quando_muda` da
+  difusão, `tokio::time::sleep` no lugar de `std::thread::sleep` (rust:S7488). Prova: `cargo test --release --workspace`
+  (204 testes, 0 falhas). Não mexe em totalização nem em resultado.
+
+## [1.1.2] — 2026-10-30
+
+- **M-028 (lote 1 de 3): achados do SonarCloud no `uv-servico` e no painel dos nós.** O SonarCloud da cópia pública
+  (`lukeboh_urna-velox-civica`, sobre a 1.1.1) reprovou o quality gate por confiabilidade C no código novo: 26 achados
+  (24 bugs, 2 code smells), nenhum no motor. Este lote tira o `std::fs` de dentro do código assíncrono que roda no ar
+  (rust:S7493, 11 achados): o download dos oficiais no `uv-servico` (`servico.rs`, dentro de `tokio::spawn`) e os handlers
+  do painel (`painel/mod.rs`: ler o `no.env`, gravar e apagar o pendente, apagar as rotas) passam a usar `tokio::fs`; o
+  `gravar_atomico` do painel, que também bloqueava, virou `async`. Item registrado em
+  [docs/itens/M-028.md](docs/itens/M-028.md); sem teste antes (decisão do Luciano: o Sonar é o vigia). Prova:
+  `cargo test --release --workspace` (204 testes, 0 falhas). Os testes `--ignored` do serviço (dados reais) não rodaram
+  neste ambiente. Não mexe em totalização nem em resultado.
+
 ## [1.1.1] — 2026-10-30
 
 - **Revisão para a cópia pública:** o relatório da borda do B-067 sai de `docs/relatorios/` (o resumo da análise fica em

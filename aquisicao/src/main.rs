@@ -562,7 +562,7 @@ fn main() -> anyhow::Result<()> {
                 if csv.is_some() { for x in &s { txt += &format!("{uf},{},{},{},{}\n", x.municipio, x.zona, x.secao, x.disponivel); } }
             }
             println!("total: {total} seções em {} UFs ({:.2} s, {:.1} MB lidos)", cfgs.len(), t0.elapsed().as_secs_f64(), rede.bytes.load(Relaxed) as f64 / 1e6);
-            if let Some(p) = csv { std::fs::write(p, txt)?; }
+            if let Some(p) = csv { tokio::fs::write(p, txt).await?; }
             anyhow::Ok(())
         })?,
 
